@@ -685,11 +685,19 @@ export function TypeRevealScreen({ navigation }: Props) {
         </View>
       )}
 
-      {/* Cards rendered back→front so z-order works naturally. */}
-      {renderCard(3)}
-      {renderCard(2)}
-      {renderCard(1)}
-      {renderCard(0)}
+      {/* Cards rendered back→front so z-order works naturally. Gated on
+          `loaded` so the entry-pose cards (translated up + right with
+          rotation) don't peek onto the screen during the parallel
+          reset-score + scan-insights fetch — we want a clean loading
+          state with just the spinner until both resolve. */}
+      {loaded && (
+        <>
+          {renderCard(3)}
+          {renderCard(2)}
+          {renderCard(1)}
+          {renderCard(0)}
+        </>
+      )}
     </View>
   );
 }
