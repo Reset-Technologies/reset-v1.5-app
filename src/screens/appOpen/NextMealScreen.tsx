@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, CommonActions } from "@react-navigation/native";
+import { useNavigation, useRoute, CommonActions, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
@@ -97,6 +97,11 @@ function buildTags(meal: DailyPlanMeal): string[] {
 export function NextMealScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AppOpenStackParamList>>();
+  const route = useRoute<RouteProp<AppOpenStackParamList, "NextMeal">>();
+  // True when the user just finished onboarding (paywall → NextMeal). Switches
+  // the header + intro to a first-meal/welcome variant instead of the daily
+  // "Thinking of you" framing.
+  const fromOnboarding = route.params?.fromOnboarding === true;
   const insets = useSafeAreaInsets();
   const { outerBg, innerBg, nestedBg, textColor, subtleText, borderColor, statusBarStyle } =
     useAppPalette();
@@ -154,6 +159,17 @@ export function NextMealScreen() {
 
   const advanceToInsights = () => {
     const parent = navigation.getParent();
+    if (fromOnboarding) {
+      // Post-onboarding entry: land on the home tab, not the scan-insights
+      // screen — the user just finished setup, they should see Home next.
+      parent?.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "Tabs" }],
+        }),
+      );
+      return;
+    }
     parent?.dispatch(
       CommonActions.reset({
         index: 1,
@@ -262,13 +278,26 @@ export function NextMealScreen() {
                     resizeMode="contain"
                   />
                 </View>
-                <Text style={[styles.title, { color: textColor }]} pointerEvents="none">
-                  Thinking of you
+                <Text
+                  style={[styles.title, { color: textColor }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  pointerEvents="none"
+                >
+                  {fromOnboarding ? "Welcome to Reset" : "Thinking of you"}
                 </Text>
+                {/* Symmetric spacer balancing the logo width so the title's
+                    flex-1 region stays centered on screen. */}
+                <View style={styles.brandLogoSpacer} />
               </View>
 
               <Text style={[styles.intro, { color: textColor }]}>
-                {meal?.whyLine
+                {fromOnboarding
+                  ? meal?.whyLine
+                    ? `Here's your first meal recommendation, picked for your body. ${meal.whyLine}`
+                    : "Here's your first meal recommendation, picked for your body."
+                  : meal?.whyLine
                   ? hasScore
                     ? `Based on your recent score, I picked this for you. ${meal.whyLine}`
                     : `I picked this one out for you. ${meal.whyLine}`
@@ -438,7 +467,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    gap: 12,
   },
   brandLogo: {
     width: 48,
@@ -450,10 +479,12 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  brandLogoSpacer: {
+    width: 48,
+    height: 48,
+  },
   title: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+    flex: 1,
     textAlign: "center",
     fontFamily: fonts.dmSansBold,
     fontSize: 26,

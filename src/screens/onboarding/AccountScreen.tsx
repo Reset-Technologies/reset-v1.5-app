@@ -57,6 +57,18 @@ export function AccountScreen({ navigation }: Props) {
 
   const isValid = email.includes("@") && password.length >= 8;
 
+  // After the account is created: scanned users get the type reveal (the
+  // payoff is gated behind making an account, per RES-119); declined-scan
+  // users skip it ("skip scan = skip the entire type reveal") and go
+  // straight to the app.
+  const finishAccount = () => {
+    if (state.biometrics) {
+      navigation.navigate("TypeReveal");
+    } else {
+      completeOnboarding();
+    }
+  };
+
   const handleCreateAccount = async () => {
     logEvent("onboarding_account_saveProfileCTA");
     setError(null);
@@ -95,7 +107,7 @@ export function AccountScreen({ navigation }: Props) {
         }
       }
 
-      completeOnboarding();
+      finishAccount();
     } catch (err: any) {
       setError(err.message || "Failed to create account");
     } finally {
@@ -148,7 +160,7 @@ export function AccountScreen({ navigation }: Props) {
         }
       }
 
-      completeOnboarding();
+      finishAccount();
     } catch (err: any) {
       if (err.code === "ERR_REQUEST_CANCELED") return;
       setError(err.message || "Apple sign-in failed");
@@ -198,7 +210,7 @@ export function AccountScreen({ navigation }: Props) {
         }
       }
 
-      completeOnboarding();
+      finishAccount();
     } catch (err: any) {
       if (err.code === "SIGN_IN_CANCELLED") return;
       setError(err.message || "Google sign-in failed");

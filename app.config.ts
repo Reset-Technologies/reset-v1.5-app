@@ -10,9 +10,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   splash: {
-    image: "./assets/splash-icon.png",
+    image: "./assets/splash-reset.png",
     resizeMode: "contain",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#361416",
   },
   ios: {
     supportsTablet: true,
@@ -44,6 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     "expo-font",
+    "expo-video",
     // "expo-apple-authentication", // TODO: re-enable once added to paid dev team
     [
       "expo-camera",

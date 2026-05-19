@@ -38,7 +38,10 @@ export function CameraPermScreen({ navigation }: Props) {
     } else {
       logEvent("onboarding_camera_permission_skipCTA");
     }
-    navigation.navigate("TypeReveal");
+    // TODO RES-119 (#125): declining the scan should drop into the "false
+    // start" home (blurred recs + scan CTA). For now continue the survey —
+    // AccountScreen skips the type reveal when there are no biometrics.
+    navigation.navigate("Survey", { step: 0 });
   };
 
   // First denial message

@@ -15,7 +15,7 @@ export type AppOpenStackParamList = {
   SurveyV2: undefined;
   EncourageScan: undefined;
   ScoreReveal: undefined;
-  NextMeal: undefined;
+  NextMeal: { fromOnboarding?: boolean } | undefined;
 };
 
 const Stack = createNativeStackNavigator<AppOpenStackParamList>();

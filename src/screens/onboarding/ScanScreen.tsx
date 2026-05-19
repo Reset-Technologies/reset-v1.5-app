@@ -448,7 +448,8 @@ export function ScanScreen({ navigation, route }: Props) {
             navigation.replace("ScanResults");
           }
         } else {
-          navigation.replace("ScanReveal");
+          // Onboarding: straight into the chat-style survey questions.
+          navigation.replace("Survey", { step: 0 });
         }
       }, 1500);
     } catch (err) {
@@ -488,7 +489,11 @@ export function ScanScreen({ navigation, route }: Props) {
     if (mode === "rescan") {
       navigation.goBack();
     } else {
-      navigation.replace("TypeReveal");
+      // TODO RES-119 (#125): declining the scan should drop the user into the
+      // "false start" home (blurred recs + scan CTA), not continue onboarding.
+      // Until that screen exists, send them through the survey; AccountScreen
+      // skips the type reveal when there are no biometrics.
+      navigation.replace("Survey", { step: 0 });
     }
   }, [navigation, mode]);
 

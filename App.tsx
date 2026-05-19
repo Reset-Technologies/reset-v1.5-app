@@ -1,10 +1,11 @@
 import "react-native-gesture-handler";
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
 import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_700Bold,
@@ -17,8 +18,12 @@ import {
 import { AppProvider } from "./src/context/AppContext";
 import { ToastProvider } from "./src/context/ToastContext";
 import { RootNavigator } from "./src/navigation";
-import { K } from "./src/constants/colors";
 import { PaletteProvider } from "./src/hooks/useAppPalette";
+
+SplashScreen.preventAutoHideAsync();
+SplashScreen.setOptions({ duration: 300, fade: true });
+
+const MIN_SPLASH_MS = 1200;
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -28,17 +33,27 @@ export default function App() {
     DMSans_500Medium,
     DMSans_700Bold,
   });
+  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
-  if (!fontsLoaded) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={K.maroon} />
-      </View>
-    );
+  useEffect(() => {
+    const t = setTimeout(() => setMinTimeElapsed(true), MIN_SPLASH_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  const ready = fontsLoaded && minTimeElapsed;
+
+  const onLayoutRootView = useCallback(() => {
+    if (ready) {
+      SplashScreen.hideAsync();
+    }
+  }, [ready]);
+
+  if (!ready) {
+    return null;
   }
 
   return (
-    <GestureHandlerRootView style={styles.gestureRoot}>
+    <GestureHandlerRootView style={styles.gestureRoot} onLayout={onLayoutRootView}>
       <SafeAreaProvider>
         <AppProvider>
           <PaletteProvider>
@@ -56,11 +71,5 @@ export default function App() {
 const styles = StyleSheet.create({
   gestureRoot: {
     flex: 1,
-  },
-  loading: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: K.cream,
   },
 });

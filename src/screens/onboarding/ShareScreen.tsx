@@ -19,7 +19,7 @@ import { logEvent } from "../../services/braze";
 type Props = NativeStackScreenProps<any, "Share">;
 
 export function ShareScreen({ navigation }: Props) {
-  const { state } = useApp();
+  const { state, completeOnboarding } = useApp();
   const metabolicType = state.user.metabolicType || "Explorer";
   const typeConfig = TYPE_CONFIGS[metabolicType];
   const colors = TC[metabolicType];
@@ -65,13 +65,14 @@ export function ShareScreen({ navigation }: Props) {
     // Continue regardless of share result
   };
 
+  // Share is now the final onboarding screen — both paths end the flow.
   const handleSkip = () => {
     logEvent("onboarding_share_skipCTA");
-    navigation.navigate("Taste");
+    completeOnboarding();
   };
 
   const handleContinue = () => {
-    navigation.navigate("Taste");
+    completeOnboarding();
   };
 
   return (

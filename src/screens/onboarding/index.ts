@@ -1,3 +1,6 @@
+export { EducationCarouselScreen } from "./EducationCarouselScreen";
+export { PreScanScreen } from "./PreScanScreen";
+export { OnboardingSurveyScreen } from "./OnboardingSurveyScreen";
 export { GoalScreen } from "./GoalScreen";
 export { QuizScreen } from "./QuizScreen";
 export { CameraPermScreen } from "./CameraPermScreen";
@@ -8,3 +11,6 @@ export { ShareScreen } from "./ShareScreen";
 export { TasteScreen } from "./TasteScreen";
 export { RestrictScreen } from "./RestrictScreen";
 export { AccountScreen } from "./AccountScreen";
+export { AccountGateScreen } from "./AccountGateScreen";
+export { CreateAccountScreen } from "./CreateAccountScreen";
+export { PaywallScreen } from "./PaywallScreen";

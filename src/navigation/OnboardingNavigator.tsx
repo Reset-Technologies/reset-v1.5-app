@@ -1,29 +1,36 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
-  GoalScreen,
-  QuizScreen,
-  CameraPermScreen,
+  EducationCarouselScreen,
+  PreScanScreen,
   ScanScreen,
-  ScanRevealScreen,
+  OnboardingSurveyScreen,
   TypeRevealScreen,
   ShareScreen,
-  TasteScreen,
-  RestrictScreen,
   AccountScreen,
+  AccountGateScreen,
+  CreateAccountScreen,
+  PaywallScreen,
 } from "../screens/onboarding";
 import { K } from "../constants/colors";
 
+// New onboarding sequence (RES-119): education → pre-scan → scan →
+// chat-style survey questions → account → type reveal → share.
+//
+// CameraPerm / Goal / Quiz / Taste / Restrict / ScanReveal still exist as
+// screen files but are no longer in the active flow — the scan screen handles
+// its own camera permission, and the question content has been folded into the
+// config-driven OnboardingSurveyScreen.
 export type OnboardingStackParamList = {
-  Goal: undefined;
-  Quiz: undefined;
-  CameraPerm: undefined;
+  Education: undefined;
+  PreScan: undefined;
   Scan: undefined;
-  ScanReveal: undefined;
+  Survey: { step?: number } | undefined;
+  AccountGate: undefined;
+  CreateAccount: undefined;
   TypeReveal: undefined;
+  Paywall: undefined;
   Share: undefined;
-  Taste: undefined;
-  Restrict: undefined;
   Account: undefined;
 };
 
@@ -32,15 +39,28 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
+      initialRouteName="Education"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
         animation: "slide_from_right",
       }}
     >
-      <Stack.Screen name="Goal" component={GoalScreen} />
-      <Stack.Screen name="Quiz" component={QuizScreen} />
-      <Stack.Screen name="CameraPerm" component={CameraPermScreen} />
+      <Stack.Screen
+        name="Education"
+        component={EducationCarouselScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      <Stack.Screen
+        name="PreScan"
+        component={PreScanScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+          animation: "none",
+        }}
+      />
       <Stack.Screen
         name="Scan"
         component={ScanScreen}
@@ -50,18 +70,43 @@ export function OnboardingNavigator() {
         }}
       />
       <Stack.Screen
-        name="ScanReveal"
-        component={ScanRevealScreen}
-        options={{ animation: "fade" }}
+        name="Survey"
+        component={OnboardingSurveyScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+          animation: "fade",
+        }}
+      />
+      <Stack.Screen
+        name="AccountGate"
+        component={AccountGateScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+          animation: "fade",
+        }}
+      />
+      <Stack.Screen
+        name="CreateAccount"
+        component={CreateAccountScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+        }}
       />
       <Stack.Screen
         name="TypeReveal"
         component={TypeRevealScreen}
         options={{ animation: "fade" }}
       />
+      <Stack.Screen
+        name="Paywall"
+        component={PaywallScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+          animation: "fade",
+          gestureEnabled: false,
+        }}
+      />
       <Stack.Screen name="Share" component={ShareScreen} />
-      <Stack.Screen name="Taste" component={TasteScreen} />
-      <Stack.Screen name="Restrict" component={RestrictScreen} />
       <Stack.Screen name="Account" component={AccountScreen} />
     </Stack.Navigator>
   );

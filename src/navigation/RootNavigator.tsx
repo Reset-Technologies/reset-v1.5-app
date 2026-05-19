@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from "react";
-import { NavigationContainer, LinkingOptions, NavigationContainerRef } from "@react-navigation/native";
+import React, { useEffect } from "react";
+import { NavigationContainer, LinkingOptions } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import { AppState, AppStateStatus } from "react-native";
@@ -13,6 +13,7 @@ import {
   shouldShowAppOpenFlow,
   markAppOpenFlowShown,
 } from "../utils/appOpenFlowGate";
+import { rootNavigationRef } from "./rootNavigationRef";
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -46,7 +47,10 @@ const DEEP_LINK_ROUTES: Record<string, string> = {
 
 export function RootNavigator() {
   const { state } = useApp();
-  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  // Shared module-level ref so the Paywall (and other screens that may be
+  // about to unmount during a root-stack switch) can deep-navigate after
+  // the new stack mounts.
+  const navigationRef = rootNavigationRef;
 
   const appOpenFlowEnabled = state.settings.appOpenFlowEnabled;
   const userId = state.auth.authUser?.id;
