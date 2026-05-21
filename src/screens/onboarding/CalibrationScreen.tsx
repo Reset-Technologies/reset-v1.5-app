@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
@@ -26,6 +26,20 @@ const MUTED = "#7E6869";
 
 const CM_PER_INCH = 2.54;
 const KG_PER_LB = 0.453592;
+
+function BackArrow() {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M19 12H5M11 19l-7-7 7-7"
+        stroke={BONE}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 function Field({
   label,
@@ -64,6 +78,16 @@ export function CalibrationScreen({ navigation }: Props) {
   const ageValid = yrs >= 13 && yrs <= 100;
   const isValid = heightValid && weightValid && ageValid && sex !== null;
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      // Calibration was the resumed initial route (RES-123) — no history
+      // to pop, so route explicitly back to PreScan.
+      navigation.navigate("PreScan");
+    }
+  };
+
   const handleContinue = () => {
     if (!isValid || !sex) return;
     logEvent("onboarding_calibration_continueCTA");
@@ -91,6 +115,16 @@ export function CalibrationScreen({ navigation }: Props) {
       </View>
 
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            onPress={handleBack}
+            hitSlop={12}
+            style={styles.backBtn}
+            testID="calibration_back"
+          >
+            <BackArrow />
+          </TouchableOpacity>
+        </View>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboardView}
@@ -213,6 +247,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: MAROON },
   safe: { flex: 1 },
   keyboardView: { flex: 1 },
+
+  // Top bar — back arrow, left-aligned.
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
