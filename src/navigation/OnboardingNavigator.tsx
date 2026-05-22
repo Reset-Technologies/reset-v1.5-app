@@ -3,6 +3,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
   EducationCarouselScreen,
   PreScanScreen,
+  NoScanEmptyStateScreen,
+  CalibrationScreen,
   ScanScreen,
   OnboardingSurveyScreen,
   TypeRevealScreen,
@@ -12,6 +14,7 @@ import {
   CreateAccountScreen,
   PaywallScreen,
 } from "../screens/onboarding";
+import { LoginScreen } from "../screens/auth/LoginScreen";
 import { K } from "../constants/colors";
 
 // New onboarding sequence (RES-119): education → pre-scan → scan →
@@ -24,6 +27,9 @@ import { K } from "../constants/colors";
 export type OnboardingStackParamList = {
   Education: undefined;
   PreScan: undefined;
+  NoScanEmptyState: undefined;
+  Login: undefined;
+  Calibration: undefined;
   Scan: undefined;
   Survey: { step?: number } | undefined;
   AccountGate: undefined;
@@ -60,6 +66,24 @@ export function OnboardingNavigator() {
           fullScreenGestureEnabled: true,
           animation: "none",
         }}
+      />
+      <Stack.Screen
+        name="NoScanEmptyState"
+        component={NoScanEmptyStateScreen}
+        options={{
+          contentStyle: { backgroundColor: K.white },
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      <Stack.Screen
+        name="Calibration"
+        component={CalibrationScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
       />
       <Stack.Screen
         name="Scan"

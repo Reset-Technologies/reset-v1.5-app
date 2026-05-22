@@ -20,7 +20,6 @@ import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { logEvent } from "../../services/braze";
-import { getQuizQ2, determineType } from "../../constants/types";
 import {
   SURVEY_STEPS,
   SurveyOption,
@@ -85,7 +84,6 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     setGoal,
     setQuizAnswer,
     setDietaryRestrictions,
-    setMetabolicType,
   } = useApp();
 
   const [revealed, setRevealed] = useState(false);
@@ -99,20 +97,15 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
   });
 
   const isQuestion = step.kind === "question";
-  const q1Answer = (state.user.quizAnswers?.q1 as string | undefined) ?? null;
 
   const questionText = useMemo(() => {
     if (step.kind !== "question") return "";
-    if (step.question === "_dynamic") {
-      const a = (q1Answer as "afternoon_evening" | "random") || "afternoon_evening";
-      return getQuizQ2(a).esterPrompt;
-    }
     return step.question;
-  }, [step, q1Answer]);
+  }, [step]);
 
   const options: SurveyOption[] = useMemo(
-    () => (step.kind === "question" ? resolveOptions(step, q1Answer) : []),
-    [step, q1Answer]
+    () => (step.kind === "question" ? resolveOptions(step) : []),
+    [step]
   );
 
   const goNext = () => {
@@ -143,15 +136,15 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
   }, [stepIndex]);
 
   // Auto-advance for the non-interactive beats.
+  //
+  // RES-121: the analyzing beat used to call `determineType(q1, q2)` and
+  // set the metabolic type locally. The type is now computed by the
+  // backend's TypingService once the user signs up and submits their
+  // behavior answers; the analyzing beat just pauses for the animation
+  // and hands off to AccountGate.
   useEffect(() => {
     if (step.kind === "question") return;
     if (step.kind === "analyzing") {
-      const q1 =
-        (state.user.quizAnswers?.q1 as "afternoon_evening" | "random") ||
-        "afternoon_evening";
-      const q2 =
-        (state.user.quizAnswers?.q2 as "crash" | "drift") || "crash";
-      setMetabolicType(determineType(q1, q2));
       const t = setTimeout(() => navigation.replace("AccountGate"), step.durationMs);
       return () => clearTimeout(t);
     }
@@ -172,6 +165,9 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
         break;
       case "q2":
         setQuizAnswer("q2", ids[0]);
+        break;
+      case "q3":
+        setQuizAnswer("q3", ids[0]);
         break;
       case "restrict":
         setDietaryRestrictions(ids);

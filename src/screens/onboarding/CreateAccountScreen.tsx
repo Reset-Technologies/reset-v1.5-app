@@ -76,7 +76,7 @@ function MuteIcon({ size = 28 }: { size?: number }) {
 }
 
 export function CreateAccountScreen({ navigation }: Props) {
-  const { state, setUserAccount, setAuth, completeOnboarding } = useApp();
+  const { state, setUserAccount, setAuth, setTypingResult, completeOnboarding } = useApp();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -124,21 +124,34 @@ export function CreateAccountScreen({ navigation }: Props) {
       );
       setAuth(user);
 
-      try {
-        await syncOnboardingToBackend({
-          metabolicType: state.user.metabolicType,
-          goal: state.user.goal,
-          quizAnswers: state.user.quizAnswers,
-          tastePreferences: state.user.tastePreferences,
-          dietaryRestrictions: state.user.dietaryRestrictions,
-        });
-      } catch {}
-
+      // RES-121: submit scan results FIRST so the backend has biomarkers
+      // when the typing function runs on the behaviorAnswers below.
       if (state.biometrics?.raw) {
         try {
           await submitScanResults(state.biometrics.raw);
         } catch {}
       }
+
+      try {
+        const { primaryBucket, startingRead, glp1Flag } =
+          await syncOnboardingToBackend({
+            goal: state.user.goal,
+            behaviorAnswers: {
+              q1: state.user.quizAnswers.q1,
+              q2: state.user.quizAnswers.q2,
+              q3: state.user.quizAnswers.q3,
+            },
+            tastePreferences: state.user.tastePreferences,
+            dietaryRestrictions: state.user.dietaryRestrictions,
+          });
+        if (primaryBucket) {
+          setTypingResult({
+            metabolicType: primaryBucket,
+            startingRead,
+            glp1Flag,
+          });
+        }
+      } catch {}
 
       finishAccount();
     } catch (err: any) {

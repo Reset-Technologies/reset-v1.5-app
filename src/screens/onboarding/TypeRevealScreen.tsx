@@ -16,7 +16,9 @@ import { BlurView } from "expo-blur";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
-import { determineType } from "../../constants/types";
+// RES-121: metabolicType is now sourced from `state.user.metabolicType`
+// (set by CreateAccountScreen after the backend's TypingService runs on
+// the submitted behaviorAnswers). The FE no longer computes the type.
 import { useApp } from "../../context/AppContext";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 import { ScoreRing } from "../../components/survey/ScoreRing";
@@ -73,6 +75,14 @@ const TYPE_PARAGRAPH: Record<MetabolicType, string> = {
   Rebounder:
     "Your metabolism has adapted to protect itself. Calorie-sufficient meals help your metabolism find its rhythm again — never deficit-framed.",
 };
+
+// RES-121 non-scanner copy. When the backend returns `starting_read`, we
+// surface "Explorer" with soft directional language that points to "we'll
+// learn more once you scan" rather than asserting a metabolic pattern.
+const STARTING_READ_TAGLINE =
+  "Your starting read — we'll sharpen it together once you scan.";
+const STARTING_READ_PARAGRAPH =
+  "Without a scan, I'm working from your answers alone. A balanced baseline is the right place to start, and the first scan will tell me how your body actually responds.";
 
 // Figma-derived card geometry (target frame is 402-wide). Scale to actual
 // screen width so the same proportions hold on smaller phones. All cards
@@ -134,11 +144,13 @@ const EXIT_ROT = -16;
 // ── Cards ──────────────────────────────────────────────────────────────
 function FrontCard({
   type,
+  startingRead,
   revealed,
   onReveal,
   onShareResults,
 }: {
   type: MetabolicType;
+  startingRead: boolean;
   revealed: boolean;
   onReveal: () => void;
   onShareResults: () => void;
@@ -173,9 +185,13 @@ function FrontCard({
             </View>
             <View style={styles.typeTextWrap}>
               <Text style={styles.typeName}>{TYPE_DISPLAY[type]}</Text>
-              <Text style={styles.typeTagline}>{TYPE_TAGLINE[type]}</Text>
+              <Text style={styles.typeTagline}>
+                {startingRead ? STARTING_READ_TAGLINE : TYPE_TAGLINE[type]}
+              </Text>
             </View>
-            <Text style={styles.typeParagraph}>{TYPE_PARAGRAPH[type]}</Text>
+            <Text style={styles.typeParagraph}>
+              {startingRead ? STARTING_READ_PARAGRAPH : TYPE_PARAGRAPH[type]}
+            </Text>
 
             {/* Blur overlay with Tap to reveal — fades out once tapped. */}
             <Animated.View
@@ -377,13 +393,20 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
 
 // ── Screen ────────────────────────────────────────────────────────────
 export function TypeRevealScreen({ navigation }: Props) {
-  const { state, setMetabolicType } = useApp();
+  const { state } = useApp();
 
-  const q1 =
-    (state.user.quizAnswers.q1 as "afternoon_evening" | "random") ||
-    "afternoon_evening";
-  const q2 = (state.user.quizAnswers.q2 as "crash" | "drift") || "crash";
-  const metabolicType = determineType(q1, q2);
+  // `metabolicType` is set in CreateAccountScreen from the backend
+  // typing-function response. Fall back to "Explorer" when:
+  //   - the response hasn't landed yet (undefined), OR
+  //   - the backend returned `starting_read` (non-scanner path).
+  // The ticket: starting_read surfaces as Explorer with soft directional
+  // copy. The display lookups (TYPE_DISPLAY/LOGO/TAGLINE/PARAGRAPH) are
+  // keyed by the 5 real archetypes only, so we normalize here once.
+  const rawType = state.user.metabolicType as string | undefined;
+  const metabolicType: MetabolicType =
+    rawType && rawType !== "starting_read"
+      ? (rawType as MetabolicType)
+      : "Explorer";
 
   // Pull the same Reset Score the Home screen will show, so the number on
   // the middle card matches Home exactly (rather than the raw SDK wellness).
@@ -431,7 +454,8 @@ export function TypeRevealScreen({ navigation }: Props) {
   useEffect(() => {
     logEvent("onboarding_type_reveal", { metabolic_type: metabolicType });
     setCustomAttribute("metabolic_type", metabolicType);
-    if (state.user.metabolicType !== metabolicType) setMetabolicType(metabolicType);
+    // metabolicType is sourced from state directly now — backend is the
+    // authoritative writer (see CreateAccountScreen / AccountGateScreen).
   }, []);
 
   const [revealed, setRevealed] = useState(false);
@@ -594,6 +618,7 @@ export function TypeRevealScreen({ navigation }: Props) {
       content = (
         <FrontCard
           type={metabolicType}
+          startingRead={!!state.user.startingRead}
           revealed={revealed}
           onReveal={() => {
             logEvent("onboarding_type_reveal_tap");

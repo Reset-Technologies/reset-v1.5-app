@@ -14,11 +14,21 @@ import {
   PrecisionMode,
   OnboardingMode,
   CameraMode,
+  Gender,
   FaceState as SdkFaceState,
   MeasurementState as SdkMeasurementState,
   type MeasurementResults,
   type HealthRisks,
 } from "react-native-shenai-sdk";
+
+// Pre-scan calibration passed to ShenAI as risksFactors. Without these
+// ShenAI can't compute basalMetabolicRate / totalDailyEnergyExpenditure.
+export interface ShenCalibration {
+  heightCm: number;
+  weightKg: number;
+  age: number;
+  biologicalSex: "male" | "female";
+}
 
 export interface ScanResults {
   heartRate: number;
@@ -37,6 +47,18 @@ export interface ScanResults {
   heightCm: number | null;
   vascularAge: number | null;
   wellnessScore: number | null;
+  // RES-121: ShenAI's energy-expenditure estimates — only non-null when
+  // calibration (height/weight/age/sex) was supplied at init.
+  basalMetabolicRate: number | null;
+  totalDailyEnergyExpenditure: number | null;
+  // RES-121 Rebounder marker: fraction ShenAI's BMR sits below the
+  // Mifflin-St Jeor expectation for the user's body. Positive = depressed
+  // metabolism. null when calibration or ShenAI BMR is missing.
+  bmrTdeeDelta: number | null;
+  // RES-121 calibration values carried on the scan record so the backend
+  // typing function uses the real age/sex (not ShenAI's age estimate).
+  age: number | null;
+  biologicalSex: "male" | "female" | null;
 }
 
 export type FaceState =
@@ -78,10 +100,37 @@ export function mapSdkResults(
     heightCm: r1(raw.heightCm),
     vascularAge: r1(health?.vascularAge ?? null),
     wellnessScore: r1(health?.wellnessScore ?? null),
+    basalMetabolicRate: r1(health?.basalMetabolicRate ?? null),
+    totalDailyEnergyExpenditure: r1(health?.totalDailyEnergyExpenditure ?? null),
+    // These three are filled in by getScanResults once calibration is in hand.
+    bmrTdeeDelta: null,
+    age: null,
+    biologicalSex: null,
   };
 }
 
-export async function initShenAI(apiKey: string): Promise<void> {
+// Mifflin-St Jeor expected BMR (kcal/day) from calibration.
+function expectedBmr(c: ShenCalibration): number {
+  const base = 10 * c.weightKg + 6.25 * c.heightCm - 5 * c.age;
+  return c.biologicalSex === "female" ? base - 161 : base + 5;
+}
+
+// RES-121 Rebounder marker. Positive when ShenAI's scan-derived BMR sits
+// below the Mifflin-St Jeor expectation — a depressed-metabolism signal.
+export function computeBmrTdeeDelta(
+  shenBmr: number | null,
+  calibration?: ShenCalibration,
+): number | null {
+  if (shenBmr == null || shenBmr <= 0 || !calibration) return null;
+  const expected = expectedBmr(calibration);
+  if (expected <= 0) return null;
+  return (expected - shenBmr) / expected;
+}
+
+export async function initShenAI(
+  apiKey: string,
+  calibration?: ShenCalibration,
+): Promise<void> {
   const result = await initialize(apiKey, undefined, {
     measurementPreset: MeasurementPreset.THIRTY_SECONDS_ALL_METRICS,
     precisionMode: PrecisionMode.RELAXED,
@@ -106,6 +155,21 @@ export async function initShenAI(apiKey: string): Promise<void> {
     operatingMode: OperatingMode.POSITIONING,
     enableHealthRisks: true,
     saveHealthRisksFactors: true,
+    // RES-121: pre-scan calibration. ShenAI needs height/weight/age/sex to
+    // compute basalMetabolicRate + totalDailyEnergyExpenditure.
+    ...(calibration
+      ? {
+          risksFactors: {
+            age: calibration.age,
+            bodyHeight: calibration.heightCm,
+            bodyWeight: calibration.weightKg,
+            gender:
+              calibration.biologicalSex === "female"
+                ? Gender.FEMALE
+                : Gender.MALE,
+          },
+        }
+      : {}),
   });
 
   // InitializationResult.OK === 0
@@ -131,7 +195,9 @@ export async function shutdownShenAI(): Promise<void> {
   }
 }
 
-export async function getScanResults(): Promise<ScanResults | null> {
+export async function getScanResults(
+  calibration?: ShenCalibration,
+): Promise<ScanResults | null> {
   const raw = await getMeasurementResults();
   if (!raw) return null;
   let health: HealthRisks | null = null;
@@ -140,7 +206,13 @@ export async function getScanResults(): Promise<ScanResults | null> {
   } catch {
     // SDK may throw if HealthRisks aren't configured; fall back to nulls.
   }
-  return mapSdkResults(raw, health);
+  const mapped = mapSdkResults(raw, health);
+  return {
+    ...mapped,
+    bmrTdeeDelta: computeBmrTdeeDelta(mapped.basalMetabolicRate, calibration),
+    age: calibration?.age ?? null,
+    biologicalSex: calibration?.biologicalSex ?? null,
+  };
 }
 
 const FACE_STATE_MAP: Record<number, FaceState> = {

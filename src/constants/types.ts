@@ -94,114 +94,139 @@ export const TYPE_CONFIGS: Record<MetabolicType, TypeConfig> = {
   },
 };
 
-// Quiz state for tracking answers and branching
+// RES-121 typing-survey answer value IDs. These must stay in sync with
+// the backend `update-profile.dto.ts` enums and `typing.types.ts`.
+export type Q1AnswerId =
+  | "sharp_morning"
+  | "steady_flat"
+  | "variable_days"
+  | "all_over_place";
+export type Q2AnswerId =
+  | "after_dinner"
+  | "not_hungry"
+  | "depends_on_week"
+  | "falls_apart_at_once";
+export type Q3AnswerId =
+  | "first_attempt"
+  | "few_times"
+  | "many_times"
+  | "glp1";
+
 export interface QuizState {
-  q1: "afternoon_evening" | "random" | null;
-  q2: "crash" | "drift" | null;
+  q1: Q1AnswerId | null;
+  q2: Q2AnswerId | null;
+  q3: Q3AnswerId | null;
 }
 
-// Cold Read Question 1: The Mirror
+// Q1: When does your energy usually drop?
 export const QUIZ_Q1 = {
   id: "q1",
-  esterPrompt: "When your eating goes off track, does it usually happen in the afternoon/evening, or is it more random?",
+  esterPrompt: "When does your energy usually drop?",
   options: [
-    { id: "afternoon_evening", label: "Afternoon / evening", value: "afternoon_evening" },
-    { id: "random", label: "Random", value: "random" },
+    {
+      id: "sharp_morning",
+      label: "Sharp in the morning, then I binge later",
+      value: "sharp_morning" as Q1AnswerId,
+    },
+    { id: "steady_flat", label: "Steady but flat", value: "steady_flat" as Q1AnswerId },
+    {
+      id: "variable_days",
+      label: "Some days great, some exhausted",
+      value: "variable_days" as Q1AnswerId,
+    },
+    {
+      id: "all_over_place",
+      label: "All over the place",
+      value: "all_over_place" as Q1AnswerId,
+    },
   ],
 };
 
-// Cold Read Question 2: The Twist (depends on Q1)
-export function getQuizQ2(q1Answer: "afternoon_evening" | "random") {
-  const bridges: Record<string, { bridge: string; options: typeof QUIZ_Q1.options }> = {
-    afternoon_evening: {
-      bridge: "That pattern usually means your body is running out of fuel — not willpower, fuel. Does it feel like a crash or more of a drift?",
-      options: [
-        { id: "crash", label: "I crash hard", value: "crash" },
-        { id: "drift", label: "I drift into it", value: "drift" },
-      ],
+// Q2: When are you most likely to lose control around food?
+export const QUIZ_Q2 = {
+  id: "q2",
+  esterPrompt: "When are you most likely to lose control around food?",
+  options: [
+    {
+      id: "after_dinner",
+      label: "After dinner, the day unravels",
+      value: "after_dinner" as Q2AnswerId,
     },
-    random: {
-      bridge: "Unpredictable crashes usually mean your body isn't holding fuel well. Does it hit suddenly or is it more gradual?",
-      options: [
-        { id: "crash", label: "Hits suddenly", value: "crash" },
-        { id: "drift", label: "More gradual", value: "drift" },
-      ],
+    {
+      id: "not_hungry",
+      label: "Not really hungry but I eat anyway",
+      value: "not_hungry" as Q2AnswerId,
     },
-  };
+    {
+      id: "depends_on_week",
+      label: "Depends on the week",
+      value: "depends_on_week" as Q2AnswerId,
+    },
+    {
+      id: "falls_apart_at_once",
+      label: "Hold it together, then it falls apart at once",
+      value: "falls_apart_at_once" as Q2AnswerId,
+    },
+  ],
+};
 
+// Q3: How many times have you tried to lose this weight before?
+export const QUIZ_Q3 = {
+  id: "q3",
+  esterPrompt: "How many times have you tried to lose this weight before?",
+  options: [
+    {
+      id: "first_attempt",
+      label: "First real attempt",
+      value: "first_attempt" as Q3AnswerId,
+    },
+    {
+      id: "few_times",
+      label: "A few times, lost it and came back",
+      value: "few_times" as Q3AnswerId,
+    },
+    {
+      id: "many_times",
+      label: "Many times, dieting on and off for years",
+      value: "many_times" as Q3AnswerId,
+    },
+    {
+      id: "glp1",
+      label: "Currently on a GLP-1 or recently came off",
+      value: "glp1" as Q3AnswerId,
+    },
+  ],
+};
+
+// NOTE: `determineType` was removed in RES-121. The backend's TypingService
+// is the authoritative source of the metabolic-type assignment — the FE
+// now submits all 3 behavior answers via the profile-update endpoint and
+// reads `primaryBucket` from the response. See `src/services/onboarding.ts`
+// for the submission and `src/screens/onboarding/OnboardingSurveyScreen.tsx`
+// for the analyzing-step handoff.
+
+// Backward-compat stubs — kept so the V0 orphan screens (QuizScreen,
+// ScanRevealScreen) still compile. They are no longer in the active
+// onboarding flow.
+export function determineType(_q1?: string, _q2?: string): MetabolicType {
+  return "Explorer";
+}
+export function getQuizQ2(_q1Answer?: string) {
   return {
     id: "q2",
-    esterPrompt: bridges[q1Answer].bridge,
-    options: bridges[q1Answer].options,
+    esterPrompt: QUIZ_Q2.esterPrompt,
+    options: QUIZ_Q2.options,
   };
 }
-
-// Cold Read Question 3: The Setup (depends on Q1 + Q2)
-export function getQuizQ3Setup(q1: "afternoon_evening" | "random", q2: "crash" | "drift") {
-  const setups: Record<string, Record<string, string>> = {
-    afternoon_evening: {
-      crash: "I think your body is sending a stress signal that's shaping your hunger. I can tell you more — but I'd need to see it to be sure.",
-      drift: "There's a pattern driving your evening eating. It's metabolic, not emotional. I'd need to see it to be sure.",
-    },
-    random: {
-      crash: "Something metabolic is leaking energy at irregular intervals. I can tell you more — but I'd need to see it.",
-      drift: "Your signals are quiet, which makes it harder for you to read but easier for me. I'd need to see it to be sure.",
-    },
-  };
-
-  return setups[q1][q2];
+export function getQuizQ3Setup(_q1?: string, _q2?: string): string {
+  return "";
 }
-
-// Type determination based on quiz answers (4 paths)
-export function determineType(q1: "afternoon_evening" | "random", q2: "crash" | "drift"): MetabolicType {
-  // Path mapping based on spec:
-  // afternoon_evening + crash → Burner or Ember
-  // afternoon_evening + drift → Rebounder or Explorer
-  // random + crash → Ember or Chameleon
-  // random + drift → Explorer or Chameleon
-
-  if (q1 === "afternoon_evening") {
-    if (q2 === "crash") {
-      return "Burner";
-    } else {
-      return "Rebounder";
-    }
-  } else {
-    // random
-    if (q2 === "crash") {
-      return "Ember";
-    } else {
-      return "Explorer";
-    }
-  }
-}
-
-// Get reveal text based on quiz path
-export function getTypeRevealText(q1: "afternoon_evening" | "random", q2: "crash" | "drift", hasScan: boolean): string {
-  if (hasScan) {
-    if (q1 === "afternoon_evening" && q2 === "crash") {
-      return "Your stress pattern is running high, and your energy's reacting to it. I know how to feed you.";
-    }
-    if (q1 === "afternoon_evening" && q2 === "drift") {
-      return "Your scan confirms it — your body has learned to expect fuel at certain times. That gradual pull isn't hunger, it's metabolic memory.";
-    }
-    if (q1 === "random" && q2 === "crash") {
-      return "Your energy's coming in waves right now. I'll smooth that out through how you eat.";
-    }
-    return "Your signals are quiet on the scan too — which actually makes my job easier. I can see the baseline clearly now.";
-  }
-
-  // Quiz-only reveal
-  if (q1 === "afternoon_evening" && q2 === "crash") {
-    return "Your pattern suggests your body is running hot under stress. The crashes aren't willpower — they're metabolic.";
-  }
-  if (q1 === "afternoon_evening" && q2 === "drift") {
-    return "Your pattern suggests your body has been defending against restriction. It's metabolic, not emotional.";
-  }
-  if (q1 === "random" && q2 === "crash") {
-    return "Your pattern suggests energy is leaking at irregular intervals. Your body isn't holding fuel as well as it could.";
-  }
-  return "Your signals are quiet — which makes it easier for me to learn your pattern. I'll adapt quickly from your feedback.";
+export function getTypeRevealText(
+  _q1?: string,
+  _q2?: string,
+  _hasScan?: boolean,
+): string {
+  return "";
 }
 
 // Taste clusters (4 options in 2x2 grid)

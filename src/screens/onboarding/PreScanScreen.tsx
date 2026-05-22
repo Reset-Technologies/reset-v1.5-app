@@ -85,10 +85,12 @@ const FEATURES: { Icon: () => JSX.Element; label: string }[] = [
 export function PreScanView({
   onScan,
   onClose,
+  onLogin,
   interactive = true,
 }: {
   onScan: () => void;
   onClose: () => void;
+  onLogin?: () => void;
   interactive?: boolean;
 }) {
   return (
@@ -115,6 +117,12 @@ export function PreScanView({
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
         >
+          <View style={styles.closeRow}>
+            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+              <Text style={styles.closeGlyph}>×</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.graphicWrap}>
             <Image
               source={TYPES_GRAPHIC}
@@ -145,16 +153,20 @@ export function PreScanView({
             </View>
           </View>
 
-          <TouchableOpacity style={styles.scanBtn} onPress={onScan} activeOpacity={0.85}>
-            <Text style={styles.scanBtnText}>Scan now</Text>
-          </TouchableOpacity>
-        </ScrollView>
+          <View style={styles.btnGroup}>
+            <TouchableOpacity style={styles.scanBtn} onPress={onScan} activeOpacity={0.85}>
+              <Text style={styles.scanBtnText}>Scan now</Text>
+            </TouchableOpacity>
 
-        <View style={styles.closeRow}>
-          <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-            <Text style={styles.closeGlyph}>×</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.loginBtn}
+              onPress={onLogin}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.loginBtnText}>I already have an account</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -167,10 +179,28 @@ export function PreScanScreen({ navigation }: Props) {
 
   const handleScan = () => {
     logEvent("onboarding_pre_scan_scanNowCTA");
-    navigation.navigate("Scan");
+    // Pre-scan calibration (height/weight/age/sex) comes before the face
+    // scan — it feeds ShenAI so the scan can return BMR/TDEE.
+    navigation.navigate("Calibration");
   };
 
-  return <PreScanView onScan={handleScan} onClose={() => navigation.goBack()} />;
+  const handleClose = () => {
+    logEvent("onboarding_pre_scan_skip");
+    navigation.navigate("NoScanEmptyState");
+  };
+
+  const handleLogin = () => {
+    logEvent("onboarding_pre_scan_loginCTA");
+    navigation.navigate("Login");
+  };
+
+  return (
+    <PreScanView
+      onScan={handleScan}
+      onClose={handleClose}
+      onLogin={handleLogin}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -180,9 +210,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 8,
     justifyContent: "center",
-    gap: 12,
+    // 8px between every block — also gives the X an exact 8px gap to the
+    // type-cards graphic without a margin hack.
+    gap: 8,
+  },
+  // close — right-aligned, in flow directly above the type-cards graphic.
+  closeRow: { alignItems: "flex-end" },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   // Fanned type-cards graphic. The negative margin cancels the parent's side
   // padding so the full-screen-width image sits flush with the screen edges.
@@ -200,10 +240,10 @@ const styles = StyleSheet.create({
   },
   subhead: {
     fontFamily: fonts.dmSans,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 22,
     color: BONE,
-    letterSpacing: -0.2,
+    letterSpacing: -0.17,
   },
   // feature grid
   grid: { gap: 8 },
@@ -244,17 +284,23 @@ const styles = StyleSheet.create({
     color: MAROON,
     letterSpacing: -0.2,
   },
-  // close
-  closeRow: {
-    alignItems: "flex-end",
-    paddingHorizontal: 24,
-    paddingBottom: 8,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
+  // "Scan now" + "I already have an account" grouped so the gap between
+  // them is exactly 8px (independent of the content container's gap).
+  btnGroup: { gap: 8 },
+  // "I already have an account" — ghost button below "Scan now"
+  loginBtn: {
+    backgroundColor: "rgba(250,253,254,0.24)",
+    borderRadius: 4,
+    minHeight: 44,
+    paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
   },
-  closeGlyph: { fontSize: 24, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
+  loginBtnText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 20,
+    color: WHITE,
+    letterSpacing: -0.2,
+  },
+  closeGlyph: { fontSize: 28, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
 });

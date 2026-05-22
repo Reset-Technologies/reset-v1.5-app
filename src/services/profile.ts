@@ -30,7 +30,8 @@ export interface Layer3 {
   latestScan: any | null;
   biometricTrend: string | null;
   scanCount: number;
-  confidenceLayer3: number;
+  // `confidenceLayer3` was removed in RES-121; the composite L3 value is
+  // surfaced via `Confidence.layer3` instead.
 }
 
 export interface Confidence {
@@ -73,15 +74,37 @@ export interface UpdateProfileData {
   currentPhase?: "follicular" | "luteal";
   phaseStartDate?: string;
   cycleLengthDays?: number;
+  // RES-121 typing-survey answers — replaces local `determineType`. The
+  // backend computes `primaryBucket` from these and returns it in the
+  // PATCH response.
+  behaviorAnswers?: { q1?: string; q2?: string; q3?: string };
   quizAnswers?: Record<string, string>;
   onboardingStep?: string;
   onboardingComplete?: boolean;
 }
 
+export interface UpdateProfileResponse {
+  message: string;
+  profile: {
+    primaryBucket: string | null;
+    secondaryBucket: string | null;
+    energyPattern: string | null;
+    cravingType: string | null;
+    dietaryRestrictions: string[];
+    tasteCluster: string | null;
+    // RES-121 typing-function flags. `internalConfidence` itself stays
+    // backend-only per the ticket.
+    startingRead?: boolean;
+    glp1Flag?: boolean;
+  };
+}
+
+// Backend returns the just-updated Layer1 snapshot — including the
+// freshly-computed `primaryBucket` when `behaviorAnswers` was submitted.
 export async function updateProfile(
   data: UpdateProfileData,
-): Promise<{ message: string }> {
-  return apiClient("/api/profile", {
+): Promise<UpdateProfileResponse> {
+  return apiClient<UpdateProfileResponse>("/api/profile", {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -89,7 +112,7 @@ export async function updateProfile(
 
 export async function submitScanResults(
   scanData: Record<string, any>,
-): Promise<{ message: string; scanCount: number; confidenceLayer3: number }> {
+): Promise<{ message: string; scanCount: number }> {
   return apiClient("/api/profile/scan", {
     method: "POST",
     body: JSON.stringify({ scanData }),

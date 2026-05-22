@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { K, TC } from "../../constants/colors";
+import { K, TC, toMetabolicType } from "../../constants/colors";
 import { typography } from "../../constants/typography";
 import { TYPE_CONFIGS } from "../../constants/types";
 import { Button, EsterBubble } from "../../components";
@@ -20,7 +20,10 @@ type Props = NativeStackScreenProps<any, "Share">;
 
 export function ShareScreen({ navigation }: Props) {
   const { state, completeOnboarding } = useApp();
-  const metabolicType = state.user.metabolicType || "Explorer";
+  // RES-121: `starting_read` is a backend-only marker; the FE surfaces
+  // it as Explorer. `toMetabolicType` returns null for unknown values so
+  // we fall back cleanly.
+  const metabolicType = toMetabolicType(state.user.metabolicType) ?? "Explorer";
   const typeConfig = TYPE_CONFIGS[metabolicType];
   const colors = TC[metabolicType];
   const hasScan = !!state.biometrics;

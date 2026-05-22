@@ -88,9 +88,12 @@ export function AccountScreen({ navigation }: Props) {
       // Push onboarding data to backend profile
       try {
         await syncOnboardingToBackend({
-          metabolicType: state.user.metabolicType,
           goal: state.user.goal,
-          quizAnswers: state.user.quizAnswers,
+          behaviorAnswers: {
+            q1: state.user.quizAnswers.q1,
+            q2: state.user.quizAnswers.q2,
+            q3: state.user.quizAnswers.q3,
+          },
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });
@@ -141,9 +144,12 @@ export function AccountScreen({ navigation }: Props) {
       // Push onboarding data to backend profile
       try {
         await syncOnboardingToBackend({
-          metabolicType: state.user.metabolicType,
           goal: state.user.goal,
-          quizAnswers: state.user.quizAnswers,
+          behaviorAnswers: {
+            q1: state.user.quizAnswers.q1,
+            q2: state.user.quizAnswers.q2,
+            q3: state.user.quizAnswers.q3,
+          },
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });
@@ -191,9 +197,12 @@ export function AccountScreen({ navigation }: Props) {
       // Push onboarding data to backend profile
       try {
         await syncOnboardingToBackend({
-          metabolicType: state.user.metabolicType,
           goal: state.user.goal,
-          quizAnswers: state.user.quizAnswers,
+          behaviorAnswers: {
+            q1: state.user.quizAnswers.q1,
+            q2: state.user.quizAnswers.q2,
+            q3: state.user.quizAnswers.q3,
+          },
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });

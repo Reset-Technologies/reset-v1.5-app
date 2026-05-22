@@ -113,6 +113,10 @@ export function NextMealScreen() {
   const [feedback, setFeedback] = useState<FeedbackState>("idle");
   const [refreshing, setRefreshing] = useState(false);
   const [hasScore, setHasScore] = useState(false);
+  // Tracked separately so an errored fetch doesn't leave the screen stuck
+  // in the spinner state. We flip this once the plan-fetch settles either
+  // way — the empty-state copy then renders if no meal came back.
+  const [planFetchDone, setPlanFetchDone] = useState(false);
 
   useEffect(() => {
     getResetScore()
@@ -136,6 +140,9 @@ export function NextMealScreen() {
       })
       .catch(() => {
         setPlan(null);
+      })
+      .finally(() => {
+        setPlanFetchDone(true);
       });
   }, []);
 
@@ -232,7 +239,10 @@ export function NextMealScreen() {
     }
   };
 
-  const loading = plan === null && meal === null;
+  // Show the spinner only while the fetch is in flight. Once it settles
+  // (success or failure), fall through to either the meal card or the
+  // empty-state copy.
+  const loading = !planFetchDone;
   const prepMeta = meal ? formatPrep(meal) : "";
   const macrosLine = meal ? formatMacros(meal) : null;
   const tags = meal ? buildTags(meal) : [];

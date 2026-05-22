@@ -148,7 +148,8 @@ export function ScanScreen({ navigation, route }: Props) {
       : returnTo === "ScoreReveal"
         ? "appopen"
         : "home";
-  const { setBiometrics } = useApp();
+  const { state, setBiometrics } = useApp();
+  const calibration = state.user.calibration;
   const insets = useSafeAreaInsets();
   const [sdkReady, setSdkReady] = useState(false);
   const [screenState, setScreenState] = useState<ScreenState>("initializing");
@@ -220,7 +221,7 @@ export function ScanScreen({ navigation, route }: Props) {
         }
 
         console.log("[ShenAI] Initializing with key:", SHEN_API_KEY ? "present" : "MISSING");
-        await initShenAI(SHEN_API_KEY);
+        await initShenAI(SHEN_API_KEY, calibration);
         console.log("[ShenAI] Init success");
         if (!cancelled) {
           setSdkReady(true);
@@ -391,7 +392,7 @@ export function ScanScreen({ navigation, route }: Props) {
       console.log("[ShenAI] Measurement finished, stopping scan...");
       await stopScan();
       console.log("[ShenAI] Fetching results...");
-      const results = await getScanResults();
+      const results = await getScanResults(calibration);
       console.log("[ShenAI] Results:", JSON.stringify(results));
 
       if (!results) {
@@ -473,7 +474,7 @@ export function ScanScreen({ navigation, route }: Props) {
     markerFadeAnim.setValue(0);
 
     try {
-      await initShenAI(SHEN_API_KEY);
+      await initShenAI(SHEN_API_KEY, calibration);
       setScreenState("positioning");
     } catch {
       setFailure({
