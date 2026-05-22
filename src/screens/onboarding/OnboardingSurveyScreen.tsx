@@ -84,6 +84,8 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     setGoal,
     setQuizAnswer,
     setDietaryRestrictions,
+    setOnboardingStep,
+    setSurveyStep,
   } = useApp();
 
   const [revealed, setRevealed] = useState(false);
@@ -113,6 +115,15 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     if (next < SURVEY_STEPS.length) navigation.push("Survey", { step: next });
     else navigation.replace("AccountGate");
   };
+
+  // RES-123: cache the survey step so a reopen resumes here. The scan is
+  // already done by the time the survey runs (biometrics persist), and the
+  // answers persist in quizAnswers/goal/etc. — so resuming at this step
+  // skips both the scan and the already-answered questions.
+  useEffect(() => {
+    setOnboardingStep("Survey");
+    setSurveyStep(stepIndex);
+  }, [stepIndex]);
 
   // Reveal: brief "typing" beat, then fade the content in.
   useEffect(() => {

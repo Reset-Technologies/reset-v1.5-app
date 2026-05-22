@@ -16,6 +16,7 @@ import {
 } from "../screens/onboarding";
 import { LoginScreen } from "../screens/auth/LoginScreen";
 import { K } from "../constants/colors";
+import { useApp } from "../context/AppContext";
 
 // New onboarding sequence (RES-119): education → pre-scan → scan →
 // chat-style survey questions → account → type reveal → share.
@@ -42,10 +43,53 @@ export type OnboardingStackParamList = {
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
+// RES-123: screens the focus listener auto-caches as the resume point.
+// Education is the "from zero" start (not cached); Scan is transient;
+// CreateAccount is a form (AccountGate sits right before it).
+const AUTO_CACHED_STEPS: (keyof OnboardingStackParamList)[] = [
+  "PreScan",
+  "NoScanEmptyState",
+  "Calibration",
+  "AccountGate",
+  "TypeReveal",
+  "Paywall",
+  "Share",
+];
+
+// All valid resume targets. Survey is cached by OnboardingSurveyScreen
+// itself (with a step index) once the scan is done, so reaching the
+// survey means the scan + earlier answers are already persisted.
+const RESUMABLE_ROUTES: (keyof OnboardingStackParamList)[] = [
+  ...AUTO_CACHED_STEPS,
+  "Survey",
+];
+
+function resumeRoute(
+  cached: string | undefined,
+): keyof OnboardingStackParamList {
+  return cached && (RESUMABLE_ROUTES as string[]).includes(cached)
+    ? (cached as keyof OnboardingStackParamList)
+    : "Education";
+}
+
 export function OnboardingNavigator() {
+  const { state, setOnboardingStep } = useApp();
+  // initialRouteName / initialParams are read once on mount — by then
+  // AppContext has rehydrated from storage, so the cached step is available.
+  const initialRoute = resumeRoute(state.user.onboardingStep);
+  const resumeSurveyStep = state.user.onboardingSurveyStep ?? 0;
+
   return (
     <Stack.Navigator
-      initialRouteName="Education"
+      initialRouteName={initialRoute}
+      screenListeners={({ route }) => ({
+        focus: () => {
+          // Cache the furthest resumable checkpoint the user reaches.
+          if ((AUTO_CACHED_STEPS as string[]).includes(route.name)) {
+            setOnboardingStep(route.name);
+          }
+        },
+      })}
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
@@ -96,6 +140,10 @@ export function OnboardingNavigator() {
       <Stack.Screen
         name="Survey"
         component={OnboardingSurveyScreen}
+        // RES-123: only takes effect when Survey is the resumed initial
+        // route — every in-flow navigation to Survey passes an explicit
+        // step param, which overrides this default.
+        initialParams={{ step: resumeSurveyStep }}
         options={{
           contentStyle: { backgroundColor: K.brown },
           animation: "fade",

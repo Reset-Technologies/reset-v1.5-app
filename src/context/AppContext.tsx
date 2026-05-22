@@ -34,6 +34,13 @@ interface UserProfile {
   quizAnswers: Record<string, string>;
   tastePreferences: string[];
   dietaryRestrictions: string[];
+  // RES-123: last resumable onboarding screen the user reached. The
+  // OnboardingNavigator restores to it on app reopen instead of
+  // restarting from Education.
+  onboardingStep?: string;
+  // RES-123: when onboardingStep is "Survey", the survey step index to
+  // resume at (the answers themselves persist in quizAnswers/goal/etc.).
+  onboardingSurveyStep?: number;
   hasCompletedOnboarding: boolean;
 }
 
@@ -93,6 +100,8 @@ type AppAction =
       };
     }
   | { type: "SET_GOAL"; payload: string }
+  | { type: "SET_ONBOARDING_STEP"; payload: string }
+  | { type: "SET_SURVEY_STEP"; payload: number }
   | { type: "SET_CALIBRATION"; payload: CalibrationData }
   | { type: "SET_BIOMETRICS"; payload: BiometricData }
   | { type: "SET_TASTE_PREFERENCES"; payload: string[] }
@@ -180,6 +189,24 @@ function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
 
+    case "SET_ONBOARDING_STEP":
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          onboardingStep: action.payload,
+        },
+      };
+
+    case "SET_SURVEY_STEP":
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          onboardingSurveyStep: action.payload,
+        },
+      };
+
     case "SET_CALIBRATION":
       return {
         ...state,
@@ -264,6 +291,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
         user: {
           ...state.user,
           hasCompletedOnboarding: true,
+          // RES-123: onboarding is done — drop the resume checkpoint.
+          onboardingStep: undefined,
+          onboardingSurveyStep: undefined,
         },
       };
 
@@ -287,6 +317,8 @@ interface AppContextValue {
     glp1Flag: boolean;
   }) => void;
   setGoal: (goal: string) => void;
+  setOnboardingStep: (step: string) => void;
+  setSurveyStep: (step: number) => void;
   setCalibration: (data: CalibrationData) => void;
   setBiometrics: (data: BiometricData) => void;
   setTastePreferences: (preferences: string[]) => void;
@@ -364,10 +396,17 @@ export function AppProvider({ children }: AppProviderProps) {
           requestPushPermission();
 
           // If local state is missing onboarding data but backend has it (e.g. reinstall),
-          // restore from backend profile
+          // restore from backend profile.
           const savedParsed = savedState ? JSON.parse(savedState) : null;
           const localHasOnboarding = savedParsed?.user?.hasCompletedOnboarding;
-          if (!localHasOnboarding) {
+          // RES-123: a cached onboardingStep means the user is mid-onboarding
+          // ON THIS DEVICE. The backend profile gets a primaryBucket as soon
+          // as the user is typed — well before the TypeReveal/Paywall/Share
+          // reveal sequence finishes — so force-completing from the backend
+          // here would skip the rest of onboarding. Only do the backend
+          // restore for a genuine reinstall / new device (no local footprint).
+          const localOnboardingInProgress = !!savedParsed?.user?.onboardingStep;
+          if (!localHasOnboarding && !localOnboardingInProgress) {
             try {
               const profile = await getProfile();
               if (profile.layer1.primaryBucket) {
@@ -444,6 +483,14 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: "SET_GOAL", payload: goal });
   };
 
+  const setOnboardingStep = (step: string) => {
+    dispatch({ type: "SET_ONBOARDING_STEP", payload: step });
+  };
+
+  const setSurveyStep = (step: number) => {
+    dispatch({ type: "SET_SURVEY_STEP", payload: step });
+  };
+
   const setCalibration = (data: CalibrationData) => {
     dispatch({ type: "SET_CALIBRATION", payload: data });
   };
@@ -510,6 +557,8 @@ export function AppProvider({ children }: AppProviderProps) {
     setMetabolicType,
     setTypingResult,
     setGoal,
+    setOnboardingStep,
+    setSurveyStep,
     setCalibration,
     setBiometrics,
     setTastePreferences,
