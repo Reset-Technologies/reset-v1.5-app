@@ -1,5 +1,9 @@
 import React, { useEffect } from "react";
-import { NavigationContainer, LinkingOptions } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  DefaultTheme,
+  LinkingOptions,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import { AppState, AppStateStatus } from "react-native";
@@ -103,7 +107,14 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} linking={linking}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      theme={{
+        ...DefaultTheme,
+        colors: { ...DefaultTheme.colors, background: "transparent" },
+      }}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!state.user.hasCompletedOnboarding ? (
           <Stack.Screen name="Onboarding" component={OnboardingNavigator} />

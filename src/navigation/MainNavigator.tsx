@@ -1,4 +1,5 @@
 import React from "react";
+import { View } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { HomeScreen, HomeScreenV2 } from "../screens/home";
@@ -63,6 +64,16 @@ function TabNavigator() {
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        tabBarStyle: {
+          position: "absolute",
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        tabBarBackground: () => (
+          <View style={{ flex: 1, backgroundColor: "transparent" }} />
+        ),
       }}
     >
       <Tab.Screen
