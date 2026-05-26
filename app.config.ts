@@ -25,6 +25,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
       NSMicrophoneUsageDescription:
         "Reset uses your microphone for voice conversations with Ester.",
+      NSSpeechRecognitionUsageDescription:
+        "Reset uses speech recognition to transcribe what you say to Ester.",
+      NSPhotoLibraryUsageDescription:
+        "Reset may request photo access if you choose to share or upload images.",
       UIBackgroundModes: ["voip", "audio", "remote-notification"],
     },
   },
