@@ -102,6 +102,12 @@ export function EsterChatScreen() {
   const [headerHeight, setHeaderHeight] = useState(0);
   const recordStartRef = useRef<number | null>(null);
   const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Speech sessions on iOS sometimes fire "end" events after we've already
+  // started a new session — abort() + start() race during second use. We
+  // suppress end/error events that arrive within a short window of a fresh
+  // start so the new session isn't killed by its predecessor's tail event.
+  const startedAtRef = useRef<number>(0);
+  const SUPPRESS_END_MS = 600;
 
   const evening = palette.evening;
   const esterAvatar = evening ? ESTER_AVATAR_DARK : ESTER_AVATAR_LIGHT;
@@ -192,9 +198,15 @@ export function EsterChatScreen() {
     if (t) setTranscript(t);
   });
   useSpeechRecognitionEvent("end", () => {
+    // Drop tail-end events from the previous session — they'd otherwise
+    // immediately kill a freshly started one.
+    if (Date.now() - startedAtRef.current < SUPPRESS_END_MS) return;
+    if (recordStartRef.current === null) return;
     stopListening();
   });
   useSpeechRecognitionEvent("error", () => {
+    if (Date.now() - startedAtRef.current < SUPPRESS_END_MS) return;
+    if (recordStartRef.current === null) return;
     stopListening();
   });
 
@@ -279,6 +291,17 @@ export function EsterChatScreen() {
     try {
       const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!result.granted) return;
+
+      // Defensive cleanup so iOS's SFSpeechRecognizer can re-arm cleanly when
+      // the user taps Tap-to-speak again after submitting.
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch {
+        // no-op
+      }
+      startedAtRef.current = Date.now();
+      await new Promise((r) => setTimeout(r, 150));
+
       setTranscript("");
       setRecordSeconds(0);
       recordStartRef.current = Date.now();
