@@ -63,6 +63,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         enableFirebaseCloudMessaging: false,
       },
     ],
+    [
+      "expo-speech-recognition",
+      {
+        microphonePermission:
+          "Reset uses your microphone so you can talk to Ester instead of typing.",
+        speechRecognitionPermission:
+          "Reset uses speech recognition to transcribe what you say to Ester.",
+      },
+    ],
     "./plugins/withRegisterPush",
   ],
   extra: {
