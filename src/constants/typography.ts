@@ -9,6 +9,12 @@ export const fonts = {
   dmSans: "DMSans_400Regular",
   dmSansMedium: "DMSans_500Medium",
   dmSansBold: "DMSans_700Bold",
+  // Caption serif (Figma "Caption Quadrant")
+  quadrant: "QuadrantText_400Regular",
+  // Display sans (Figma "Catalogue")
+  catalogue: "Catalogue_400Regular",
+  catalogueMedium: "Catalogue_500Medium",
+  catalogueBold: "Catalogue_700Bold",
 };
 
 // Spacing tokens

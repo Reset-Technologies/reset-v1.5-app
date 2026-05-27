@@ -32,6 +32,10 @@ export default function App() {
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
+    QuadrantText_400Regular: require("./assets/fonts/QuadrantTextTrial-Regular.otf"),
+    Catalogue_400Regular: require("./assets/fonts/Catalogue-Regular.otf"),
+    Catalogue_500Medium: require("./assets/fonts/Catalogue-Medium.otf"),
+    Catalogue_700Bold: require("./assets/fonts/Catalogue-Bold.otf"),
   });
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
