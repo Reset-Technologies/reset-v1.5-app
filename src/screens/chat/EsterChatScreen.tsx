@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,16 +8,22 @@ import {
   ScrollView,
   Platform,
   Animated,
-  ActivityIndicator,
+  Image,
   Keyboard,
   Linking,
+  Easing,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import Svg, { Path } from "react-native-svg";
+import Markdown from "react-native-markdown-display";
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from "expo-speech-recognition";
 import { K } from "../../constants/colors";
-import { typography, spacing, radius } from "../../constants/typography";
-import { Avatar } from "../../components";
-import { useApp } from "../../context/AppContext";
+import { fonts, spacing, radius } from "../../constants/typography";
+import { useAppPalette } from "../../hooks/useAppPalette";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   sendMessage as sendChatMessage,
@@ -29,12 +35,17 @@ import * as BrazeService from "../../services/braze";
 
 const PENDING_NEW_CHAT_KEY = "@reset_pending_new_chat";
 
+const ESTER_AVATAR_LIGHT = require("../../../assets/images/ester-avatar.png");
+const ESTER_AVATAR_DARK = require("../../../assets/images/ester-avatar-silver.png");
+
 type ChatRouteParams = {
   EsterChat: {
     context?: "general" | "meal" | "score";
     meal?: Meal;
   };
 };
+
+type InputMode = "voice" | "keyboard";
 
 interface ToolCall {
   toolName: string;
@@ -50,11 +61,30 @@ interface Message {
   toolCalls?: ToolCall[];
 }
 
+const SUGGESTED_PROMPTS: Record<"general" | "meal" | "score", string[]> = {
+  general: [
+    "What signals does the face scan look at?",
+    "How do stress and food cravings affect each other?",
+    "How can I make healthier choices when I'm busy?",
+  ],
+  score: [
+    "What's driving my score right now?",
+    "How does stress change my score?",
+    "What can I do today to improve it?",
+  ],
+  meal: [
+    "Why did you pick this for me?",
+    "What could I swap in here?",
+    "Is this enough protein for me?",
+  ],
+};
+
 export function EsterChatScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<ChatRouteParams, "EsterChat">>();
-  const { state } = useApp();
+  const palette = useAppPalette();
   const scrollViewRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
 
   const context = route.params?.context || "general";
   const meal = route.params?.meal;
@@ -63,10 +93,82 @@ export function EsterChatScreen() {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | undefined>();
-  const [error, setError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const insets = useSafeAreaInsets();
+  const [inputMode, setInputMode] = useState<InputMode>("voice");
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const recordStartRef = useRef<number | null>(null);
+  const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Speech sessions on iOS sometimes fire "end" events after we've already
+  // started a new session — abort() + start() race during second use. We
+  // suppress end/error events that arrive within a short window of a fresh
+  // start so the new session isn't killed by its predecessor's tail event.
+  const startedAtRef = useRef<number>(0);
+  const SUPPRESS_END_MS = 600;
+
+  const evening = palette.evening;
+  const esterAvatar = evening ? ESTER_AVATAR_DARK : ESTER_AVATAR_LIGHT;
+
+  // Palette-aware colors (kept inside the component so they react to time-of-day)
+  const colors = useMemo(() => {
+    if (evening) {
+      return {
+        screenBg: K.brown,
+        textPrimary: K.bone,
+        textMuted: "#A8908F",
+        userBubbleBg: K.bone,
+        userBubbleText: K.brown,
+        timestampText: "#A8908F",
+        promptChipBg: "rgba(243, 239, 227, 0.15)",
+        promptChipText: K.bone,
+        typingBubbleBg: "rgba(243, 239, 227, 0.1)",
+        typingDot: K.bone,
+        ctaBg: K.bone,
+        ctaText: K.brown,
+        ctaToggleBg: "rgba(243, 239, 227, 0.12)",
+        ctaToggleIcon: K.bone,
+        inputBg: K.bone,
+        inputText: K.brown,
+        inputPlaceholder: "#9E9490",
+        sendCircleBg: K.brown,
+        sendArrowColor: K.white,
+        listeningPillBg: "#5A2A2C",
+        listeningPillText: K.bone,
+        listeningTranscriptMuted: "rgba(243, 239, 227, 0.5)",
+        headerIcon: K.bone,
+        headerOverlayBg: "rgba(54, 20, 22, 0.92)",
+      };
+    }
+    return {
+      screenBg: K.bone,
+      textPrimary: K.brown,
+      textMuted: "#8B7E7D",
+      userBubbleBg: K.white,
+      userBubbleText: K.brown,
+      timestampText: "#8B7E7D",
+      promptChipBg: "#E8E2D8",
+      promptChipText: K.brown,
+      typingBubbleBg: "#E8E2D8",
+      typingDot: K.brown,
+      ctaBg: K.brown,
+      ctaText: K.bone,
+      ctaToggleBg: "rgba(54, 20, 22, 0.12)",
+      ctaToggleIcon: K.brown,
+      inputBg: K.white,
+      inputText: K.brown,
+      inputPlaceholder: "#9E9490",
+      sendCircleBg: K.brown,
+      sendArrowColor: K.white,
+      listeningPillBg: "#6E3B30",
+      listeningPillText: K.bone,
+      listeningTranscriptMuted: "rgba(243, 239, 227, 0.6)",
+      headerIcon: K.brown,
+      headerOverlayBg: "rgba(243, 239, 227, 0.92)",
+    };
+  }, [evening]);
 
   useEffect(() => {
     BrazeService.logEvent("home_ester_chat", { context });
@@ -90,6 +192,24 @@ export function EsterChatScreen() {
     };
   }, []);
 
+  // Live speech recognition events — drive both transcript preview and stop-on-final
+  useSpeechRecognitionEvent("result", (e) => {
+    const t = e.results?.[0]?.transcript ?? "";
+    if (t) setTranscript(t);
+  });
+  useSpeechRecognitionEvent("end", () => {
+    // Drop tail-end events from the previous session — they'd otherwise
+    // immediately kill a freshly started one.
+    if (Date.now() - startedAtRef.current < SUPPRESS_END_MS) return;
+    if (recordStartRef.current === null) return;
+    stopListening();
+  });
+  useSpeechRecognitionEvent("error", () => {
+    if (Date.now() - startedAtRef.current < SUPPRESS_END_MS) return;
+    if (recordStartRef.current === null) return;
+    stopListening();
+  });
+
   const defaultGreeting: Message = {
     id: "initial",
     text:
@@ -104,12 +224,10 @@ export function EsterChatScreen() {
   useEffect(() => {
     async function loadChatHistory() {
       try {
-        // If user tapped "new chat" before leaving, don't reload the old session
         const pendingNew = await AsyncStorage.getItem(PENDING_NEW_CHAT_KEY);
         if (!pendingNew) {
           const sessions = await getSessions();
           if (sessions.length > 0) {
-            // Resume the most recent session (shared across meal + general)
             const latestSession = sessions[0];
             setChatSessionId(latestSession.id);
 
@@ -118,7 +236,6 @@ export function EsterChatScreen() {
               const sorted = [...history.data].sort(
                 (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
               );
-              // Use the earliest message timestamp to place the greeting before all history
               const earliestTime = new Date(sorted[0].createdAt);
               const greetingMsg: Message = {
                 ...defaultGreeting,
@@ -134,7 +251,6 @@ export function EsterChatScreen() {
                   toolCalls: msg.toolCalls as ToolCall[] | undefined,
                 })),
               ];
-              // If entering from a meal card, append the meal greeting
               if (meal) {
                 loaded.push({
                   id: `meal-greeting-${Date.now()}`,
@@ -153,7 +269,6 @@ export function EsterChatScreen() {
         // Fall through to default greeting
       }
 
-      // No existing session — show appropriate greeting
       const greeting: Message[] = [defaultGreeting];
       if (meal) {
         greeting.push({
@@ -170,13 +285,79 @@ export function EsterChatScreen() {
     loadChatHistory();
   }, [meal]);
 
-  const handleSend = async () => {
-    if (!inputText.trim() || isTyping) return;
+  const hasUserMessage = messages.some((m) => m.sender === "user");
 
-    const messageText = inputText.trim();
+  const startListening = async () => {
+    try {
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) return;
+
+      // Defensive cleanup so iOS's SFSpeechRecognizer can re-arm cleanly when
+      // the user taps Tap-to-speak again after submitting.
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch {
+        // no-op
+      }
+      startedAtRef.current = Date.now();
+      await new Promise((r) => setTimeout(r, 150));
+
+      setTranscript("");
+      setRecordSeconds(0);
+      recordStartRef.current = Date.now();
+      if (recordTickRef.current) clearInterval(recordTickRef.current);
+      recordTickRef.current = setInterval(() => {
+        if (recordStartRef.current) {
+          setRecordSeconds(Math.floor((Date.now() - recordStartRef.current) / 1000));
+        }
+      }, 250);
+      setIsListening(true);
+      ExpoSpeechRecognitionModule.start({
+        lang: "en-US",
+        interimResults: true,
+        continuous: true,
+        requiresOnDeviceRecognition: false,
+      });
+    } catch {
+      // Native module unavailable — falls back to keyboard mode silently
+      setIsListening(false);
+      setInputMode("keyboard");
+    }
+  };
+
+  const stopListening = () => {
+    if (recordTickRef.current) {
+      clearInterval(recordTickRef.current);
+      recordTickRef.current = null;
+    }
+    recordStartRef.current = null;
+    setIsListening(false);
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch {
+      // already stopped
+    }
+  };
+
+  const cancelListening = () => {
+    setTranscript("");
+    stopListening();
+  };
+
+  const submitVoiceTranscript = async () => {
+    const finalText = transcript.trim();
+    stopListening();
+    if (!finalText) return;
+    await sendText(finalText);
+    setTranscript("");
+  };
+
+  const sendText = async (text: string) => {
+    if (!text.trim() || isTyping) return;
+
     const userMessage: Message = {
       id: `user-${Date.now()}`,
-      text: messageText,
+      text,
       sender: "user",
       timestamp: new Date(),
     };
@@ -184,30 +365,24 @@ export function EsterChatScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
     setIsTyping(true);
-    setError(null);
 
     try {
-      // Meal context: pass the ID every turn so the backend can fetch full
-      // nutrition/ingredients and inject structured context into the system
-      // prompt. The one-off greeting is only persisted for brand-new sessions.
       const isNewMealChat = meal && !chatSessionId;
       const assistantGreeting = isNewMealChat
         ? `Let's talk about ${meal.name}. What would you like to know — why I picked it, what you could swap, or something else?`
         : undefined;
 
       const response = await sendChatMessage(
-        messageText,
+        text,
         chatSessionId,
         undefined,
         assistantGreeting,
         meal?.id,
       );
 
-      // Track the session for follow-up messages
       if (!chatSessionId) {
         setChatSessionId(response.chatSessionId);
         BrazeService.logEvent("chat_started", { context });
-        // Clear pending new chat flag — session is now active
         await AsyncStorage.removeItem(PENDING_NEW_CHAT_KEY);
       }
 
@@ -220,9 +395,7 @@ export function EsterChatScreen() {
         toolCalls: response.toolCalls as ToolCall[] | undefined,
       };
       setMessages((prev) => [...prev, esterMessage]);
-    } catch (err: any) {
-      setError(err.message || "Failed to send message");
-      // Add an error message bubble so the user knows what happened
+    } catch {
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         text: "Sorry, I couldn't process that. Please try again.",
@@ -235,122 +408,429 @@ export function EsterChatScreen() {
     }
   };
 
-  const handleNewChat = async () => {
-    setChatSessionId(undefined);
-    setMessages([defaultGreeting]);
-    setError(null);
-    // Persist the intent so re-entry doesn't reload the old session
-    await AsyncStorage.setItem(PENDING_NEW_CHAT_KEY, "true");
+  const handleKeyboardSend = () => {
+    sendText(inputText.trim());
+  };
+
+  const handlePromptTap = (prompt: string) => {
+    sendText(prompt);
+  };
+
+  const toggleInputMode = () => {
+    if (isListening) cancelListening();
+    setInputMode((m) => (m === "voice" ? "keyboard" : "voice"));
   };
 
   const handleClose = () => {
+    if (isListening) cancelListening();
     navigation.goBack();
   };
 
+  const handleNewChat = async () => {
+    if (isListening) cancelListening();
+    setChatSessionId(undefined);
+    setMessages([defaultGreeting]);
+    setInputText("");
+    await AsyncStorage.setItem(PENDING_NEW_CHAT_KEY, "true");
+  };
+
+  const formatTime = (date: Date) =>
+    date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  const formatDuration = (s: number) => {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r.toString().padStart(2, "0")}`;
+  };
+
   return (
-    <View style={styles.outerContainer}>
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-          <Text style={styles.closeText}>×</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Avatar size={36} state="neutral" />
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle}>Ester</Text>
-            <Text style={styles.headerSubtitle}>Something that actually understands your body</Text>
+    <View style={[styles.outerContainer, { backgroundColor: colors.screenBg }]}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom,
+            backgroundColor: colors.screenBg,
+          },
+        ]}
+      >
+        {/* Header: close + new chat | avatar | mute (decorative) */}
+        <View
+          style={[
+            styles.headerOverlay,
+            {
+              paddingTop: insets.top,
+              backgroundColor: colors.headerOverlayBg,
+            },
+          ]}
+          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        >
+          <View style={styles.header}>
+          <View style={styles.headerLeftGroup}>
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={handleClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <CloseIcon color={colors.headerIcon} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={handleNewChat}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <PlusIcon color={colors.headerIcon} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.headerCenter}>
+            <Image source={esterAvatar} style={styles.headerAvatar} resizeMode="contain" />
+          </View>
+          <View style={styles.headerRightGroup}>
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              disabled
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MuteIcon color={colors.headerIcon} />
+            </TouchableOpacity>
+          </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.newChatButton} onPress={handleNewChat}>
-          <Text style={styles.newChatIcon}>+</Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Meal context banner (if chatting about a specific meal) */}
-      {meal && (
-        <View style={styles.contextBanner}>
-          <Text style={styles.contextLabel}>Discussing</Text>
-          <Text style={styles.contextMeal}>{meal.name}</Text>
-        </View>
-      )}
+        {/* Messages */}
+        {isLoadingHistory ? (
+          <View style={styles.loadingContainer}>
+            <Image source={esterAvatar} style={styles.loadingAvatar} resizeMode="contain" />
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.messagesContainer}
+            contentContainerStyle={[
+              styles.messagesContent,
+              { paddingTop: headerHeight + 24 },
+            ]}
+            onContentSizeChange={() =>
+              scrollViewRef.current?.scrollToEnd({ animated: true })
+            }
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map((message, i) => {
+              // Hide the hero greeting once the conversation has started
+              if (message.id === "initial" && hasUserMessage) return null;
+              if (message.crisisType) {
+                return (
+                  <CrisisResourceCard
+                    key={message.id}
+                    message={message}
+                    palette={colors}
+                  />
+                );
+              }
+              const showTimestamp =
+                message.sender === "user" &&
+                (i === messages.length - 1 ||
+                  messages[i + 1]?.sender !== "user");
+              return (
+                <React.Fragment key={message.id}>
+                  <MessageRow
+                    message={message}
+                    palette={colors}
+                    showTimestamp={showTimestamp}
+                    formatTime={formatTime}
+                  />
+                  {message.toolCalls?.map((tc, idx) =>
+                    tc.toolName === "recommend_meal" && tc.data?.success ? (
+                      <InlineMealCard
+                        key={`${message.id}-tool-${idx}`}
+                        data={tc.data}
+                        palette={colors}
+                      />
+                    ) : null,
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-      {/* Messages */}
-      {isLoadingHistory ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={K.textMuted} />
-        </View>
-      ) : (
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-        >
-          {messages.map((message) =>
-            message.crisisType ? (
-              <CrisisResourceCard key={message.id} message={message} />
-            ) : (
-              <React.Fragment key={message.id}>
-                <MessageBubble message={message} />
-                {message.toolCalls?.map((tc, i) =>
-                  tc.toolName === "recommend_meal" && tc.data?.success ? (
-                    <InlineMealCard key={`${message.id}-tool-${i}`} data={tc.data} />
-                  ) : null
-                )}
-              </React.Fragment>
-            )
+            {/* Suggested prompt chips — shown only when conversation hasn't started */}
+            {!hasUserMessage && !isTyping && (
+              <View style={styles.promptChipColumn}>
+                {SUGGESTED_PROMPTS[context].map((prompt) => (
+                  <TouchableOpacity
+                    key={prompt}
+                    style={[styles.promptChip, { backgroundColor: colors.promptChipBg }]}
+                    onPress={() => handlePromptTap(prompt)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.promptChipText,
+                        { color: colors.promptChipText },
+                      ]}
+                    >
+                      {prompt}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {isTyping && (
+              <TypingIndicator
+                bg={colors.typingBubbleBg}
+                dotColor={colors.typingDot}
+              />
+            )}
+          </ScrollView>
+        )}
+
+        {/* Bottom input area — voice CTA | listening pill | keyboard input */}
+        <View style={styles.bottomBar}>
+          {inputMode === "voice" && !isListening && (
+            <View style={styles.voiceCtaRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modeToggle,
+                  { backgroundColor: colors.ctaToggleBg },
+                ]}
+                onPress={toggleInputMode}
+                activeOpacity={0.8}
+              >
+                <KeyboardIcon color={colors.ctaToggleIcon} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tapToSpeak, { backgroundColor: colors.ctaBg }]}
+                onPress={startListening}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.tapToSpeakText, { color: colors.ctaText }]}>
+                  Tap to speak
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
-          {isTyping && <TypingIndicator />}
-        </ScrollView>
-      )}
 
-      {/* Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Ask Ester anything..."
-          placeholderTextColor={K.faded}
-          multiline
-          maxLength={500}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim()}
-        >
-          <Text style={styles.sendIcon}>→</Text>
-        </TouchableOpacity>
+          {inputMode === "voice" && isListening && (
+            <View
+              style={[
+                styles.listeningPill,
+                { backgroundColor: colors.listeningPillBg },
+              ]}
+            >
+              <View style={styles.listeningTopRow}>
+                <View style={styles.listeningWaveformWrap}>
+                  <ListeningWaveform color={colors.listeningPillText} active />
+                </View>
+                <Text style={[styles.listeningDuration, { color: colors.listeningPillText }]}>
+                  {formatDuration(recordSeconds)}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.sendCircle, { backgroundColor: colors.sendCircleBg }]}
+                  onPress={submitVoiceTranscript}
+                  activeOpacity={0.85}
+                >
+                  <SendArrowIcon color={colors.sendArrowColor} />
+                </TouchableOpacity>
+              </View>
+              <Text
+                style={[
+                  styles.listeningTranscript,
+                  {
+                    color: transcript
+                      ? colors.listeningPillText
+                      : colors.listeningTranscriptMuted,
+                  },
+                ]}
+              >
+                {transcript || "Listening…"}
+              </Text>
+            </View>
+          )}
+
+          {inputMode === "keyboard" && (
+            <View style={styles.keyboardRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modeToggle,
+                  { backgroundColor: colors.ctaToggleBg },
+                ]}
+                onPress={toggleInputMode}
+                activeOpacity={0.8}
+              >
+                <MicIcon color={colors.ctaToggleIcon} />
+              </TouchableOpacity>
+              <View style={[styles.inputPill, { backgroundColor: colors.inputBg }]}>
+                <TextInput
+                  style={[styles.input, { color: colors.inputText }]}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder="Type anything…"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  multiline
+                  maxLength={500}
+                  onSubmitEditing={handleKeyboardSend}
+                  returnKeyType="send"
+                />
+                <TouchableOpacity
+                  style={[styles.sendCircleInline, { backgroundColor: colors.sendCircleBg }]}
+                  onPress={handleKeyboardSend}
+                  disabled={!inputText.trim()}
+                  activeOpacity={0.85}
+                >
+                  <SendArrowIcon color={colors.sendArrowColor} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
     </View>
   );
 }
 
-// Message bubble component
-function MessageBubble({ message }: { message: Message }) {
-  const isEster = message.sender === "ester";
+interface PaletteColors {
+  screenBg: string;
+  textPrimary: string;
+  textMuted: string;
+  userBubbleBg: string;
+  userBubbleText: string;
+  timestampText: string;
+  promptChipBg: string;
+  promptChipText: string;
+  typingBubbleBg: string;
+  typingDot: string;
+  ctaBg: string;
+  ctaText: string;
+  ctaToggleBg: string;
+  ctaToggleIcon: string;
+  inputBg: string;
+  inputText: string;
+  inputPlaceholder: string;
+  sendCircleBg: string;
+  sendArrowColor: string;
+  listeningPillBg: string;
+  listeningPillText: string;
+  listeningTranscriptMuted: string;
+  headerIcon: string;
+  headerOverlayBg: string;
+}
 
+interface MessageRowProps {
+  message: Message;
+  palette: PaletteColors;
+  showTimestamp: boolean;
+  formatTime: (d: Date) => string;
+}
+
+function MessageRow({ message, palette, showTimestamp, formatTime }: MessageRowProps) {
+  if (message.sender === "user") {
+    return (
+      <View style={styles.userRow}>
+        <View style={[styles.userBubble, { backgroundColor: palette.userBubbleBg }]}>
+          <Text style={[styles.userBubbleText, { color: palette.userBubbleText }]}>
+            {message.text}
+          </Text>
+        </View>
+        {showTimestamp && (
+          <Text style={[styles.timestamp, { color: palette.timestampText }]}>
+            {formatTime(message.timestamp)}
+          </Text>
+        )}
+      </View>
+    );
+  }
+  // Greeting message renders in the hero container per the Figma steady state
+  if (message.id === "initial") {
+    return (
+      <View style={styles.heroGreetingWrap}>
+        <Text style={styles.heroGreetingText}>{message.text}</Text>
+      </View>
+    );
+  }
+  // Other Ester messages: render markdown (Ester returns ** bold, lists, etc.)
+  const mdStyles = {
+    body: {
+      color: palette.textPrimary,
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    paragraph: {
+      marginTop: 0,
+      marginBottom: 8,
+      color: palette.textPrimary,
+    },
+    strong: {
+      fontWeight: "600" as const,
+      color: palette.textPrimary,
+    },
+    em: {
+      fontStyle: "italic" as const,
+      color: palette.textPrimary,
+    },
+    bullet_list: {
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    ordered_list: {
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    list_item: {
+      marginBottom: 4,
+      color: palette.textPrimary,
+    },
+    bullet_list_icon: {
+      color: palette.textPrimary,
+    },
+    ordered_list_icon: {
+      color: palette.textPrimary,
+    },
+    heading1: {
+      color: palette.textPrimary,
+      fontSize: 20,
+      fontWeight: "600" as const,
+      marginTop: 8,
+      marginBottom: 4,
+    },
+    heading2: {
+      color: palette.textPrimary,
+      fontSize: 18,
+      fontWeight: "600" as const,
+      marginTop: 8,
+      marginBottom: 4,
+    },
+    heading3: {
+      color: palette.textPrimary,
+      fontSize: 16,
+      fontWeight: "600" as const,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    link: {
+      color: palette.textPrimary,
+      textDecorationLine: "underline" as const,
+    },
+    code_inline: {
+      backgroundColor: "rgba(0,0,0,0.08)",
+      color: palette.textPrimary,
+      paddingHorizontal: 4,
+      borderRadius: 4,
+    },
+  };
   return (
-    <View style={[styles.messageBubbleContainer, isEster ? styles.esterContainer : styles.userContainer]}>
-      {isEster && <Avatar size={32} state="neutral" />}
-      <View style={[styles.messageBubble, isEster ? styles.esterBubble : styles.userBubble]}>
-        <Text style={[styles.messageText, isEster ? styles.esterText : styles.userText]}>
-          {message.text}
-        </Text>
-      </View>
+    <View style={styles.esterRow}>
+      <Markdown style={mdStyles}>{message.text}</Markdown>
     </View>
   );
 }
 
-// Crisis resource card — renders tappable phone/text resources
-function CrisisResourceCard({ message }: { message: Message }) {
+interface CrisisCardProps {
+  message: Message;
+  palette: PaletteColors;
+}
+
+function CrisisResourceCard({ message, palette }: CrisisCardProps) {
   const resources =
     message.crisisType === "self_harm"
       ? [
@@ -366,34 +846,37 @@ function CrisisResourceCard({ message }: { message: Message }) {
         ];
 
   return (
-    <View style={styles.messageBubbleContainer}>
-      <Avatar size={32} state="neutral" />
-      <View style={styles.crisisCard}>
-        <Text style={styles.crisisText}>
-          {message.crisisType === "self_harm"
-            ? "I hear you, and what you\u2019re feeling matters. Please reach out to someone who can help right now:"
-            : "I hear you. This is beyond what I can help with, and I want you to get the right support:"}
-        </Text>
-        {resources.map((r) => (
-          <TouchableOpacity
-            key={r.action}
-            style={styles.crisisButton}
-            onPress={() => Linking.openURL(r.action)}
-          >
-            <Text style={styles.crisisButtonLabel}>{r.label}</Text>
-            <Text style={styles.crisisButtonAction}>{r.actionLabel}</Text>
-          </TouchableOpacity>
-        ))}
-        <Text style={styles.crisisFooter}>
-          I'm still here for your meals whenever you're ready.
-        </Text>
-      </View>
+    <View style={[styles.crisisCard, { backgroundColor: palette.userBubbleBg, borderColor: K.err }]}>
+      <Text style={[styles.crisisText, { color: palette.textPrimary }]}>
+        {message.crisisType === "self_harm"
+          ? "I hear you, and what you’re feeling matters. Please reach out to someone who can help right now:"
+          : "I hear you. This is beyond what I can help with, and I want you to get the right support:"}
+      </Text>
+      {resources.map((r) => (
+        <TouchableOpacity
+          key={r.action}
+          style={[styles.crisisButton, { backgroundColor: palette.promptChipBg }]}
+          onPress={() => Linking.openURL(r.action)}
+        >
+          <Text style={[styles.crisisButtonLabel, { color: palette.textPrimary }]}>
+            {r.label}
+          </Text>
+          <Text style={[styles.crisisButtonAction, { color: K.blue }]}>{r.actionLabel}</Text>
+        </TouchableOpacity>
+      ))}
+      <Text style={[styles.crisisFooter, { color: palette.textMuted }]}>
+        I'm still here for your meals whenever you're ready.
+      </Text>
     </View>
   );
 }
 
-// Typing indicator
-function TypingIndicator() {
+interface TypingIndicatorProps {
+  bg: string;
+  dotColor: string;
+}
+
+function TypingIndicator({ bg, dotColor }: TypingIndicatorProps) {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
   const dot3 = useRef(new Animated.Value(0)).current;
@@ -408,32 +891,36 @@ function TypingIndicator() {
         ])
       ).start();
     };
-
     animate(dot1, 0);
     animate(dot2, 150);
     animate(dot3, 300);
   }, []);
 
   return (
-    <View style={styles.typingContainer}>
-      <Avatar size={32} state="observing" />
-      <View style={styles.typingBubble}>
-        {[dot1, dot2, dot3].map((dot, i) => (
-          <Animated.View
-            key={i}
-            style={[
-              styles.typingDot,
-              { opacity: dot, transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }] },
-            ]}
-          />
-        ))}
-      </View>
+    <View style={[styles.typingPill, { backgroundColor: bg }]}>
+      {[dot1, dot2, dot3].map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            styles.typingDot,
+            {
+              backgroundColor: dotColor,
+              opacity: dot,
+              transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }],
+            },
+          ]}
+        />
+      ))}
     </View>
   );
 }
 
-// Inline meal card rendered inside chat when recommend_meal tool fires
-function InlineMealCard({ data }: { data: Record<string, unknown> }) {
+interface InlineMealCardProps {
+  data: Record<string, unknown>;
+  palette: PaletteColors;
+}
+
+function InlineMealCard({ data, palette }: InlineMealCardProps) {
   const navigation = useNavigation();
   const meal = data.meal as Meal | undefined;
   if (!meal) return null;
@@ -443,281 +930,453 @@ function InlineMealCard({ data }: { data: Record<string, unknown> }) {
   };
 
   return (
-    <View style={styles.messageBubbleContainer}>
-      <Avatar size={32} state="neutral" />
-      <TouchableOpacity style={styles.inlineMealCard} onPress={handlePress} activeOpacity={0.8}>
-        <Text style={styles.inlineMealSlot}>{(data.slot as string || "").toUpperCase()} ALTERNATIVE</Text>
-        <Text style={styles.inlineMealName}>{meal.name}</Text>
-        {meal.whyLine ? <Text style={styles.inlineMealWhy}>{meal.whyLine}</Text> : null}
-        <View style={styles.inlineMealMeta}>
-          <Text style={styles.inlineMealMetaText}>{meal.calories} cal</Text>
-          <Text style={styles.inlineMealMetaDot}>&middot;</Text>
-          <Text style={styles.inlineMealMetaText}>{meal.protein}g protein</Text>
-          <Text style={styles.inlineMealMetaDot}>&middot;</Text>
-          <Text style={styles.inlineMealMetaText}>{meal.prepTime} min</Text>
-        </View>
-        <Text style={styles.inlineMealTap}>Tap for full recipe</Text>
-      </TouchableOpacity>
+    <TouchableOpacity
+      style={[styles.inlineMealCard, { backgroundColor: palette.promptChipBg }]}
+      onPress={handlePress}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.inlineMealSlot, { color: K.ochre }]}>
+        {(data.slot as string || "").toUpperCase()} ALTERNATIVE
+      </Text>
+      <Text style={[styles.inlineMealName, { color: palette.textPrimary }]}>{meal.name}</Text>
+      {meal.whyLine ? (
+        <Text style={[styles.inlineMealWhy, { color: palette.textMuted }]}>{meal.whyLine}</Text>
+      ) : null}
+      <View style={styles.inlineMealMeta}>
+        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
+          {meal.calories} cal
+        </Text>
+        <Text style={[styles.inlineMealMetaDot, { color: palette.textMuted }]}>•</Text>
+        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
+          {meal.protein}g protein
+        </Text>
+        <Text style={[styles.inlineMealMetaDot, { color: palette.textMuted }]}>•</Text>
+        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
+          {meal.prepTime} min
+        </Text>
+      </View>
+      <Text style={[styles.inlineMealTap, { color: K.ochre }]}>Tap for full recipe</Text>
+    </TouchableOpacity>
+  );
+}
+
+// Live animated bars used while listening. Heights animate with random
+// rhythm — we don't have access to raw audio levels with on-device STT, so
+// this is a stylized indicator of activity rather than a true level meter.
+function ListeningWaveform({ color, active }: { color: string; active: boolean }) {
+  const bars = useRef(Array.from({ length: 14 }, () => new Animated.Value(0.2))).current;
+
+  useEffect(() => {
+    if (!active) return;
+    const animations = bars.map((bar, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bar, {
+            toValue: Math.random() * 0.8 + 0.2,
+            duration: 200 + (i % 4) * 60,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+          Animated.timing(bar, {
+            toValue: Math.random() * 0.8 + 0.2,
+            duration: 200 + (i % 5) * 50,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: false,
+          }),
+        ])
+      ),
+    );
+    animations.forEach((a) => a.start());
+    return () => animations.forEach((a) => a.stop());
+  }, [active]);
+
+  return (
+    <View style={styles.waveform}>
+      {bars.map((bar, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 2,
+            marginHorizontal: 1.5,
+            backgroundColor: color,
+            borderRadius: 1,
+            height: bar.interpolate({ inputRange: [0, 1], outputRange: [3, 20] }),
+          }}
+        />
+      ))}
     </View>
+  );
+}
+
+// Lightweight inline SVG icons so we don't pull in a new icon library.
+function CloseIcon({ color }: { color: string }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20">
+      <Path
+        d="M4 4 L16 16 M16 4 L4 16"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function PlusIcon({ color }: { color: string }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20">
+      <Path
+        d="M10 3 V17 M3 10 H17"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function MuteIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 22 22">
+      <Path
+        d="M3 8.5 V13.5 H6.5 L11 17 V5 L6.5 8.5 Z"
+        fill={color}
+      />
+      <Path
+        d="M14.5 8 L19 12.5 M19 8 L14.5 12.5"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function KeyboardIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={16} viewBox="0 0 25 18" fill="none">
+      <Path
+        d="M2.10904 17.5C1.51968 17.5 1.02083 17.2958 0.6125 16.8875C0.204167 16.4792 0 15.9803 0 15.391V2.10904C0 1.51968 0.204167 1.02083 0.6125 0.6125C1.02083 0.204167 1.51968 0 2.10904 0H22.391C22.9803 0 23.4792 0.204167 23.8875 0.6125C24.2958 1.02083 24.5 1.51968 24.5 2.10904V15.391C24.5 15.9803 24.2958 16.4792 23.8875 16.8875C23.4792 17.2958 22.9803 17.5 22.391 17.5H2.10904ZM2.10904 15.75H22.391C22.4958 15.75 22.5818 15.7164 22.6491 15.6491C22.7164 15.5818 22.75 15.4958 22.75 15.391V2.10904C22.75 2.00424 22.7164 1.9182 22.6491 1.85092C22.5818 1.78364 22.4958 1.75 22.391 1.75H2.10904C2.00424 1.75 1.91819 1.78364 1.85092 1.85092C1.78364 1.9182 1.75 2.00424 1.75 2.10904V15.391C1.75 15.4958 1.78364 15.5818 1.85092 15.6491C1.91819 15.7164 2.00424 15.75 2.10904 15.75ZM8.99675 14.2803H15.5032C15.7889 14.2803 16.0323 14.1816 16.2336 13.9843C16.4346 13.7869 16.5352 13.5416 16.5352 13.2484C16.5352 12.9627 16.4346 12.7193 16.2336 12.518C16.0323 12.317 15.7889 12.2165 15.5032 12.2165H8.99675C8.71111 12.2165 8.46767 12.3151 8.26642 12.5125C8.06536 12.7099 7.96483 12.9552 7.96483 13.2484C7.96483 13.534 8.06536 13.7775 8.26642 13.9787C8.46767 14.1798 8.71111 14.2803 8.99675 14.2803ZM6.15971 6.10371C6.36096 5.90246 6.46158 5.65901 6.46158 5.37337C6.46158 5.08774 6.36096 4.84429 6.15971 4.64304C5.95865 4.44199 5.71521 4.34146 5.42937 4.34146C5.14374 4.34146 4.90039 4.44199 4.69933 4.64304C4.49808 4.84429 4.39746 5.08774 4.39746 5.37337C4.39746 5.65901 4.49808 5.90246 4.69933 6.10371C4.90039 6.30496 5.14374 6.40558 5.42937 6.40558C5.71521 6.40558 5.95865 6.30496 6.15971 6.10371ZM10.703 6.10371C10.9043 5.90246 11.0049 5.65901 11.0049 5.37337C11.0049 5.08774 10.9043 4.84429 10.703 4.64304C10.5019 4.44199 10.2585 4.34146 9.97267 4.34146C9.68703 4.34146 9.44368 4.44199 9.24263 4.64304C9.04138 4.84429 8.94075 5.08774 8.94075 5.37337C8.94075 5.65901 9.04138 5.90246 9.24263 6.10371C9.44368 6.30496 9.68703 6.40558 9.97267 6.40558C10.2585 6.40558 10.5019 6.30496 10.703 6.10371ZM15.2574 6.10371C15.4586 5.90246 15.5593 5.65901 15.5593 5.37337C15.5593 5.08774 15.4586 4.84429 15.2574 4.64304C15.0563 4.44199 14.813 4.34146 14.5273 4.34146C14.2415 4.34146 13.9981 4.44199 13.797 4.64304C13.5957 4.84429 13.4951 5.08774 13.4951 5.37337C13.4951 5.65901 13.5957 5.90246 13.797 6.10371C13.9981 6.30496 14.2415 6.40558 14.5273 6.40558C14.813 6.40558 15.0563 6.30496 15.2574 6.10371ZM19.7447 6.15971C19.9459 5.95865 20.0465 5.71521 20.0465 5.42938C20.0465 5.14374 19.9459 4.90039 19.7447 4.69933C19.5434 4.49808 19.3 4.39746 19.0143 4.39746C18.7287 4.39746 18.4853 4.49808 18.284 4.69933C18.0829 4.90039 17.9824 5.14374 17.9824 5.42938C17.9824 5.71521 18.0829 5.95865 18.284 6.15971C18.4853 6.36096 18.7287 6.46158 19.0143 6.46158C19.3 6.46158 19.5434 6.36096 19.7447 6.15971ZM6.15971 10.0412C6.36096 9.83996 6.46158 9.59651 6.46158 9.31087C6.46158 9.02524 6.36096 8.78179 6.15971 8.58054C5.95865 8.37949 5.71521 8.27896 5.42937 8.27896C5.14374 8.27896 4.90039 8.37949 4.69933 8.58054C4.49808 8.78179 4.39746 9.02524 4.39746 9.31087C4.39746 9.59651 4.49808 9.83996 4.69933 10.0412C4.90039 10.2423 5.14374 10.3428 5.42937 10.3428C5.71521 10.3428 5.95865 10.2423 6.15971 10.0412ZM10.703 10.0412C10.9043 9.83996 11.0049 9.59651 11.0049 9.31087C11.0049 9.02524 10.9043 8.78179 10.703 8.58054C10.5019 8.37949 10.2585 8.27896 9.97267 8.27896C9.68703 8.27896 9.44368 8.37949 9.24263 8.58054C9.04138 8.78179 8.94075 9.02524 8.94075 9.31087C8.94075 9.59651 9.04138 9.83996 9.24263 10.0412C9.44368 10.2423 9.68703 10.3428 9.97267 10.3428C10.2585 10.3428 10.5019 10.2423 10.703 10.0412ZM15.2574 10.0412C15.4586 9.83996 15.5593 9.59651 15.5593 9.31087C15.5593 9.02524 15.4586 8.78179 15.2574 8.58054C15.0563 8.37949 14.813 8.27896 14.5273 8.27896C14.2415 8.27896 13.9981 8.37949 13.797 8.58054C13.5957 8.78179 13.4951 9.02524 13.4951 9.31087C13.4951 9.59651 13.5957 9.83996 13.797 10.0412C13.9981 10.2423 14.2415 10.3428 14.5273 10.3428C14.813 10.3428 15.0563 10.2423 15.2574 10.0412ZM19.8007 10.0412C20.0019 9.83996 20.1025 9.59651 20.1025 9.31087C20.1025 9.02524 20.0019 8.78179 19.8007 8.58054C19.5996 8.37949 19.3563 8.27896 19.0706 8.27896C18.7848 8.27896 18.5413 8.37949 18.3403 8.58054C18.139 8.78179 18.0384 9.02524 18.0384 9.31087C18.0384 9.59651 18.139 9.83996 18.3403 10.0412C18.5413 10.2423 18.7848 10.3428 19.0706 10.3428C19.3563 10.3428 19.5996 10.2423 19.8007 10.0412Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function MicIcon({ color }: { color: string }) {
+  return (
+    <Svg width={20} height={23} viewBox="0 0 20 23" fill="none">
+      <Path
+        d="M4.52083 16.6924V5.47429C4.52083 5.22637 4.60474 5.01861 4.77254 4.851C4.94035 4.68319 5.14821 4.59929 5.39613 4.59929C5.64424 4.59929 5.852 4.68319 6.01942 4.851C6.18703 5.01861 6.27083 5.22637 6.27083 5.47429V16.6924C6.27083 16.9403 6.18693 17.1481 6.01912 17.3157C5.85132 17.4835 5.64346 17.5674 5.39554 17.5674C5.14743 17.5674 4.93967 17.4835 4.77225 17.3157C4.60464 17.1481 4.52083 16.9403 4.52083 16.6924ZM9.04167 21.2917V0.875C9.04167 0.627083 9.12557 0.41932 9.29338 0.251708C9.46118 0.0839029 9.66904 0 9.91696 0C10.1651 0 10.3728 0.0839029 10.5403 0.251708C10.7079 0.41932 10.7917 0.627083 10.7917 0.875V21.2917C10.7917 21.5396 10.7078 21.7473 10.54 21.915C10.3722 22.0828 10.1643 22.1667 9.91637 22.1667C9.66826 22.1667 9.4605 22.0828 9.29308 21.915C9.12547 21.7473 9.04167 21.5396 9.04167 21.2917ZM0 12.1377V10.029C0 9.78104 0.0839029 9.57318 0.251708 9.40537C0.419514 9.23776 0.627375 9.15396 0.875292 9.15396C1.1234 9.15396 1.33117 9.23776 1.49858 9.40537C1.66619 9.57318 1.75 9.78104 1.75 10.029V12.1377C1.75 12.3856 1.6661 12.5935 1.49829 12.7613C1.33049 12.9289 1.12263 13.0127 0.874708 13.0127C0.626597 13.0127 0.418833 12.9289 0.251417 12.7613C0.0838054 12.5935 0 12.3856 0 12.1377ZM13.5625 16.6924V5.47429C13.5625 5.22637 13.6464 5.01861 13.8142 4.851C13.982 4.68319 14.1899 4.59929 14.4378 4.59929C14.6859 4.59929 14.8937 4.68319 15.0611 4.851C15.2287 5.01861 15.3125 5.22637 15.3125 5.47429V16.6924C15.3125 16.9403 15.2286 17.1481 15.0608 17.3157C14.893 17.4835 14.6851 17.5674 14.4372 17.5674C14.1891 17.5674 13.9813 17.4835 13.8139 17.3157C13.6463 17.1481 13.5625 16.9403 13.5625 16.6924ZM18.0833 12.1377V10.029C18.0833 9.78104 18.1672 9.57318 18.335 9.40537C18.5028 9.23776 18.7107 9.15396 18.9586 9.15396C19.2067 9.15396 19.4145 9.23776 19.5819 9.40537C19.7495 9.57318 19.8333 9.78104 19.8333 10.029V12.1377C19.8333 12.3856 19.7494 12.5935 19.5816 12.7613C19.4138 12.9289 19.206 13.0127 18.958 13.0127C18.7099 13.0127 18.5022 12.9289 18.3347 12.7613C18.1671 12.5935 18.0833 12.3856 18.0833 12.1377Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function SendArrowIcon({ color }: { color: string }) {
+  return (
+    <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+      <Path
+        d="M6.44825 2.496L1.279 7.66525C1.13033 7.81392 0.956333 7.88733 0.757 7.8855C0.557666 7.8835 0.380416 7.805 0.22525 7.65C0.0804164 7.49483 0.00541641 7.31917 0.00024974 7.123C-0.00491693 6.92683 0.0700831 6.75117 0.22525 6.596L6.5655 0.25575C6.65917 0.162083 6.75792 0.0960833 6.86175 0.0577499C6.96558 0.0192499 7.07775 0 7.19825 0C7.31875 0 7.43092 0.0192499 7.53475 0.0577499C7.63858 0.0960833 7.73733 0.162083 7.831 0.25575L14.1712 6.596C14.3097 6.7345 14.3806 6.906 14.3837 7.1105C14.3869 7.315 14.3161 7.49483 14.1712 7.65C14.0161 7.805 13.8379 7.8825 13.6367 7.8825C13.4354 7.8825 13.2572 7.805 13.102 7.65L7.94825 2.496V13.873C7.94825 14.0858 7.87642 14.264 7.73275 14.4075C7.58925 14.5512 7.41108 14.623 7.19825 14.623C6.98542 14.623 6.80725 14.5512 6.66375 14.4075C6.52008 14.264 6.44825 14.0858 6.44825 13.873V2.496Z"
+        fill={color}
+      />
+    </Svg>
   );
 }
 
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: K.bone,
   },
   container: {
     flex: 1,
-    backgroundColor: K.white,
+  },
+  headerOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: K.border,
-    backgroundColor: K.bone,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
   },
-  closeButton: {
+  headerLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    width: 76,
+  },
+  headerRightGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+    width: 76,
+  },
+  headerIconButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: K.white,
     justifyContent: "center",
     alignItems: "center",
-  },
-  closeText: {
-    fontSize: 24,
-    color: K.brown,
-    fontWeight: "300",
-    marginTop: -2,
   },
   headerCenter: {
-    flexDirection: "row",
+    flex: 1,
     alignItems: "center",
-    gap: spacing.sm,
-  },
-  headerInfo: {
-    alignItems: "flex-start",
-  },
-  headerTitle: {
-    ...typography.bodyMedium,
-    color: K.brown,
-    fontWeight: "600",
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: K.textMuted,
-    fontSize: 11,
-  },
-  newChatButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: K.white,
     justifyContent: "center",
-    alignItems: "center",
+    gap: 6,
   },
-  newChatIcon: {
-    fontSize: 22,
-    color: K.brown,
-    fontWeight: "300",
-  },
-  contextBanner: {
-    backgroundColor: K.blue,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  contextLabel: {
-    ...typography.caption,
-    color: K.brown,
-    opacity: 0.7,
-  },
-  contextMeal: {
-    ...typography.caption,
-    color: K.brown,
-    fontWeight: "600",
-    flexShrink: 1,
+  headerAvatar: {
+    width: 38,
+    height: 38,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  keyboardView: {
-    flex: 1,
+  loadingAvatar: {
+    width: 140,
+    height: 140,
+    opacity: 0.9,
   },
   messagesContainer: {
     flex: 1,
   },
   messagesContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    gap: 24,
+    alignItems: "center",
   },
-  messageBubbleContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-  },
-  esterContainer: {
-    justifyContent: "flex-start",
-  },
-  userContainer: {
-    justifyContent: "flex-end",
-  },
-  messageBubble: {
-    maxWidth: "75%",
-    padding: spacing.md,
-    borderRadius: radius.lg,
-  },
-  esterBubble: {
-    backgroundColor: K.bone,
-    borderTopLeftRadius: 4,
-  },
-  userBubble: {
-    backgroundColor: K.brown,
-    marginLeft: "auto",
-    borderTopRightRadius: 4,
-  },
-  messageText: {
-    ...typography.body,
-    fontSize: 15,
-    lineHeight: 22,
+  esterRow: {
+    width: "100%",
   },
   esterText: {
-    color: K.brown,
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: "400",
   },
-  userText: {
-    color: K.bone,
+  heroGreetingWrap: {
+    alignSelf: "stretch",
+    height: 223.5,
+    justifyContent: "center",
   },
-  typingContainer: {
-    flexDirection: "row",
+  heroGreetingText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 16,
+    fontWeight: "400",
+    letterSpacing: -0.16,
+    color: "#7E6869",
+  },
+  userRow: {
+    alignSelf: "flex-end",
+    alignItems: "flex-end",
+    gap: 4,
+    maxWidth: "82%",
+  },
+  userBubble: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  userBubbleText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  timestamp: {
+    fontSize: 11,
+    marginRight: 4,
+  },
+  promptChipColumn: {
+    alignSelf: "stretch",
     alignItems: "flex-end",
     gap: spacing.sm,
   },
-  typingBubble: {
+  promptChip: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 999,
+    maxWidth: "82%",
+  },
+  promptChipText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  typingPill: {
     flexDirection: "row",
-    backgroundColor: K.bone,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderTopLeftRadius: 4,
-    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 18,
+    gap: 5,
   },
   typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: K.textMuted,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
+  bottomBar: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: K.border,
-    backgroundColor: K.white,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  voiceCtaRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
-  input: {
-    flex: 1,
-    backgroundColor: K.bone,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: K.brown,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: K.ochre,
+  modeToggle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
   },
-  sendButtonDisabled: {
-    backgroundColor: K.border,
+  tapToSpeak: {
+    flex: 1,
+    minWidth: 120,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  sendIcon: {
+  tapToSpeakText: {
+    fontFamily: fonts.dmSans,
     fontSize: 20,
-    color: K.brown,
-    fontWeight: "bold",
+    fontWeight: "400",
+    letterSpacing: -0.2,
+    textAlign: "center",
   },
-  hiddenInput: {
-    height: 0,
-    opacity: 0,
-    position: "absolute",
+  listeningPill: {
+    borderRadius: 28,
+    paddingTop: 8,
+    paddingBottom: 14,
+    paddingHorizontal: 12,
+    gap: 6,
+    maxHeight: 220,
+  },
+  listeningTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 40,
+    gap: 8,
+  },
+  listeningWaveformWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  listeningTranscript: {
+    fontSize: 15,
+    lineHeight: 20,
+    paddingHorizontal: 8,
+  },
+  listeningDuration: {
+    fontSize: 13,
+    fontVariant: ["tabular-nums"],
+    marginRight: 4,
+  },
+  waveform: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 24,
+  },
+  sendCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  keyboardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  inputPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingLeft: 24,
+    paddingRight: 8,
+    paddingVertical: 8,
+    minHeight: 56,
+    maxHeight: 140,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    padding: 0,
+  },
+  sendCircleInline: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   crisisCard: {
-    maxWidth: "80%",
-    backgroundColor: K.white,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: K.err,
     padding: spacing.md,
     gap: spacing.sm,
   },
   crisisText: {
-    ...typography.body,
     fontSize: 15,
     lineHeight: 22,
-    color: K.brown,
   },
   crisisButton: {
-    backgroundColor: K.bone,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
   crisisButtonLabel: {
-    ...typography.bodyMedium,
-    color: K.brown,
     fontWeight: "600",
     fontSize: 14,
   },
   crisisButtonAction: {
-    ...typography.caption,
-    color: K.blue,
+    fontSize: 12,
     marginTop: 2,
   },
   crisisFooter: {
-    ...typography.caption,
-    color: K.textMuted,
+    fontSize: 12,
     marginTop: spacing.sm,
   },
   inlineMealCard: {
-    maxWidth: "80%",
-    backgroundColor: K.bone,
     borderRadius: radius.lg,
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: K.ochre + "40",
+    alignSelf: "stretch",
   },
   inlineMealSlot: {
     fontSize: 9,
     letterSpacing: 1.5,
-    color: K.ochre,
     fontWeight: "600",
     marginBottom: 4,
   },
   inlineMealName: {
-    ...typography.bodyMedium,
-    color: K.brown,
     fontWeight: "600",
+    fontSize: 15,
     marginBottom: 4,
   },
   inlineMealWhy: {
-    ...typography.caption,
-    color: K.textMuted,
+    fontSize: 13,
     marginBottom: spacing.sm,
     lineHeight: 18,
   },
@@ -728,18 +1387,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   inlineMealMetaText: {
-    ...typography.caption,
-    color: K.brown,
+    fontSize: 12,
     fontWeight: "500",
   },
   inlineMealMetaDot: {
-    color: K.textMuted,
     fontSize: 10,
   },
   inlineMealTap: {
-    ...typography.caption,
-    color: K.ochre,
-    fontWeight: "500",
     fontSize: 11,
+    fontWeight: "500",
   },
 });

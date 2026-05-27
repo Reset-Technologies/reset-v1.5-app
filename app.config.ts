@@ -25,6 +25,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
       NSMicrophoneUsageDescription:
         "Reset uses your microphone for voice conversations with Ester.",
+      NSSpeechRecognitionUsageDescription:
+        "Reset uses speech recognition to transcribe what you say to Ester.",
+      NSPhotoLibraryUsageDescription:
+        "Reset may request photo access if you choose to share or upload images.",
       UIBackgroundModes: ["voip", "audio", "remote-notification"],
     },
   },
@@ -61,6 +65,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         baseUrl: "sdk.iad-07.braze.com",
         enableBrazeIosPush: true,
         enableFirebaseCloudMessaging: false,
+      },
+    ],
+    [
+      "expo-speech-recognition",
+      {
+        microphonePermission:
+          "Reset uses your microphone so you can talk to Ester instead of typing.",
+        speechRecognitionPermission:
+          "Reset uses speech recognition to transcribe what you say to Ester.",
       },
     ],
     "./plugins/withRegisterPush",
