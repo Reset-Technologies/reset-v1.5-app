@@ -55,6 +55,9 @@ export interface UserProfile {
   layer3: Layer3;
   confidence: Confidence;
   onboarding: OnboardingState;
+  // RES-127 — account status, defaults to "pro" on the backend until paywall
+  // ships. Drives Settings copy + Ester's biomarker access gating.
+  subscriptionTier?: "free" | "pro";
 }
 
 export async function getProfile(): Promise<UserProfile> {

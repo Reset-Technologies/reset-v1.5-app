@@ -21,6 +21,8 @@ export interface CalibrationData {
   biologicalSex: "male" | "female";
 }
 
+export type SubscriptionTier = "free" | "pro";
+
 interface UserProfile {
   email?: string;
   name?: string;
@@ -29,6 +31,10 @@ interface UserProfile {
   // backend-only — only these public flags surface here.
   startingRead?: boolean;
   glp1Flag?: boolean;
+  // RES-127 — account status. Defaults to 'pro' on first load until the
+  // backend confirms otherwise, so we never accidentally gate biomarkers
+  // a user already has access to.
+  subscriptionTier?: SubscriptionTier;
   goal?: string;
   calibration?: CalibrationData;
   quizAnswers: Record<string, string>;
@@ -84,6 +90,7 @@ type AppAction =
   | { type: "LOAD_STATE"; payload: Omit<AppState, "auth" | "isLoading"> }
   | { type: "SET_QUIZ_ANSWER"; payload: { questionId: string; answer: string } }
   | { type: "SET_METABOLIC_TYPE"; payload: MetabolicType }
+  | { type: "SET_SUBSCRIPTION_TIER"; payload: SubscriptionTier }
   | {
       type: "SET_TYPING_RESULT";
       payload: {
@@ -157,6 +164,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
         user: {
           ...state.user,
           metabolicType: action.payload,
+        },
+      };
+
+    case "SET_SUBSCRIPTION_TIER":
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          subscriptionTier: action.payload,
         },
       };
 
@@ -363,15 +379,22 @@ export function AppProvider({ children }: AppProviderProps) {
           BrazeService.changeUser(authUser.id);
           requestPushPermission();
 
-          // Always re-sync metabolicType from the backend so type-derived UI
-          // (check-in surfaces, etc.) matches the source of truth on every
-          // session restore — even when local onboarding is already complete.
+          // Always re-sync metabolicType + subscriptionTier from the backend so
+          // type-derived UI (check-in surfaces, etc.) and Ester's gating match
+          // the source of truth on every session restore — even when local
+          // onboarding is already complete.
           try {
             const profile = await getProfile();
             if (profile.layer1.primaryBucket) {
               dispatch({
                 type: "SET_METABOLIC_TYPE",
                 payload: profile.layer1.primaryBucket as MetabolicType,
+              });
+            }
+            if (profile.subscriptionTier) {
+              dispatch({
+                type: "SET_SUBSCRIPTION_TIER",
+                payload: profile.subscriptionTier,
               });
             }
           } catch {
@@ -487,14 +510,21 @@ export function AppProvider({ children }: AppProviderProps) {
     // Identify user with Braze and request push permission
     BrazeService.changeUser(user.id);
     requestPushPermission();
-    // Pull metabolicType from backend so type-derived UI matches the user
-    // we just signed in as (rather than the previous user's local state).
+    // Pull metabolicType + subscriptionTier from backend so type-derived UI
+    // and Ester's account-status gating both match the user we just signed in
+    // as (rather than the previous user's local state).
     getProfile()
       .then((profile) => {
         if (profile.layer1.primaryBucket) {
           dispatch({
             type: "SET_METABOLIC_TYPE",
             payload: profile.layer1.primaryBucket as MetabolicType,
+          });
+        }
+        if (profile.subscriptionTier) {
+          dispatch({
+            type: "SET_SUBSCRIPTION_TIER",
+            payload: profile.subscriptionTier,
           });
         }
       })

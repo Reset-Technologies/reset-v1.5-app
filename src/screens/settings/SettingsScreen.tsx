@@ -166,29 +166,33 @@ export function SettingsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Subscription */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>SUBSCRIPTION</Text>
-          <View style={styles.card}>
-            <View style={styles.subscriptionRow}>
-              <View>
-                <Text style={styles.planName}>
-                  {state.biometrics ? "Pro" : "Free"}
-                </Text>
-                <Text style={styles.planDesc}>
-                  {state.biometrics
-                    ? "Full signal tracking & personalized meals"
-                    : "Basic meal plan & limited features"}
-                </Text>
+        {/* Subscription — RES-127: read the real tier from the backend
+            instead of treating "has any biometric data" as Pro. */}
+        {(() => {
+          const isPro = state.user.subscriptionTier !== "free";
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>SUBSCRIPTION</Text>
+              <View style={styles.card}>
+                <View style={styles.subscriptionRow}>
+                  <View>
+                    <Text style={styles.planName}>{isPro ? "Pro" : "Free"}</Text>
+                    <Text style={styles.planDesc}>
+                      {isPro
+                        ? "Full signal tracking & personalized meals"
+                        : "Basic meal plan & limited features"}
+                    </Text>
+                  </View>
+                </View>
+                {!isPro && (
+                  <TouchableOpacity style={styles.upgradeButton}>
+                    <Text style={styles.upgradeText}>Upgrade to Pro</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
-            {!state.biometrics && (
-              <TouchableOpacity style={styles.upgradeButton}>
-                <Text style={styles.upgradeText}>Upgrade to Pro</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+          );
+        })()}
 
         {/* Notifications */}
         <View style={styles.section}>
