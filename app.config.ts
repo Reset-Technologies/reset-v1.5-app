@@ -37,7 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.betterwell.reset.dev",
     permissions: ["RECORD_AUDIO"],
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      backgroundColor: "#F3EFE3",
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
       monochromeImage: "./assets/android-icon-monochrome.png",
