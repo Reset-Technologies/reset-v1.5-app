@@ -40,10 +40,13 @@ const SLEEP_QUALITY_OPTIONS: MultipleChoiceOption[] = [
   { id: "great", label: "Great" },
 ];
 
-function sliderToEnergy(value: number): "low" | "okay" | "steady" | "high" {
-  if (value < 25) return "low";
-  if (value < 55) return "okay";
-  if (value < 80) return "steady";
+function sliderToEnergy(
+  value: number,
+): "low" | "off" | "steady" | "good" | "high" {
+  if (value < 20) return "low";
+  if (value < 40) return "off";
+  if (value < 60) return "steady";
+  if (value < 80) return "good";
   return "high";
 }
 
@@ -164,7 +167,7 @@ export function AppOpenSurveyV2Screen() {
   })();
 
   const title = (() => {
-    if (step === 1) return "How's your energy today?";
+    if (step === 1) return "Tell me, how are you feeling today, overall?";
     if (step === 2) return "Any stress sources today?";
     if (step === 3) return "How many hours of sleep did you get last night?";
     return "How was the quality of your sleep?";
@@ -240,11 +243,9 @@ export function AppOpenSurveyV2Screen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: K.white,
+    backgroundColor: K.bone,
   },
   content: {
-    paddingTop: 30,
-    paddingHorizontal: 44,
     paddingBottom: 120,
     gap: 30,
   },
@@ -253,12 +254,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     paddingTop: 24,
+    paddingHorizontal: 34,
   },
   footer: {
     position: "absolute",
-    left: 44,
-    right: 44,
-    alignItems: "center",
+    left: 34,
+    right: 34,
+    alignItems: "stretch",
   },
   savingSpinner: {
     marginTop: 8,

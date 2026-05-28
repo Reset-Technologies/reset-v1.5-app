@@ -14,7 +14,7 @@ import Svg, { Path, Rect } from "react-native-svg";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
-import { K } from "../../constants/colors";
+import { K, toMetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useAppPalette } from "../../hooks/useAppPalette";
@@ -26,6 +26,14 @@ import type { MainStackParamList } from "../../navigation/MainNavigator";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
+
+const TYPE_LOGO = {
+  Burner: require("../../../assets/images/type-logos/Burner.png"),
+  Rebounder: require("../../../assets/images/type-logos/Rebounder.png"),
+  Ember: require("../../../assets/images/type-logos/Restorer.png"),
+  Chameleon: require("../../../assets/images/type-logos/Chameleon.png"),
+  Explorer: require("../../../assets/images/type-logos/Explorer.png"),
+};
 
 type ScanRecord = {
   scannedAt?: string;
@@ -169,6 +177,8 @@ export function ScanInsightsScreen() {
   const { state } = useApp();
   const { innerBg, nestedBg, textColor, subtleText, statusBarStyle } =
     useAppPalette();
+  const metabolicType =
+    toMetabolicType(state.user.metabolicType) ?? "Explorer";
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [checkIns, setCheckIns] = useState<CheckInEntry[]>([]);
   const [blurb, setBlurb] = useState<string | null>(null);
@@ -369,7 +379,7 @@ export function ScanInsightsScreen() {
           </View>
           <View style={[styles.esterCard, { backgroundColor: nestedBg }]}>
             <Image
-              source={require("../../../assets/images/ester-avatar.png")}
+              source={TYPE_LOGO[metabolicType]}
               style={styles.esterAvatar}
               resizeMode="contain"
             />

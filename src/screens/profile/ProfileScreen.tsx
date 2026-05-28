@@ -72,14 +72,17 @@ function trendPercent(current: number | null, previous: number | null): number |
   return Math.round(((current - previous) / previous) * 100);
 }
 
-// Energy words ordered low → high. "Fluctuating" sits between okay and steady.
+// Energy words ordered low → high. Check-in values (low/off/steady/good/high)
+// share the rank space with typeConfig fallback words (okay/moderate/fluctuating/stable).
 const ENERGY_RANK: Record<string, number> = {
   low: 1,
+  off: 1.5,
   okay: 2,
   moderate: 2,
   fluctuating: 2.5,
   steady: 3,
   stable: 3,
+  good: 3.5,
   high: 4,
 };
 
@@ -222,16 +225,40 @@ export function ProfileScreen() {
   );
 
   const latestScan = biometricsFresh ? profile?.layer3.latestScan : null;
-  const stressValue = latestScan
-    ? `${latestScan.stressIndex ?? latestScan.stress_index}`
-    : typeConfig.signals.stress;
+  // Stress comes from the latest check-in's stressTags (RES-122 refactor):
+  // "None" → low, any other tag(s) → high. Falls back to typeConfig if no
+  // check-ins exist yet.
+  const stressTagsSorted = (() => {
+    const log = profile?.layer2?.stressTags ?? [];
+    return [...log].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+  })();
+  const stressLevelFromTags = (tags: string[] | undefined) => {
+    if (!tags || tags.length === 0) return null;
+    const onlyNone = tags.every((t) => t.toLowerCase() === "none");
+    return onlyNone ? "low" : "high";
+  };
+  const currentStressLevel = stressLevelFromTags(stressTagsSorted[0]?.tags);
+  const priorStressLevel = stressLevelFromTags(stressTagsSorted[1]?.tags);
+  const stressValue = currentStressLevel ?? typeConfig.signals.stress;
+
   const recoveryValue = latestScan
     ? `${latestScan.parasympatheticActivity ?? latestScan.parasympathetic_activity ?? "—"}`
     : typeConfig.signals.recovery;
-  const energyValue = typeConfig.signals.energy;
+  // Energy comes from the latest check-in's energy field (RES-122 refactor);
+  // mirrors the Stress pattern. Falls back to typeConfig.signals.energy when
+  // no check-ins exist.
+  const energyLogSorted = (() => {
+    const log = profile?.layer2?.energyLog ?? [];
+    return [...log].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+  })();
+  const energyValue = energyLogSorted[0]?.energy ?? typeConfig.signals.energy;
 
-  // Prior scan = second-most-recent (by scannedAt). Used to compute trend
-  // direction + delta for the live signal cells.
+  // Prior scan = second-most-recent (by scannedAt). Used to compute Recovery
+  // trend direction + delta.
   const priorScan = (() => {
     const history = profile?.layer3?.scanHistory ?? [];
     if (history.length < 2) return null;
@@ -243,17 +270,13 @@ export function ProfileScreen() {
     return sorted[1] ?? null;
   })();
 
-  const stressCurrent = latestScan
-    ? (latestScan.stressIndex ?? latestScan.stress_index ?? null)
-    : null;
-  const stressPrior = priorScan
-    ? (priorScan.stressIndex ?? priorScan.stress_index ?? null)
-    : null;
-  const stressTrendDir = dirFromNumbers(stressCurrent, stressPrior);
-  const stressTrendDelta =
-    stressCurrent !== null && stressPrior !== null
-      ? stressCurrent - stressPrior
-      : null;
+  // Stress trend: map low=0, high=1 then reuse dirFromNumbers.
+  const STRESS_RANK = { low: 0, high: 1 } as const;
+  const stressTrendDir = dirFromNumbers(
+    currentStressLevel ? STRESS_RANK[currentStressLevel] : null,
+    priorStressLevel ? STRESS_RANK[priorStressLevel] : null,
+  );
+  const stressTrendDelta = null;
 
   const recoveryCurrent = latestScan
     ? (latestScan.parasympatheticActivity ?? latestScan.parasympathetic_activity ?? null)
@@ -268,12 +291,6 @@ export function ProfileScreen() {
       : null;
 
   // Energy trend uses the last two check-in entries ranked by ENERGY_RANK.
-  const energyLogSorted = (() => {
-    const log = profile?.layer2?.energyLog ?? [];
-    return [...log].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-  })();
   const energyCurrentRank = energyRank(energyLogSorted[0]?.energy ?? null);
   const energyPriorRank = energyRank(energyLogSorted[1]?.energy ?? null);
   const energyTrendDir = dirFromNumbers(energyCurrentRank, energyPriorRank);
@@ -467,7 +484,7 @@ export function ProfileScreen() {
               >
                 <EsterCtaGradient />
                 <Image
-                  source={ESTER_AVATAR}
+                  source={TYPE_LOGO[metabolicType]}
                   style={styles.inlineEsterAvatar}
                   resizeMode="contain"
                 />
@@ -485,7 +502,35 @@ export function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </Section>
-        ) : null}
+        ) : (
+          <Section eyebrow="Scan history" eyebrowColor={surfaces.textStrong}>
+            <View style={[styles.listCard, { backgroundColor: surfaces.card }]}>
+              <TouchableOpacity
+                style={styles.inlineEsterCta}
+                onPress={() => navigation.navigate("Scan", { mode: "rescan" })}
+                activeOpacity={0.9}
+              >
+                <EsterCtaGradient />
+                <Image
+                  source={TYPE_LOGO[metabolicType]}
+                  style={styles.inlineEsterAvatar}
+                  resizeMode="contain"
+                />
+                <View style={styles.inlineEsterTextWrap}>
+                  <Text style={styles.inlineEsterTitle}>
+                    No scans yet — start your first.
+                  </Text>
+                  <Text style={styles.inlineEsterBody}>
+                    Tap to begin a face scan.
+                  </Text>
+                </View>
+                <View style={styles.inlineEsterArrowButton}>
+                  <ArrowForwardIcon />
+                </View>
+              </TouchableOpacity>
+            </View>
+          </Section>
+        )}
 
         {/* Quick links */}
         <View style={[styles.quickLinks, { borderColor: surfaces.outlineBorder }]}>
@@ -803,6 +848,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     alignItems: "center",
     justifyContent: "center",
+    gap: 12,
   },
   headerCogWrap: {
     position: "absolute",

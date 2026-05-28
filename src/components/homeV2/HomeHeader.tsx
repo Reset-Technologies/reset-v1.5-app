@@ -1,8 +1,17 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Image } from "react-native";
 import { fonts, spacing } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
-import { Mascot } from "./Mascot";
+import { useApp } from "../../context/AppContext";
+import { toMetabolicType } from "../../constants/colors";
+
+const TYPE_LOGO = {
+  Burner: require("../../../assets/images/type-logos/Burner.png"),
+  Rebounder: require("../../../assets/images/type-logos/Rebounder.png"),
+  Ember: require("../../../assets/images/type-logos/Restorer.png"),
+  Chameleon: require("../../../assets/images/type-logos/Chameleon.png"),
+  Explorer: require("../../../assets/images/type-logos/Explorer.png"),
+};
 
 interface HomeHeaderProps {
   dateLabel: string;
@@ -15,7 +24,10 @@ export function HomeHeader({
   dayLabel = "Reset Day",
   title = "Today",
 }: HomeHeaderProps) {
-  const { evening, textColor, subtleText } = useAppPalette();
+  const { textColor, subtleText } = useAppPalette();
+  const { state } = useApp();
+  const metabolicType =
+    toMetabolicType(state.user.metabolicType) ?? "Explorer";
   return (
     <View style={styles.container}>
       <View style={styles.textBlock}>
@@ -26,7 +38,11 @@ export function HomeHeader({
         <Text style={[styles.title, { color: textColor }]}>{title}</Text>
       </View>
       <View style={styles.mascotWrap}>
-        <Mascot size={260} variant={evening ? "bone" : "ochre"} />
+        <Image
+          source={TYPE_LOGO[metabolicType]}
+          style={styles.mascotImage}
+          resizeMode="contain"
+        />
       </View>
     </View>
   );
@@ -69,7 +85,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.32,
   },
   mascotWrap: {
-    marginTop: -78,
-    marginRight: -42,
+    marginTop: -65,
+    marginRight: -40,
+  },
+  mascotImage: {
+    width: 266,
+    height: 266,
+    transform: [{ rotate: "-10deg" }],
   },
 });

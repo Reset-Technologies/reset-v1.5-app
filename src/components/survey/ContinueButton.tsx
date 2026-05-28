@@ -45,13 +45,14 @@ export function ContinueButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 56,
-    minWidth: 120,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 999,
+    minHeight: 44,
+    padding: 16,
+    borderRadius: 4,
+    alignSelf: "stretch",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 12,
   },
   primary: {
     backgroundColor: K.brown,

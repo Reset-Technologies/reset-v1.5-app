@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { K } from "../../constants/colors";
+import { K, TC, toMetabolicType } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
+import { useApp } from "../../context/AppContext";
 
 export interface MultipleChoiceOption {
   id: string;
@@ -19,6 +20,9 @@ export function MultipleChoiceList({
   selectedId,
   onSelect,
 }: MultipleChoiceListProps) {
+  const { state } = useApp();
+  const metabolicType = toMetabolicType(state.user.metabolicType) ?? "Explorer";
+  const selectedBg = TC[metabolicType].bg;
   return (
     <View style={styles.list}>
       {options.map((opt) => {
@@ -30,7 +34,9 @@ export function MultipleChoiceList({
             activeOpacity={0.85}
             style={[
               styles.row,
-              isSelected ? styles.rowSelected : styles.rowIdle,
+              isSelected
+                ? [styles.rowSelected, { backgroundColor: selectedBg }]
+                : styles.rowIdle,
             ]}
           >
             <Text style={styles.label}>{opt.label}</Text>
@@ -53,14 +59,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingVertical: 16,
-    borderRadius: 100,
     minHeight: 56,
   },
   rowIdle: {
-    backgroundColor: K.bone,
+    backgroundColor: K.white,
+    borderRadius: 4,
   },
   rowSelected: {
     backgroundColor: K.blue,
+    borderRadius: 100,
   },
   label: {
     flex: 1,

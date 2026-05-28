@@ -51,15 +51,15 @@ export function toMetabolicType(s: string | null | undefined): MetabolicType | n
 
 export const TC: Record<MetabolicType, { bg: string; text: string }> = {
   Burner: {
-    bg: K.ochre,   // Warm gold - stress-driven, high energy
+    bg: "#ce8751", // Terracotta — stress-driven, high energy
     text: K.brown,
   },
   Rebounder: {
-    bg: K.blue,    // Slate blue - protective, steady
+    bg: "#a991b6", // Muted lavender — protective, steady
     text: K.brown,
   },
   Ember: {
-    bg: K.bone,    // Warm neutral - rebuilding, calm
+    bg: K.blue,    // Slate blue (Restorer) — rebuilding, calm
     text: K.brown,
   },
   Chameleon: {
@@ -67,7 +67,7 @@ export const TC: Record<MetabolicType, { bg: string; text: string }> = {
     text: K.white,
   },
   Explorer: {
-    bg: K.white,   // Clean white - quiet signals, adaptable
+    bg: "#ccbc60", // Saturated gold — adaptable, quiet signals
     text: K.brown,
   },
 };

@@ -363,6 +363,21 @@ export function AppProvider({ children }: AppProviderProps) {
           BrazeService.changeUser(authUser.id);
           requestPushPermission();
 
+          // Always re-sync metabolicType from the backend so type-derived UI
+          // (check-in surfaces, etc.) matches the source of truth on every
+          // session restore — even when local onboarding is already complete.
+          try {
+            const profile = await getProfile();
+            if (profile.layer1.primaryBucket) {
+              dispatch({
+                type: "SET_METABOLIC_TYPE",
+                payload: profile.layer1.primaryBucket as MetabolicType,
+              });
+            }
+          } catch {
+            // Profile fetch failed — leave existing local value.
+          }
+
           // If local state is missing onboarding data but backend has it (e.g. reinstall),
           // restore from backend profile
           const savedParsed = savedState ? JSON.parse(savedState) : null;
@@ -472,6 +487,18 @@ export function AppProvider({ children }: AppProviderProps) {
     // Identify user with Braze and request push permission
     BrazeService.changeUser(user.id);
     requestPushPermission();
+    // Pull metabolicType from backend so type-derived UI matches the user
+    // we just signed in as (rather than the previous user's local state).
+    getProfile()
+      .then((profile) => {
+        if (profile.layer1.primaryBucket) {
+          dispatch({
+            type: "SET_METABOLIC_TYPE",
+            payload: profile.layer1.primaryBucket as MetabolicType,
+          });
+        }
+      })
+      .catch(() => {});
   };
 
   const clearAuth = () => {

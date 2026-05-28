@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, StatusBar } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -11,6 +12,44 @@ import { getProfile } from "../../services/profile";
 import { useApp } from "../../context/AppContext";
 import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
+
+const PIE_SIZE = 24;
+const PIE_RADIUS = 10;
+const PIE_CENTER = PIE_SIZE / 2;
+
+function buildPieSlicePath(fraction: number): string {
+  const clamped = Math.max(0, Math.min(1, fraction));
+  if (clamped <= 0) return "";
+  if (clamped >= 1) {
+    return `M ${PIE_CENTER} ${PIE_CENTER - PIE_RADIUS}
+            A ${PIE_RADIUS} ${PIE_RADIUS} 0 1 1 ${PIE_CENTER} ${PIE_CENTER + PIE_RADIUS}
+            A ${PIE_RADIUS} ${PIE_RADIUS} 0 1 1 ${PIE_CENTER} ${PIE_CENTER - PIE_RADIUS} Z`;
+  }
+  const angle = clamped * 2 * Math.PI;
+  const endX = PIE_CENTER + PIE_RADIUS * Math.sin(angle);
+  const endY = PIE_CENTER - PIE_RADIUS * Math.cos(angle);
+  const largeArc = clamped > 0.5 ? 1 : 0;
+  return `M ${PIE_CENTER} ${PIE_CENTER}
+          L ${PIE_CENTER} ${PIE_CENTER - PIE_RADIUS}
+          A ${PIE_RADIUS} ${PIE_RADIUS} 0 ${largeArc} 1 ${endX} ${endY} Z`;
+}
+
+function ConfidencePie({ fraction, color }: { fraction: number; color: string }) {
+  const path = buildPieSlicePath(fraction);
+  return (
+    <Svg width={PIE_SIZE} height={PIE_SIZE} viewBox={`0 0 ${PIE_SIZE} ${PIE_SIZE}`}>
+      <Circle
+        cx={PIE_CENTER}
+        cy={PIE_CENTER}
+        r={PIE_RADIUS}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+      />
+      {path ? <Path d={path} fill={color} /> : null}
+    </Svg>
+  );
+}
 
 function isToday(iso: string | null | undefined): boolean {
   if (!iso) return false;
@@ -97,7 +136,10 @@ export function EncourageScanScreen() {
         <View style={styles.confidenceCard}>
           <View style={styles.confidenceLeft}>
             <Text style={styles.confidenceLabel}>Confidence:</Text>
-            <Text style={styles.confidenceValue}>{confidencePct}%</Text>
+            <View style={styles.confidenceValueRow}>
+              <Text style={styles.confidenceValue}>{confidencePct}%</Text>
+              <ConfidencePie fraction={confidencePct / 100} color={K.brown} />
+            </View>
           </View>
           <View style={styles.confidenceRight}>
             <Text style={styles.confidenceHint}>
@@ -128,11 +170,9 @@ export function EncourageScanScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: K.white,
+    backgroundColor: K.bone,
   },
   content: {
-    paddingTop: 30,
-    paddingHorizontal: 44,
     gap: 30,
   },
   confidenceCard: {
@@ -142,9 +182,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#E9F0F2",
     borderRadius: 4,
     padding: 16,
+    marginHorizontal: 34,
   },
   confidenceLeft: {
     gap: 8,
+  },
+  confidenceValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   confidenceLabel: {
     fontFamily: fonts.dmSans,
@@ -176,8 +222,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: "absolute",
-    left: 44,
-    right: 44,
+    left: 34,
+    right: 34,
     gap: 8,
   },
   skipBtn: {
