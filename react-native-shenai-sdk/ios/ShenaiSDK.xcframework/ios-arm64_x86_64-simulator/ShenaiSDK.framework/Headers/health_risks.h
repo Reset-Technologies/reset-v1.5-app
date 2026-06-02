@@ -68,6 +68,7 @@ struct HealthRisks {
   std::optional<double> hypertension_risk;
   std::optional<double> diabetes_risk;
   std::optional<NAFLDRisk> non_alcoholic_fatty_liver_disease_risk;
+  std::optional<int> oldest_measurement_days;
 };
 
 }  // namespace mx::health_risks

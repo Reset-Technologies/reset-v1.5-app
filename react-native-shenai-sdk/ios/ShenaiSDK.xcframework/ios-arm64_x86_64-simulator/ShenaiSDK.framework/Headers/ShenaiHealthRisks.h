@@ -93,6 +93,7 @@ __attribute__((visibility("default")))
 
 @end
 
+__attribute__((visibility("default")))
 @interface HardAndFatalEventsRisks : NSObject
 @property(nonatomic, strong, nullable) NSNumber *coronaryDeathEventRisk;
 @property(nonatomic, strong, nullable) NSNumber *fatalStrokeEventRisk;
@@ -100,6 +101,7 @@ __attribute__((visibility("default")))
 @property(nonatomic, strong, nullable) NSNumber *hardCvEventRisk;
 @end
 
+__attribute__((visibility("default")))
 @interface CVDiseasesRisks : NSObject
 @property(nonatomic, strong, nullable) NSNumber *overallRisk;
 @property(nonatomic, strong, nullable) NSNumber *coronaryHeartDiseaseRisk;
@@ -108,6 +110,7 @@ __attribute__((visibility("default")))
 @property(nonatomic, strong, nullable) NSNumber *peripheralVascularDiseaseRisk;
 @end
 
+__attribute__((visibility("default")))
 @interface RisksFactorsScores : NSObject
 @property(nonatomic, strong, nullable) NSNumber *ageScore;
 @property(nonatomic, strong, nullable) NSNumber *sbpScore;
@@ -119,6 +122,7 @@ __attribute__((visibility("default")))
 @property(nonatomic, strong, nullable) NSNumber *totalScore;
 @end
 
+__attribute__((visibility("default")))
 @interface HealthRisks : NSObject
 @property(nonatomic, strong, nullable) NSNumber *wellnessScore;
 @property(nonatomic, strong, nonnull) HardAndFatalEventsRisks *hardAndFatalEvents;

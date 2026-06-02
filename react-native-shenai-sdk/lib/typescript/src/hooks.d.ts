@@ -16,13 +16,13 @@ export declare const useRealtimeHeartRate4s: () => number | null;
  * @param period_sec Duration in seconds of the period of interest.
  * @returns The latest realtime metrics or null if uninitialized/error/bad signal.
  */
-export declare const useRealtimeMetrics: (period_sec: number) => import("react-native-shenai-sdk").MeasurementResults | null;
+export declare const useRealtimeMetrics: (period_sec: number) => import("./index").MeasurementResults | null;
 /**
  * Hook to get results of the measurement.
  *
  * @returns The latest measurement results or null if the measurement hasn't finished yet.
  */
-export declare const useMeasurementResults: () => import("react-native-shenai-sdk").MeasurementResults | null;
+export declare const useMeasurementResults: () => import("./index").MeasurementResults | null;
 /**
  * Hook to get the measurement progress percentage.
  *
@@ -34,5 +34,5 @@ export declare const useMeasurementProgress: (update_interval_ms?: number) => nu
  *
  * @returns The latest heartbeats or null if uninitialized/error/bad signal.
  */
-export declare const useRealtimeHeartbeats: () => import("react-native-shenai-sdk").Heartbeat[] | null;
+export declare const useRealtimeHeartbeats: () => import("./index").Heartbeat[] | null;
 //# sourceMappingURL=hooks.d.ts.map

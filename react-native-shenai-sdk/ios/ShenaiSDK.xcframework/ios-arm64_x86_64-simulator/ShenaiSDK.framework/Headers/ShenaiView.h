@@ -4,4 +4,7 @@
 __attribute__((visibility("default")))
 @interface ShenaiView : GLKViewController
 
+- (void)resetRendererForSdkLifecycle;
+- (void)releaseRendererForSdkLifecycle;
+
 @end

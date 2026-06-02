@@ -25,6 +25,17 @@ typedef NS_ENUM(NSInteger, PrecisionMode) {
   PrecisionModeRelaxed = 1,
 };
 
+typedef NS_ENUM(NSInteger, MeasurementEnvironmentCondition) {
+  MeasurementEnvironmentConditionFacePosition = 0,
+  MeasurementEnvironmentConditionForeheadVisible = 1,
+  MeasurementEnvironmentConditionGlassesNotDetected = 2,
+  MeasurementEnvironmentConditionSufficientLightLevel = 3,
+  MeasurementEnvironmentConditionEvenLighting = 4,
+  MeasurementEnvironmentConditionNoBacklight = 5,
+  MeasurementEnvironmentConditionFaceStable = 6,
+  MeasurementEnvironmentConditionDeviceStable = 7,
+};
+
 typedef NS_ENUM(NSInteger, Screen) {
   ScreenInitialization = 0,
   ScreenOnboarding = 1,
@@ -52,6 +63,7 @@ typedef NS_ENUM(NSInteger, Metric) {
   MetricAge = 8,
   MetricBmi = 9,
   MetricBloodPressure = 10,
+  MetricBloodPressureScale = 11,
 };
 
 typedef NS_ENUM(NSInteger, HealthIndex) {
@@ -90,12 +102,28 @@ typedef NS_ENUM(NSInteger, CameraMode) {
   CameraModeOff = 0,
   CameraModeFacingUser = 1,
   CameraModeFacingEnvironment = 2,
+  CameraModeCustomFrames = 3,
+};
+
+typedef NS_ENUM(NSInteger, CameraError) {
+  CameraErrorUnknown = 0,
+  CameraErrorUnsupportedMode = 1,
+  CameraErrorNoCameraDevice = 2,
+  CameraErrorPermissionNotGranted = 3,
+  CameraErrorInvalidDeviceId = 4,
+  CameraErrorDeviceUnavailable = 5,
 };
 
 typedef NS_ENUM(NSInteger, OnboardingMode) {
   OnboardingModeHidden = 0,
   OnboardingModeShowOnce = 1,
   OnboardingModeShowAlways = 2,
+};
+
+typedef NS_ENUM(NSInteger, UiVersion) {
+  UiVersionV1 = 0,
+  UiVersionV2 = 1,
+  UiVersionV3 = 2,
 };
 
 typedef NS_ENUM(NSInteger, InitializationMode) {
@@ -133,8 +161,9 @@ typedef NS_ENUM(NSInteger, MeasurementState) {
   MeasurementStateRunningSignalGood = 3,
   MeasurementStateRunningSignalBad = 4,
   MeasurementStateRunningSignalBadDeviceUnstable = 5,
-  MeasurementStateFinished = 6,
-  MeasurementStateFailed = 7,
+  MeasurementStateFinalizing = 6,
+  MeasurementStateFinished = 7,
+  MeasurementStateFailed = 8,
 };
 
 typedef NS_ENUM(NSInteger, Event) {
@@ -162,6 +191,7 @@ __attribute__((visibility("default")))
 @property(nonatomic) BOOL showFaceMask;
 @property(nonatomic) BOOL showBloodFlow;
 @property(nonatomic) BOOL hideShenaiLogo;
+@property(nonatomic) BOOL includeTimestampInPdf;
 @property(nonatomic) BOOL enableStartAfterSuccess;
 @property(nonatomic) BOOL enableSummaryScreen;
 @property(nonatomic) BOOL showResultsFinishButton;
@@ -175,14 +205,31 @@ __attribute__((visibility("default")))
 @property(nonatomic) BOOL showInfoButton;
 @property(nonatomic) BOOL showDisclaimer;
 @property(nonatomic) BOOL enableMeasurementsDashboard;
+@property(nonatomic) UiVersion uiVersion;
 @property(nonatomic) BOOL showTrialMetricLabels;
+@property(nonatomic) BOOL applyPrecisionModeToBloodPressure;
+@property(nonatomic, copy, nonnull) NSArray<NSNumber *> *blockingMeasurementConditions;
+@property(nonatomic, copy, nonnull) NSArray<NSNumber *> *warningMeasurementConditions;
 @property(nonatomic, copy, nullable) NSArray<NSNumber *> *uiFlowScreens;
+@property(nonatomic) int frameWidth;
+@property(nonatomic) int frameHeight;
+@property(nonatomic) int rotation;
+@property(nonatomic) BOOL offlineProcessing;
 
 @property(nonatomic, copy, nullable) void (^eventCallback)(Event event);
 @property(nonatomic, strong, nullable) RisksFactors *risksFactors;
 
 - (nonnull instancetype)init;
 
+@end
+
+__attribute__((visibility("default")))
+@interface FrameMetadata : NSObject
+@property(nonatomic) int64_t timestampUs;
+@property(nonatomic) BOOL cameraFacingUser;
+@property(nonatomic, strong, nullable) NSNumber *cameraDeviceId;
+@property(nonatomic, strong, nullable) NSNumber *cameraFieldOfViewYDegrees;
+- (nonnull instancetype)init;
 @end
 
 __attribute__((visibility("default")))
@@ -205,6 +252,8 @@ __attribute__((visibility("default")))
 @property(nonatomic, copy, nonnull) NSString *textColor;
 @property(nonatomic, copy, nonnull) NSString *backgroundColor;
 @property(nonatomic, copy, nonnull) NSString *tileColor;
+@property(nonatomic, copy, nonnull) NSString *buttonMainColor;
+@property(nonatomic, copy, nonnull) NSString *buttonSecondaryColor;
 @end
 
 __attribute__((visibility("default")))
@@ -222,6 +271,8 @@ __attribute__((visibility("default")))
 @property(nonatomic, assign) double durationMs;
 @end
 
+@class MeasurementQualityMetrics;
+
 __attribute__((visibility("default")))
 @interface MeasurementResults : NSObject
 @property(nonatomic, assign) double heartRateBpm;
@@ -232,16 +283,30 @@ __attribute__((visibility("default")))
 @property(nonatomic, nullable, strong) NSNumber *breathingRateBpm;
 @property(nonatomic, nullable, strong) NSNumber *systolicBloodPressureMmhg;
 @property(nonatomic, nullable, strong) NSNumber *diastolicBloodPressureMmhg;
-@property(nonatomic, nullable, strong) NSNumber *systolicBloodPressureConfidence;
-@property(nonatomic, nullable, strong) NSNumber *diastolicBloodPressureConfidence;
 @property(nonatomic, nullable, strong) NSNumber *cardiacWorkloadMmhgPerSec;
 @property(nonatomic, nullable, strong) NSNumber *ageYears;
 @property(nonatomic, nullable, strong) NSNumber *bmiKgPerM2;
 @property(nonatomic) BmiCategory bmiCategory;
 @property(nonatomic, nullable, strong) NSNumber *weightKg;
 @property(nonatomic, nullable, strong) NSNumber *heightCm;
+@property(nonatomic, nullable, strong) MeasurementQualityMetrics *qualityMetrics;
 @property(nonatomic, nonnull, strong) NSArray<Heartbeat *> *heartbeats;
 @property(nonatomic, assign) double averageSignalQuality;
+@end
+
+__attribute__((visibility("default")))
+@interface MeasurementQualityMetrics : NSObject
+@property(nonatomic, nullable, strong) NSNumber *ppgQualityIndex;
+@property(nonatomic, nullable, strong) NSNumber *bcgQualityIndex;
+@property(nonatomic, nullable, strong) NSNumber *bloodPressureQualityIndex;
+@property(nonatomic, nullable, strong) NSNumber *expectedSbpMedianAbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedSbpP80AbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedSbpMeanAbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedSbpBalancedMaeMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedDbpMedianAbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedDbpP80AbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedDbpMeanAbsErrorMmhg;
+@property(nonatomic, nullable, strong) NSNumber *expectedDbpBalancedMaeMmhg;
 @end
 
 __attribute__((visibility("default")))
@@ -267,9 +332,19 @@ __attribute__((visibility("default")))
 + (void)deinitialize;
 + (void)setOperatingMode:(OperatingMode)mode;
 + (OperatingMode)getOperatingMode;
++ (void)startMeasurement;
++ (void)stopMeasurement;
++ (void)resetMeasurementSession;
 + (CalibrationState)getCalibrationState;
 + (void)setPrecisionMode:(PrecisionMode)mode;
 + (PrecisionMode)getPrecisionMode;
++ (void)setApplyPrecisionModeToBloodPressure:(BOOL)apply;
++ (BOOL)getApplyPrecisionModeToBloodPressure;
++ (void)setBlockingMeasurementConditions:(nonnull NSArray<NSNumber *> *)conditions;
++ (nonnull NSArray<NSNumber *> *)getBlockingMeasurementConditions;
++ (void)setWarningMeasurementConditions:(nonnull NSArray<NSNumber *> *)conditions;
++ (nonnull NSArray<NSNumber *> *)getWarningMeasurementConditions;
++ (nullable NSNumber *)getCurrentViolatedMeasurementEnvironmentCondition;
 + (void)setMeasurementPreset:(MeasurementPreset)preset;
 + (MeasurementPreset)getMeasurementPreset;
 + (void)setBpCalibrationOffset:(double)systolicOffset diastolic:(double)diastolicOffset;
@@ -277,6 +352,12 @@ __attribute__((visibility("default")))
 + (double)getDbpCalibrationOffset;
 + (void)setCameraMode:(CameraMode)mode;
 + (CameraMode)getCameraMode;
++ (nullable NSNumber *)getLastCameraError;
++ (BOOL)handleNextFrame:(nonnull NSData *)i420Frame
+                  width:(NSInteger)width
+                 height:(NSInteger)height
+               metadata:(nullable FrameMetadata *)metadata;
++ (int64_t)getLastProcessedFrameId;
 + (void)setScreen:(Screen)screen;
 + (Screen)getScreen;
 
@@ -292,6 +373,8 @@ __attribute__((visibility("default")))
 + (BOOL)getShowFaceMask;
 + (void)setShowBloodFlow:(BOOL)show;
 + (BOOL)getShowBloodFlow;
++ (void)setIncludeTimestampInPdf:(BOOL)include;
++ (BOOL)getIncludeTimestampInPdf;
 + (void)setShowStartStopButton:(BOOL)show;
 + (BOOL)getShowStartStopButton;
 
@@ -307,6 +390,8 @@ __attribute__((visibility("default")))
 + (nullable NormalizedFaceBbox *)getNormalizedFaceBbox;
 
 + (MeasurementState)getMeasurementState;
++ (BOOL)isReadyToStartMeasurement;
++ (BOOL)areRequiredModelsDownloaded;
 
 + (float)getMeasurementProgressPercentage;
 

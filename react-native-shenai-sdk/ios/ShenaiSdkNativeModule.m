@@ -1,7 +1,27 @@
+#import <Foundation/Foundation.h>
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
 #import <ShenaiSDK/ShenaiHealthRisks.h>
 #import <ShenaiSDK/ShenaiSDK.h>
+
+static id ShenaiMeasurementQualityMetricsToDictionary(MeasurementQualityMetrics *metrics) {
+  if (metrics == nil) {
+    return (NSDictionary *)[NSNull null];
+  }
+  return @{
+    @"ppgQualityIndex" : metrics.ppgQualityIndex ?: [NSNull null],
+    @"bcgQualityIndex" : metrics.bcgQualityIndex ?: [NSNull null],
+    @"bloodPressureQualityIndex" : metrics.bloodPressureQualityIndex ?: [NSNull null],
+    @"expectedSbpMedianAbsErrorMmhg" : metrics.expectedSbpMedianAbsErrorMmhg ?: [NSNull null],
+    @"expectedSbpP80AbsErrorMmhg" : metrics.expectedSbpP80AbsErrorMmhg ?: [NSNull null],
+    @"expectedSbpMeanAbsErrorMmhg" : metrics.expectedSbpMeanAbsErrorMmhg ?: [NSNull null],
+    @"expectedSbpBalancedMaeMmhg" : metrics.expectedSbpBalancedMaeMmhg ?: [NSNull null],
+    @"expectedDbpMedianAbsErrorMmhg" : metrics.expectedDbpMedianAbsErrorMmhg ?: [NSNull null],
+    @"expectedDbpP80AbsErrorMmhg" : metrics.expectedDbpP80AbsErrorMmhg ?: [NSNull null],
+    @"expectedDbpMeanAbsErrorMmhg" : metrics.expectedDbpMeanAbsErrorMmhg ?: [NSNull null],
+    @"expectedDbpBalancedMaeMmhg" : metrics.expectedDbpBalancedMaeMmhg ?: [NSNull null],
+  };
+}
 
 @interface ShenaiSdkNativeModule : RCTEventEmitter <RCTBridgeModule>
 
@@ -60,6 +80,9 @@ RCT_EXPORT_METHOD(initialize
   if (settings[@"initializationMode"]) {
     initSettings.initializationMode = [settings[@"initializationMode"] integerValue];
   }
+  if (settings[@"offlineProcessing"]) {
+    initSettings.offlineProcessing = [settings[@"offlineProcessing"] boolValue];
+  }
   if (settings[@"showUserInterface"]) {
     initSettings.showUserInterface = [settings[@"showUserInterface"] boolValue];
   }
@@ -81,6 +104,9 @@ RCT_EXPORT_METHOD(initialize
   if (settings[@"hideShenaiLogo"]) {
     initSettings.hideShenaiLogo = [settings[@"hideShenaiLogo"] boolValue];
   }
+  if (settings[@"includeTimestampInPdf"]) {
+    initSettings.includeTimestampInPdf = [settings[@"includeTimestampInPdf"] boolValue];
+  }
   if (settings[@"enableStartAfterSuccess"]) {
     initSettings.enableStartAfterSuccess = [settings[@"enableStartAfterSuccess"] boolValue];
   }
@@ -94,8 +120,7 @@ RCT_EXPORT_METHOD(initialize
     initSettings.enableHealthRisks = [settings[@"enableHealthRisks"] boolValue];
   }
   if (settings[@"showHealthIndicesFinishButton"]) {
-    initSettings.showHealthIndicesFinishButton =
-        [settings[@"showHealthIndicesFinishButton"] boolValue];
+    initSettings.showHealthIndicesFinishButton = [settings[@"showHealthIndicesFinishButton"] boolValue];
   }
   if (settings[@"saveHealthRisksFactors"]) {
     initSettings.saveHealthRisksFactors = [settings[@"saveHealthRisksFactors"] boolValue];
@@ -121,8 +146,30 @@ RCT_EXPORT_METHOD(initialize
   if (settings[@"enableMeasurementsDashboard"]) {
     initSettings.enableMeasurementsDashboard = [settings[@"enableMeasurementsDashboard"] boolValue];
   }
+  if (settings[@"uiVersion"]) {
+    initSettings.uiVersion = (UiVersion)[settings[@"uiVersion"] integerValue];
+  }
   if (settings[@"showTrialMetricLabels"]) {
     initSettings.showTrialMetricLabels = [settings[@"showTrialMetricLabels"] boolValue];
+  }
+  if (settings[@"applyPrecisionModeToBloodPressure"]) {
+    initSettings.applyPrecisionModeToBloodPressure = [settings[@"applyPrecisionModeToBloodPressure"] boolValue];
+  }
+  if (settings[@"blockingMeasurementConditions"]) {
+    NSArray *conditions = settings[@"blockingMeasurementConditions"];
+    NSMutableArray<NSNumber *> *values = [NSMutableArray arrayWithCapacity:conditions.count];
+    for (NSNumber *condition in conditions) {
+      [values addObject:@(condition.integerValue)];
+    }
+    initSettings.blockingMeasurementConditions = values;
+  }
+  if (settings[@"warningMeasurementConditions"]) {
+    NSArray *conditions = settings[@"warningMeasurementConditions"];
+    NSMutableArray<NSNumber *> *values = [NSMutableArray arrayWithCapacity:conditions.count];
+    for (NSNumber *condition in conditions) {
+      [values addObject:@(condition.integerValue)];
+    }
+    initSettings.warningMeasurementConditions = values;
   }
   if (settings[@"uiFlowScreens"]) {
     NSArray *screens = settings[@"uiFlowScreens"];
@@ -131,6 +178,15 @@ RCT_EXPORT_METHOD(initialize
       [values addObject:@(screen.integerValue)];
     }
     initSettings.uiFlowScreens = values;
+  }
+  if (settings[@"frameWidth"]) {
+    initSettings.frameWidth = [settings[@"frameWidth"] intValue];
+  }
+  if (settings[@"frameHeight"]) {
+    initSettings.frameHeight = [settings[@"frameHeight"] intValue];
+  }
+  if (settings[@"rotation"]) {
+    initSettings.rotation = [settings[@"rotation"] intValue];
   }
   if (settings[@"risksFactors"]) {
     initSettings.risksFactors = [self risksFactorsFromDictionary:settings[@"risksFactors"]];
@@ -189,14 +245,13 @@ RCT_EXPORT_METHOD(getRealtimeMetrics
       @"breathingRateBpm" : results.breathingRateBpm ?: [NSNull null],
       @"systolicBloodPressureMmhg" : results.systolicBloodPressureMmhg ?: [NSNull null],
       @"diastolicBloodPressureMmhg" : results.diastolicBloodPressureMmhg ?: [NSNull null],
-      @"systolicBloodPressureConfidence" : results.systolicBloodPressureConfidence ?: [NSNull null],
-      @"diastolicBloodPressureConfidence" : results.diastolicBloodPressureConfidence ?: [NSNull null],
       @"cardiacWorkloadMmhgPerSec" : results.cardiacWorkloadMmhgPerSec ?: [NSNull null],
       @"ageYears" : results.ageYears ?: [NSNull null],
       @"bmiKgPerM2" : results.bmiKgPerM2 ?: [NSNull null],
       @"bmiCategory" : @(results.bmiCategory),
       @"weightKg" : results.weightKg ?: [NSNull null],
       @"heightCm" : results.heightCm ?: [NSNull null],
+      @"qualityMetrics" : ShenaiMeasurementQualityMetricsToDictionary(results.qualityMetrics),
       @"heartbeats" : heartbeatsArray,
       @"averageSignalQuality" : @(results.averageSignalQuality)
     };
@@ -279,6 +334,8 @@ RCT_EXPORT_METHOD(setCustomColorTheme
   colorTheme.textColor = theme[@"textColor"];
   colorTheme.backgroundColor = theme[@"backgroundColor"];
   colorTheme.tileColor = theme[@"tileColor"];
+  colorTheme.buttonMainColor = theme[@"buttonMainColor"];
+  colorTheme.buttonSecondaryColor = theme[@"buttonSecondaryColor"];
 
   // Apply the theme to your SDK
   [ShenaiSDK setCustomColorTheme:colorTheme];
@@ -307,14 +364,13 @@ RCT_EXPORT_METHOD(getMeasurementResults : (RCTPromiseResolveBlock)resolve reject
       @"breathingRateBpm" : results.breathingRateBpm ?: [NSNull null],
       @"systolicBloodPressureMmhg" : results.systolicBloodPressureMmhg ?: [NSNull null],
       @"diastolicBloodPressureMmhg" : results.diastolicBloodPressureMmhg ?: [NSNull null],
-      @"systolicBloodPressureConfidence" : results.systolicBloodPressureConfidence ?: [NSNull null],
-      @"diastolicBloodPressureConfidence" : results.diastolicBloodPressureConfidence ?: [NSNull null],
       @"cardiacWorkloadMmhgPerSec" : results.cardiacWorkloadMmhgPerSec ?: [NSNull null],
       @"ageYears" : results.ageYears ?: [NSNull null],
       @"bmiKgPerM2" : results.bmiKgPerM2 ?: [NSNull null],
       @"bmiCategory" : @(results.bmiCategory),
       @"weightKg" : results.weightKg ?: [NSNull null],
       @"heightCm" : results.heightCm ?: [NSNull null],
+      @"qualityMetrics" : ShenaiMeasurementQualityMetricsToDictionary(results.qualityMetrics),
       @"heartbeats" : heartbeatsArray,
       @"averageSignalQuality" : @(results.averageSignalQuality)
     };
@@ -355,14 +411,13 @@ RCT_EXPORT_METHOD(getMeasurementResultsHistory
       @"breathingRateBpm" : res.breathingRateBpm ?: [NSNull null],
       @"systolicBloodPressureMmhg" : res.systolicBloodPressureMmhg ?: [NSNull null],
       @"diastolicBloodPressureMmhg" : res.diastolicBloodPressureMmhg ?: [NSNull null],
-      @"systolicBloodPressureConfidence" : res.systolicBloodPressureConfidence ?: [NSNull null],
-      @"diastolicBloodPressureConfidence" : res.diastolicBloodPressureConfidence ?: [NSNull null],
       @"cardiacWorkloadMmhgPerSec" : res.cardiacWorkloadMmhgPerSec ?: [NSNull null],
       @"ageYears" : res.ageYears ?: [NSNull null],
       @"bmiKgPerM2" : res.bmiKgPerM2 ?: [NSNull null],
       @"bmiCategory" : @(res.bmiCategory),
       @"weightKg" : res.weightKg ?: [NSNull null],
       @"heightCm" : res.heightCm ?: [NSNull null],
+      @"qualityMetrics" : ShenaiMeasurementQualityMetricsToDictionary(res.qualityMetrics),
       @"heartbeats" : heartbeatsArray,
       @"averageSignalQuality" : @(res.averageSignalQuality)
     };
@@ -389,6 +444,12 @@ RCT_EXPORT_METHOD(deinitialize) { [ShenaiSDK deinitialize]; }
 
 RCT_EXPORT_METHOD(setOperatingMode : (NSInteger)mode) { [ShenaiSDK setOperatingMode:mode]; }
 
+RCT_EXPORT_METHOD(startMeasurement) { [ShenaiSDK startMeasurement]; }
+
+RCT_EXPORT_METHOD(stopMeasurement) { [ShenaiSDK stopMeasurement]; }
+
+RCT_EXPORT_METHOD(resetMeasurementSession) { [ShenaiSDK resetMeasurementSession]; }
+
 RCT_EXPORT_METHOD(getOperatingMode : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   OperatingMode mode = [ShenaiSDK getOperatingMode];
   resolve(@(mode));
@@ -406,6 +467,42 @@ RCT_EXPORT_METHOD(getPrecisionMode : (RCTPromiseResolveBlock)resolve rejecter : 
   resolve(@(mode));
 }
 
+RCT_EXPORT_METHOD(setApplyPrecisionModeToBloodPressure : (BOOL)apply) {
+  [ShenaiSDK setApplyPrecisionModeToBloodPressure:apply];
+}
+
+RCT_EXPORT_METHOD(getApplyPrecisionModeToBloodPressure
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve(@([ShenaiSDK getApplyPrecisionModeToBloodPressure]));
+}
+
+RCT_EXPORT_METHOD(setBlockingMeasurementConditions : (NSArray<NSNumber *> *)conditions) {
+  [ShenaiSDK setBlockingMeasurementConditions:conditions ?: @[]];
+}
+
+RCT_EXPORT_METHOD(getBlockingMeasurementConditions
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve([ShenaiSDK getBlockingMeasurementConditions]);
+}
+
+RCT_EXPORT_METHOD(setWarningMeasurementConditions : (NSArray<NSNumber *> *)conditions) {
+  [ShenaiSDK setWarningMeasurementConditions:conditions ?: @[]];
+}
+
+RCT_EXPORT_METHOD(getWarningMeasurementConditions
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve([ShenaiSDK getWarningMeasurementConditions]);
+}
+
+RCT_EXPORT_METHOD(getCurrentViolatedMeasurementEnvironmentCondition
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve([ShenaiSDK getCurrentViolatedMeasurementEnvironmentCondition]);
+}
+
 RCT_EXPORT_METHOD(setMeasurementPreset : (NSInteger)preset) { [ShenaiSDK setMeasurementPreset:preset]; }
 
 RCT_EXPORT_METHOD(getMeasurementPreset : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
@@ -418,6 +515,10 @@ RCT_EXPORT_METHOD(setCameraMode : (NSInteger)mode) { [ShenaiSDK setCameraMode:mo
 RCT_EXPORT_METHOD(getCameraMode : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   CameraMode mode = [ShenaiSDK getCameraMode];
   resolve(@(mode));
+}
+
+RCT_EXPORT_METHOD(getLastCameraError : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+  resolve([ShenaiSDK getLastCameraError]);
 }
 
 RCT_EXPORT_METHOD(setScreen : (NSInteger)screen) { [ShenaiSDK setScreen:screen]; }
@@ -477,6 +578,13 @@ RCT_EXPORT_METHOD(setShowBloodFlow : (BOOL)show) { [ShenaiSDK setShowBloodFlow:s
 RCT_EXPORT_METHOD(getShowBloodFlow : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   BOOL show = [ShenaiSDK getShowBloodFlow];
   resolve(@(show));
+}
+
+RCT_EXPORT_METHOD(setIncludeTimestampInPdf : (BOOL)include) { [ShenaiSDK setIncludeTimestampInPdf:include]; }
+
+RCT_EXPORT_METHOD(getIncludeTimestampInPdf : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+  BOOL include = [ShenaiSDK getIncludeTimestampInPdf];
+  resolve(@(include));
 }
 
 RCT_EXPORT_METHOD(setShowStartStopButton : (BOOL)show) { [ShenaiSDK setShowStartStopButton:show]; }
@@ -545,6 +653,18 @@ RCT_EXPORT_METHOD(getMeasurementState : (RCTPromiseResolveBlock)resolve rejecter
   resolve(@(measurementState));
 }
 
+RCT_EXPORT_METHOD(isReadyToStartMeasurement
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve(@([ShenaiSDK isReadyToStartMeasurement]));
+}
+
+RCT_EXPORT_METHOD(areRequiredModelsDownloaded
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  resolve(@([ShenaiSDK areRequiredModelsDownloaded]));
+}
+
 RCT_EXPORT_METHOD(getMeasurementProgressPercentage
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
@@ -573,6 +693,24 @@ RCT_EXPORT_METHOD(getHeartRate4s : (RCTPromiseResolveBlock)resolve rejecter : (R
 }
 
 // SDK Signals
+
+// The JS API exposes these methods on iOS as well. The underlying iOS SDK currently doesn't provide
+// a native HR time-series, so return an empty array instead of crashing with "undefined is not a function".
+RCT_EXPORT_METHOD(getHeartRateHistory10s
+                  : (nullable NSNumber *)maxTimeSec resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  (void)maxTimeSec;
+  resolve(@[]);
+}
+
+RCT_EXPORT_METHOD(getHeartRateHistory4s
+                  : (nullable NSNumber *)maxTimeSec resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  (void)maxTimeSec;
+  resolve(@[]);
+}
 
 RCT_EXPORT_METHOD(getRealtimeHeartbeats
                   : (nullable NSNumber *)periodSec resolver
@@ -621,25 +759,35 @@ RCT_EXPORT_METHOD(getCurrentSignalQualityMetric
 // SDK Visualizations
 
 RCT_EXPORT_METHOD(getSignalQualityMapPng : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
-  NSData *qualityMapPng = [ShenaiSDK getSignalQualityMapPng];
-  if (qualityMapPng) {
-    NSArray *bytesArray =
-        [NSArray arrayWithObjects:(const void *)[qualityMapPng bytes], (const void *)([qualityMapPng length]), nil];
-    resolve(bytesArray);
-  } else {
+  NSData *data = [ShenaiSDK getSignalQualityMapPng];
+  if (!data || data.length == 0) {
     resolve([NSNull null]);
+    return;
   }
+
+  const UInt8 *buffer = (const UInt8 *)data.bytes;
+  NSUInteger length = data.length;
+  NSMutableArray *array = [NSMutableArray arrayWithCapacity:length];
+  for (NSUInteger i = 0; i < length; i++) {
+    [array addObject:@(buffer[i])];
+  }
+  resolve(array);
 }
 
 RCT_EXPORT_METHOD(getFaceTexturePng : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
-  NSData *faceTexturePng = [ShenaiSDK getFaceTexturePng];
-  if (faceTexturePng) {
-    NSArray *bytesArray =
-        [NSArray arrayWithObjects:(const void *)[faceTexturePng bytes], (const void *)([faceTexturePng length]), nil];
-    resolve(bytesArray);
-  } else {
+  NSData *data = [ShenaiSDK getFaceTexturePng];
+  if (!data || data.length == 0) {
     resolve([NSNull null]);
+    return;
   }
+
+  const UInt8 *buffer = (const UInt8 *)data.bytes;
+  NSUInteger length = data.length;
+  NSMutableArray *array = [NSMutableArray arrayWithCapacity:length];
+  for (NSUInteger i = 0; i < length; i++) {
+    [array addObject:@(buffer[i])];
+  }
+  resolve(array);
 }
 
 RCT_EXPORT_METHOD(setLanguage : (NSString *)language) { [ShenaiSDK setLanguage:language]; }
@@ -825,8 +973,7 @@ RCT_EXPORT_METHOD(getHealthRisksFactors : (RCTPromiseResolveBlock)resolve reject
   resolve(resultsDict);
 }
 
-RCT_EXPORT_METHOD(clearHealthRisksFactors : (RCTPromiseResolveBlock)resolve
-                  rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(clearHealthRisksFactors : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   [ShenaiHealthRisks clearHealthRisksFactors];
   resolve(nil);
 }
@@ -951,13 +1098,13 @@ RCT_EXPORT_METHOD(sendResultFhirObservation
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   [ShenaiSDK sendResultFhirObservation:url
-                             completion:^(NSString *_Nullable response) {
-                               if (response && response.length > 0) {
-                                 resolve(response);
-                               } else {
-                                 resolve([NSNull null]);
-                               }
-                             }];
+                            completion:^(NSString *_Nullable response) {
+                              if (response && response.length > 0) {
+                                resolve(response);
+                              } else {
+                                resolve([NSNull null]);
+                              }
+                            }];
 }
 
 @end

@@ -20,6 +20,16 @@ export declare const enum PrecisionMode {
     STRICT = 0,
     RELAXED = 1
 }
+export declare const enum MeasurementEnvironmentCondition {
+    FACE_POSITION = 0,
+    FOREHEAD_VISIBLE = 1,
+    GLASSES_NOT_DETECTED = 2,
+    SUFFICIENT_LIGHT_LEVEL = 3,
+    EVEN_LIGHTING = 4,
+    NO_BACKLIGHT = 5,
+    FACE_STABLE = 6,
+    DEVICE_STABLE = 7
+}
 export declare const enum Screen {
     INITIALIZATION = 0,
     ONBOARDING = 1,
@@ -45,7 +55,8 @@ export declare const enum Metric {
     CARDIAC_WORKLOAD = 7,
     AGE = 8,
     BMI = 9,
-    BLOOD_PRESSURE = 10
+    BLOOD_PRESSURE = 10,
+    BLOOD_PRESSURE_SCALE = 11
 }
 export declare const enum BmiCategory {
     UNDERWEIGHT_SEVERE = 0,
@@ -90,12 +101,26 @@ export declare const enum MeasurementPreset {
 export declare const enum CameraMode {
     OFF = 0,
     FACING_USER = 1,
-    FACING_ENVIRONMENT = 2
+    FACING_ENVIRONMENT = 2,
+    CUSTOM_FRAMES = 3
+}
+export declare const enum CameraError {
+    UNKNOWN = 0,
+    UNSUPPORTED_MODE = 1,
+    NO_CAMERA_DEVICE = 2,
+    PERMISSION_NOT_GRANTED = 3,
+    INVALID_DEVICE_ID = 4,
+    DEVICE_UNAVAILABLE = 5
 }
 export declare const enum OnboardingMode {
     HIDDEN = 0,
     SHOW_ONCE = 1,
     SHOW_ALWAYS = 2
+}
+export declare const enum UiVersion {
+    V1 = 0,
+    V2 = 1,
+    V3 = 2
 }
 export declare const enum InitializationMode {
     MEASUREMENT = 0,
@@ -111,14 +136,15 @@ export interface InitializationSettings {
     cameraMode?: CameraMode;
     onboardingMode?: OnboardingMode;
     initializationMode?: InitializationMode;
+    offlineProcessing?: boolean;
     showUserInterface?: boolean;
     showFacePositioningOverlay?: boolean;
     showVisualWarnings?: boolean;
     enableCameraSwap?: boolean;
     showFaceMask?: boolean;
     showBloodFlow?: boolean;
-    proVersionLock?: boolean;
     hideShenaiLogo?: boolean;
+    includeTimestampInPdf?: boolean;
     enableStartAfterSuccess?: boolean;
     enableSummaryScreen?: boolean;
     showResultsFinishButton?: boolean;
@@ -127,13 +153,20 @@ export interface InitializationSettings {
     saveHealthRisksFactors?: boolean;
     showOutOfRangeResultIndicators?: boolean;
     showTrialMetricLabels?: boolean;
+    applyPrecisionModeToBloodPressure?: boolean;
+    blockingMeasurementConditions?: MeasurementEnvironmentCondition[];
+    warningMeasurementConditions?: MeasurementEnvironmentCondition[];
     showSignalQualityIndicator?: boolean;
     showSignalTile?: boolean;
     showStartStopButton?: boolean;
     showInfoButton?: boolean;
     showDisclaimer?: boolean;
     enableMeasurementsDashboard?: boolean;
+    uiVersion?: UiVersion;
     uiFlowScreens?: Screen[];
+    frameWidth?: number;
+    frameHeight?: number;
+    rotation?: number;
     risksFactors?: RisksFactors;
 }
 export interface CustomMeasurementConfig {
@@ -151,21 +184,36 @@ export interface CustomColorTheme {
     textColor: string;
     backgroundColor: string;
     tileColor: string;
+    buttonMainColor?: string;
+    buttonSecondaryColor?: string;
 }
 export declare function initialize(apiKey: string, userId?: string, settings?: InitializationSettings): Promise<InitializationResult>;
 export declare function isInitialized(): Promise<boolean>;
 export declare function deinitialize(): Promise<void>;
 export declare function setOperatingMode(operatingMode: OperatingMode): Promise<void>;
 export declare function getOperatingMode(): Promise<OperatingMode>;
+export declare function startMeasurement(): Promise<void>;
+export declare function stopMeasurement(): Promise<void>;
+export declare function resetMeasurementSession(): Promise<void>;
+export declare function isReadyToStartMeasurement(): Promise<boolean>;
+export declare function areRequiredModelsDownloaded(): Promise<boolean>;
 export declare function getCalibrationState(): Promise<CalibrationState>;
 export declare function setPrecisionMode(precisionMode: PrecisionMode): Promise<void>;
 export declare function getPrecisionMode(): Promise<PrecisionMode>;
+export declare function setApplyPrecisionModeToBloodPressure(apply: boolean): Promise<void>;
+export declare function getApplyPrecisionModeToBloodPressure(): Promise<boolean>;
+export declare function setBlockingMeasurementConditions(conditions: MeasurementEnvironmentCondition[]): Promise<void>;
+export declare function getBlockingMeasurementConditions(): Promise<MeasurementEnvironmentCondition[]>;
+export declare function setWarningMeasurementConditions(conditions: MeasurementEnvironmentCondition[]): Promise<void>;
+export declare function getWarningMeasurementConditions(): Promise<MeasurementEnvironmentCondition[]>;
+export declare function getCurrentViolatedMeasurementEnvironmentCondition(): Promise<MeasurementEnvironmentCondition | null>;
 export declare function setMeasurementPreset(measurementPreset: MeasurementPreset): Promise<void>;
 export declare function getMeasurementPreset(): Promise<MeasurementPreset>;
 export declare function setCustomMeasurementConfig(config: CustomMeasurementConfig): Promise<void>;
 export declare function setCustomColorTheme(theme: CustomColorTheme): Promise<void>;
 export declare function setCameraMode(cameraMode: CameraMode): Promise<void>;
 export declare function getCameraMode(): Promise<CameraMode>;
+export declare function getLastCameraError(): Promise<CameraError | null>;
 export declare function setScreen(screen: Screen): Promise<void>;
 export declare function getScreen(): Promise<Screen>;
 export declare function setShowUserInterface(showUserInterface: boolean): Promise<void>;
@@ -180,6 +228,8 @@ export declare function setShowFaceMask(showFaceMask: boolean): Promise<void>;
 export declare function getShowFaceMask(): Promise<boolean>;
 export declare function setShowBloodFlow(showBloodFlow: boolean): Promise<void>;
 export declare function getShowBloodFlow(): Promise<boolean>;
+export declare function setIncludeTimestampInPdf(include: boolean): Promise<void>;
+export declare function getIncludeTimestampInPdf(): Promise<boolean>;
 export declare function setShowStartStopButton(show: boolean): Promise<void>;
 export declare function getShowStartStopButton(): Promise<boolean>;
 export declare function setEnableMeasurementsDashboard(enable: boolean): Promise<void>;
@@ -212,8 +262,9 @@ export declare const enum MeasurementState {
     RUNNING_SIGNAL_GOOD = 3,// Measurement proceeding: Signal quality is good
     RUNNING_SIGNAL_BAD = 4,// Measurement stalled due to poor signal quality
     RUNNING_SIGNAL_BAD_DEVICE_UNSTABLE = 5,// Measurement stalled due to poor signal quality (because of unstable device)
-    FINISHED = 6,// Measurement has finished successfully
-    FAILED = 7
+    FINALIZING = 6,// Measurement capture has ended and final result computation is in progress
+    FINISHED = 7,// Measurement has finished successfully
+    FAILED = 8
 }
 export declare function getMeasurementState(): Promise<MeasurementState>;
 export declare function getMeasurementProgressPercentage(): Promise<number>;
@@ -231,6 +282,19 @@ export interface Heartbeat {
     endLocationSec: number;
     durationMs: number;
 }
+export interface MeasurementQualityMetrics {
+    ppgQualityIndex: number | null;
+    bcgQualityIndex: number | null;
+    bloodPressureQualityIndex: number | null;
+    expectedSbpMedianAbsErrorMmhg: number | null;
+    expectedSbpP80AbsErrorMmhg: number | null;
+    expectedSbpMeanAbsErrorMmhg: number | null;
+    expectedSbpBalancedMaeMmhg: number | null;
+    expectedDbpMedianAbsErrorMmhg: number | null;
+    expectedDbpP80AbsErrorMmhg: number | null;
+    expectedDbpMeanAbsErrorMmhg: number | null;
+    expectedDbpBalancedMaeMmhg: number | null;
+}
 export interface MeasurementResults {
     heartRateBpm: number;
     hrvSdnnMs: number | null;
@@ -240,14 +304,13 @@ export interface MeasurementResults {
     breathingRateBpm: number | null;
     systolicBloodPressureMmhg: number | null;
     diastolicBloodPressureMmhg: number | null;
-    systolicBloodPressureConfidence: number | null;
-    diastolicBloodPressureConfidence: number | null;
     cardiacWorkloadMmhgPerSec: number | null;
     ageYears: number | null;
     bmiKgPerM2: number | null;
     bmiCategory?: BmiCategory | null;
     weightKg: number | null;
     heightCm: number | null;
+    qualityMetrics: MeasurementQualityMetrics | null;
     heartbeats: Heartbeat[];
     averageSignalQuality: number;
 }
@@ -283,6 +346,13 @@ export declare const enum Gender {
     MALE = 0,
     FEMALE = 1,
     OTHER = 2
+}
+export declare const enum PhysicalActivity {
+    SEDENTARY = 0,
+    LIGHTLY_ACTIVE = 1,
+    MODERATELY = 2,
+    VERY_ACTIVE = 3,
+    EXTRA_ACTIVE = 4
 }
 export declare const enum Race {
     WHITE = 0,
@@ -364,6 +434,7 @@ export interface RisksFactors {
     neckCircumference?: number;
     hipCircumference?: number;
     gender?: Gender;
+    physicalActivity?: PhysicalActivity;
     country?: string;
     race?: Race;
     vegetableFruitDiet?: boolean;

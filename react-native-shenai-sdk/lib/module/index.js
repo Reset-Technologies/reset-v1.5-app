@@ -2,7 +2,16 @@ import { requireNativeComponent, UIManager, Platform, NativeModules } from "reac
 const {
   ShenaiSdkNativeModule
 } = NativeModules;
-const LINKING_ERROR = `The package 'react-native-shenai-sdk' doesn't seem to be linked. Make sure: \n\n` + Platform.select({
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_LOOKUP = (() => {
+  const lookup = new Int16Array(128);
+  lookup.fill(-1);
+  for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
+    lookup[BASE64_ALPHABET.charCodeAt(index)] = index;
+  }
+  return lookup;
+})();
+const LINKING_ERROR = `The package '@shenai/react-native-sdk' doesn't seem to be linked. Make sure: \n\n` + Platform.select({
   ios: "- You have run 'pod install'\n",
   default: ""
 }) + "- You rebuilt the app after installing the package\n" + "- You are not using Expo Go\n";
@@ -34,6 +43,17 @@ export let PrecisionMode = /*#__PURE__*/function (PrecisionMode) {
   PrecisionMode[PrecisionMode["RELAXED"] = 1] = "RELAXED";
   return PrecisionMode;
 }({});
+export let MeasurementEnvironmentCondition = /*#__PURE__*/function (MeasurementEnvironmentCondition) {
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["FACE_POSITION"] = 0] = "FACE_POSITION";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["FOREHEAD_VISIBLE"] = 1] = "FOREHEAD_VISIBLE";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["GLASSES_NOT_DETECTED"] = 2] = "GLASSES_NOT_DETECTED";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["SUFFICIENT_LIGHT_LEVEL"] = 3] = "SUFFICIENT_LIGHT_LEVEL";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["EVEN_LIGHTING"] = 4] = "EVEN_LIGHTING";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["NO_BACKLIGHT"] = 5] = "NO_BACKLIGHT";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["FACE_STABLE"] = 6] = "FACE_STABLE";
+  MeasurementEnvironmentCondition[MeasurementEnvironmentCondition["DEVICE_STABLE"] = 7] = "DEVICE_STABLE";
+  return MeasurementEnvironmentCondition;
+}({});
 export let Screen = /*#__PURE__*/function (Screen) {
   Screen[Screen["INITIALIZATION"] = 0] = "INITIALIZATION";
   Screen[Screen["ONBOARDING"] = 1] = "ONBOARDING";
@@ -61,6 +81,7 @@ export let Metric = /*#__PURE__*/function (Metric) {
   Metric[Metric["AGE"] = 8] = "AGE";
   Metric[Metric["BMI"] = 9] = "BMI";
   Metric[Metric["BLOOD_PRESSURE"] = 10] = "BLOOD_PRESSURE";
+  Metric[Metric["BLOOD_PRESSURE_SCALE"] = 11] = "BLOOD_PRESSURE_SCALE";
   return Metric;
 }({});
 export let BmiCategory = /*#__PURE__*/function (BmiCategory) {
@@ -110,13 +131,29 @@ export let CameraMode = /*#__PURE__*/function (CameraMode) {
   CameraMode[CameraMode["OFF"] = 0] = "OFF";
   CameraMode[CameraMode["FACING_USER"] = 1] = "FACING_USER";
   CameraMode[CameraMode["FACING_ENVIRONMENT"] = 2] = "FACING_ENVIRONMENT";
+  CameraMode[CameraMode["CUSTOM_FRAMES"] = 3] = "CUSTOM_FRAMES";
   return CameraMode;
+}({});
+export let CameraError = /*#__PURE__*/function (CameraError) {
+  CameraError[CameraError["UNKNOWN"] = 0] = "UNKNOWN";
+  CameraError[CameraError["UNSUPPORTED_MODE"] = 1] = "UNSUPPORTED_MODE";
+  CameraError[CameraError["NO_CAMERA_DEVICE"] = 2] = "NO_CAMERA_DEVICE";
+  CameraError[CameraError["PERMISSION_NOT_GRANTED"] = 3] = "PERMISSION_NOT_GRANTED";
+  CameraError[CameraError["INVALID_DEVICE_ID"] = 4] = "INVALID_DEVICE_ID";
+  CameraError[CameraError["DEVICE_UNAVAILABLE"] = 5] = "DEVICE_UNAVAILABLE";
+  return CameraError;
 }({});
 export let OnboardingMode = /*#__PURE__*/function (OnboardingMode) {
   OnboardingMode[OnboardingMode["HIDDEN"] = 0] = "HIDDEN";
   OnboardingMode[OnboardingMode["SHOW_ONCE"] = 1] = "SHOW_ONCE";
   OnboardingMode[OnboardingMode["SHOW_ALWAYS"] = 2] = "SHOW_ALWAYS";
   return OnboardingMode;
+}({});
+export let UiVersion = /*#__PURE__*/function (UiVersion) {
+  UiVersion[UiVersion["V1"] = 0] = "V1";
+  UiVersion[UiVersion["V2"] = 1] = "V2";
+  UiVersion[UiVersion["V3"] = 2] = "V3";
+  return UiVersion;
 }({});
 export let InitializationMode = /*#__PURE__*/function (InitializationMode) {
   InitializationMode[InitializationMode["MEASUREMENT"] = 0] = "MEASUREMENT";
@@ -150,6 +187,26 @@ export async function getOperatingMode() {
   ensureNativeModuleAvailable();
   return ShenaiSdkNativeModule.getOperatingMode();
 }
+export async function startMeasurement() {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.startMeasurement();
+}
+export async function stopMeasurement() {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.stopMeasurement();
+}
+export async function resetMeasurementSession() {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.resetMeasurementSession();
+}
+export async function isReadyToStartMeasurement() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.isReadyToStartMeasurement();
+}
+export async function areRequiredModelsDownloaded() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.areRequiredModelsDownloaded();
+}
 export async function getCalibrationState() {
   ensureNativeModuleAvailable();
   return ShenaiSdkNativeModule.getCalibrationState();
@@ -161,6 +218,34 @@ export async function setPrecisionMode(precisionMode) {
 export async function getPrecisionMode() {
   ensureNativeModuleAvailable();
   return ShenaiSdkNativeModule.getPrecisionMode();
+}
+export async function setApplyPrecisionModeToBloodPressure(apply) {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.setApplyPrecisionModeToBloodPressure(apply);
+}
+export async function getApplyPrecisionModeToBloodPressure() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getApplyPrecisionModeToBloodPressure();
+}
+export async function setBlockingMeasurementConditions(conditions) {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.setBlockingMeasurementConditions(conditions);
+}
+export async function getBlockingMeasurementConditions() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getBlockingMeasurementConditions();
+}
+export async function setWarningMeasurementConditions(conditions) {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.setWarningMeasurementConditions(conditions);
+}
+export async function getWarningMeasurementConditions() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getWarningMeasurementConditions();
+}
+export async function getCurrentViolatedMeasurementEnvironmentCondition() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getCurrentViolatedMeasurementEnvironmentCondition();
 }
 export async function setMeasurementPreset(measurementPreset) {
   ensureNativeModuleAvailable();
@@ -185,6 +270,10 @@ export async function setCameraMode(cameraMode) {
 export async function getCameraMode() {
   ensureNativeModuleAvailable();
   return ShenaiSdkNativeModule.getCameraMode();
+}
+export async function getLastCameraError() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getLastCameraError();
 }
 export async function setScreen(screen) {
   ensureNativeModuleAvailable();
@@ -244,6 +333,14 @@ export async function setShowBloodFlow(showBloodFlow) {
 export async function getShowBloodFlow() {
   ensureNativeModuleAvailable();
   return ShenaiSdkNativeModule.getShowBloodFlow();
+}
+export async function setIncludeTimestampInPdf(include) {
+  ensureNativeModuleAvailable();
+  await ShenaiSdkNativeModule.setIncludeTimestampInPdf(include);
+}
+export async function getIncludeTimestampInPdf() {
+  ensureNativeModuleAvailable();
+  return ShenaiSdkNativeModule.getIncludeTimestampInPdf();
 }
 export async function setShowStartStopButton(show) {
   ensureNativeModuleAvailable();
@@ -317,9 +414,11 @@ export let MeasurementState = /*#__PURE__*/function (MeasurementState) {
   // Measurement stalled due to poor signal quality
   MeasurementState[MeasurementState["RUNNING_SIGNAL_BAD_DEVICE_UNSTABLE"] = 5] = "RUNNING_SIGNAL_BAD_DEVICE_UNSTABLE";
   // Measurement stalled due to poor signal quality (because of unstable device)
-  MeasurementState[MeasurementState["FINISHED"] = 6] = "FINISHED";
+  MeasurementState[MeasurementState["FINALIZING"] = 6] = "FINALIZING";
+  // Measurement capture has ended and final result computation is in progress
+  MeasurementState[MeasurementState["FINISHED"] = 7] = "FINISHED";
   // Measurement has finished successfully
-  MeasurementState[MeasurementState["FAILED"] = 7] = "FAILED"; // Measurement has failed
+  MeasurementState[MeasurementState["FAILED"] = 8] = "FAILED"; // Measurement has failed
   return MeasurementState;
 }({});
 export async function getMeasurementState() {
@@ -438,6 +537,14 @@ export let Gender = /*#__PURE__*/function (Gender) {
   Gender[Gender["OTHER"] = 2] = "OTHER";
   return Gender;
 }({});
+export let PhysicalActivity = /*#__PURE__*/function (PhysicalActivity) {
+  PhysicalActivity[PhysicalActivity["SEDENTARY"] = 0] = "SEDENTARY";
+  PhysicalActivity[PhysicalActivity["LIGHTLY_ACTIVE"] = 1] = "LIGHTLY_ACTIVE";
+  PhysicalActivity[PhysicalActivity["MODERATELY"] = 2] = "MODERATELY";
+  PhysicalActivity[PhysicalActivity["VERY_ACTIVE"] = 3] = "VERY_ACTIVE";
+  PhysicalActivity[PhysicalActivity["EXTRA_ACTIVE"] = 4] = "EXTRA_ACTIVE";
+  return PhysicalActivity;
+}({});
 export let Race = /*#__PURE__*/function (Race) {
   Race[Race["WHITE"] = 0] = "WHITE";
   Race[Race["AFRICAN_AMERICAN"] = 1] = "AFRICAN_AMERICAN";
@@ -516,9 +623,45 @@ export async function requestMeasurementResultsPdfBytes() {
   ensureNativeModuleAvailable();
   await ShenaiSdkNativeModule.requestMeasurementResultsPdfBytes();
 }
+function decodeBase64ToUint8Array(base64) {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const outputLength = Math.floor(base64.length * 3 / 4) - padding;
+  const bytes = new Uint8Array(outputLength);
+  let buffer = 0;
+  let bitsCollected = 0;
+  let outputIndex = 0;
+  for (let index = 0; index < base64.length; index += 1) {
+    const charCode = base64.charCodeAt(index);
+    if (charCode === 61) {
+      break;
+    }
+    if (charCode >= BASE64_LOOKUP.length) {
+      continue;
+    }
+    const value = BASE64_LOOKUP[charCode];
+    if (value === undefined || value < 0) {
+      continue;
+    }
+    buffer = buffer << 6 | value;
+    bitsCollected += 6;
+    if (bitsCollected < 8) {
+      continue;
+    }
+    bitsCollected -= 8;
+    bytes[outputIndex] = buffer >> bitsCollected & 0xff;
+    outputIndex += 1;
+  }
+  return bytes;
+}
 export async function getMeasurementResultsPdfBytes() {
   ensureNativeModuleAvailable();
-  return ShenaiSdkNativeModule.getMeasurementResultsPdfBytes();
+  const response = await ShenaiSdkNativeModule.getMeasurementResultsPdfBytes();
+  if (typeof response === "string" && response.length > 0) {
+    return Array.from(decodeBase64ToUint8Array(response));
+  }
+  if (Array.isArray(response)) {
+    return response;
+  }
+  return null;
 }
 export * from "./hooks";
-//# sourceMappingURL=index.js.map

@@ -72,7 +72,7 @@ function SpaIcon() {
   );
 }
 
-const FEATURES: { Icon: () => JSX.Element; label: string }[] = [
+const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
   { Icon: HeartRateIcon, label: "Heart Rate" },
   { Icon: VascularAgeIcon, label: "Vascular Age" },
   { Icon: StressIcon, label: "Stress Index" },

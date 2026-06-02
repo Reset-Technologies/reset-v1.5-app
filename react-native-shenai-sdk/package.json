@@ -1,6 +1,6 @@
 {
   "name": "react-native-shenai-sdk",
-  "version": "2.11.6",
+  "version": "3.1.0",
   "private": true,
   "description": "Shen.AI SDK by MX Labs for React Native.",
   "main": "lib/module/index.js",
@@ -8,6 +8,7 @@
   "files": [
     "src",
     "lib",
+    "!lib/**/*.map",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -52,7 +53,12 @@
     "source": "src",
     "output": "lib",
     "targets": [
-      "module",
+      [
+        "module",
+        {
+          "sourceMaps": false
+        }
+      ],
       "typescript"
     ]
   },

@@ -8,7 +8,7 @@ import {
   getMeasurementResults,
   getMeasurementProgressPercentage,
   getRealtimeHeartbeats,
-} from "react-native-shenai-sdk";
+} from "./index";
 
 /**
  * Type utility to unwrap the type from a Promise.
@@ -26,10 +26,10 @@ type UnwrappedPromise<T> = T extends Promise<infer U> ? U : T;
  */
 const useSDKPolling = <T extends (...args: any[]) => Promise<any>>(
   fetchFunction: T,
-  intervalDuration: number
+  intervalDuration: number,
 ): UnwrappedPromise<ReturnType<T>> | null => {
   const [data, setData] = useState<UnwrappedPromise<ReturnType<T>> | null>(
-    null
+    null,
   );
 
   useEffect(() => {
@@ -75,7 +75,10 @@ export const useRealtimeHeartRate4s = () => useSDKPolling(getHeartRate4s, 1000);
  * @returns The latest realtime metrics or null if uninitialized/error/bad signal.
  */
 export const useRealtimeMetrics = (period_sec: number) => {
-  const callback = useCallback(() => getRealtimeMetrics(period_sec), [period_sec]);
+  const callback = useCallback(
+    () => getRealtimeMetrics(period_sec),
+    [period_sec],
+  );
   return useSDKPolling(callback, 1000);
 };
 

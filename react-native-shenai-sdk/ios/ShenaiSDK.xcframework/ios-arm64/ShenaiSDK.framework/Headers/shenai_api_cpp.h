@@ -1,15 +1,22 @@
 #pragma once
 
 #include <any>
+#include <array>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bmi.h"
 #include "health_risks.h"
 
 #define SHEN_PUBLIC_API __attribute__((visibility("default"))) __attribute__((used))
+
+namespace cv {
+class Mat;
+}
 
 /**
  * This is a minimal C++ API surface for Shen AI SDK.
@@ -22,6 +29,38 @@ namespace shen {
  * The precision mode of the SDK.
  */
 enum class PrecisionMode { Strict = 0, Relaxed };
+
+/**
+ * Environment-related conditions used for pre-measurement checks.
+ */
+enum class MeasurementEnvironmentCondition {
+  FacePosition = 0,
+  ForeheadVisible,
+  GlassesNotDetected,
+  SufficientLightLevel,
+  EvenLighting,
+  NoBacklight,
+  FaceStable,
+  DeviceStable
+};
+inline constexpr size_t kMeasurementEnvironmentConditionCount = 8;
+
+inline constexpr std::array kDefaultBlockingMeasurementEnvironmentConditions{
+    MeasurementEnvironmentCondition::FacePosition};
+inline constexpr std::array kDefaultWarningMeasurementEnvironmentConditions{
+    MeasurementEnvironmentCondition::ForeheadVisible, MeasurementEnvironmentCondition::SufficientLightLevel,
+    MeasurementEnvironmentCondition::EvenLighting,    MeasurementEnvironmentCondition::NoBacklight,
+    MeasurementEnvironmentCondition::FaceStable,      MeasurementEnvironmentCondition::DeviceStable};
+
+inline std::vector<MeasurementEnvironmentCondition> defaultBlockingMeasurementConditions() {
+  return {kDefaultBlockingMeasurementEnvironmentConditions.begin(),
+          kDefaultBlockingMeasurementEnvironmentConditions.end()};
+}
+
+inline std::vector<MeasurementEnvironmentCondition> defaultWarningMeasurementConditions() {
+  return {kDefaultWarningMeasurementEnvironmentConditions.begin(),
+          kDefaultWarningMeasurementEnvironmentConditions.end()};
+}
 
 /**
  * The current screen displayed by the SDK.
@@ -62,7 +101,8 @@ enum class Metric {
   CardiacWorkload,
   Age,
   Bmi,
-  BloodPressure
+  BloodPressure,
+  BloodPressureScale
 };
 
 /**
@@ -146,17 +186,60 @@ struct custom_color_theme {
   std::string text_color;
   std::string background_color;
   std::string tile_color;
+  std::string button_main_color;
+  std::string button_secondary_color;
 };
 
 /**
  * Camera modes for the SDK.
  */
-enum class CameraMode { Off = 0, FacingUser, FacingEnvironment, DeviceId, MediaStream };
+enum class CameraMode {
+  Off = 0,
+  FacingUser = 1,
+  FacingEnvironment = 2,
+  DeviceId = 3,
+#ifdef __EMSCRIPTEN__
+  MediaStream = 4,
+#else
+  CustomFrames = 5,
+#endif
+};
+
+/**
+ * Camera startup error exposed by the SDK.
+ */
+enum class CameraError {
+  Unknown = 0,
+  UnsupportedMode = 1,
+  NoCameraDevice = 2,
+  PermissionNotGranted = 3,
+  InvalidDeviceId = 4,
+  DeviceUnavailable = 5,
+};
+
+#ifndef __EMSCRIPTEN__
+/**
+ * Metadata attached to frames submitted in CustomFrames mode.
+ */
+struct frame_metadata {
+  // Optional input. When provided, this should be a monotonic capture timestamp in microseconds.
+  // If set to a negative value, the SDK synthesizes a monotonic submission-time timestamp internally.
+  int64_t timestampUs{-1};
+  bool cameraFacingUser{true};
+  std::optional<int> cameraDeviceId;
+  std::optional<double> cameraFieldOfViewYDegrees;
+};
+#endif
 
 /**
  * User onboarding mode
  */
 enum class OnboardingMode { Hidden = 0, ShowOnce, ShowAlways };
+
+/**
+ * UI version for SDK screens.
+ */
+enum class UiVersion { V1 = 0, V2, V3 };
 
 /**
  * Events that can be sent to the event callback.
@@ -187,8 +270,8 @@ struct initialization_settings {
   bool enableCameraSwap{true};
   bool showFaceMask{true};
   bool showBloodFlow{true};
-  bool proVersionLock{false};
   bool hideShenaiLogo{true};
+  bool includeTimestampInPdf{true};
   bool enableStartAfterSuccess{true};
   bool enableSummaryScreen{true};
   bool showResultsFinishButton{true};
@@ -197,6 +280,8 @@ struct initialization_settings {
   bool saveHealthRisksFactors{true};
   bool showOutOfRangeResultIndicators{true};
   bool showTrialMetricLabels{false};
+  bool showExpectedErrors{false};
+  bool applyPrecisionModeToBloodPressure{false};
   bool enableFullFrameProcessing{false};
   bool showSignalQualityIndicator{true};
   bool showSignalTile{true};
@@ -204,12 +289,19 @@ struct initialization_settings {
   bool showInfoButton{true};
   bool showDisclaimer{false};
   bool enableMeasurementsDashboard{true};
+  UiVersion uiVersion{UiVersion::V2};
+  std::vector<MeasurementEnvironmentCondition> blockingMeasurementConditions = defaultBlockingMeasurementConditions();
+  std::vector<MeasurementEnvironmentCondition> warningMeasurementConditions = defaultWarningMeasurementConditions();
 
   std::vector<shen::Screen> uiFlowScreens;
+
+  std::optional<int> rotation;                   // degrees
+  std::optional<std::pair<int, int>> frameSize;  // (width, height)
 
   std::string language{"auto"};
   std::optional<custom_measurement_config> customMeasurementConfig;
   std::optional<custom_color_theme> customColorTheme;
+  std::optional<std::string> pdfLogoId;
   std::optional<mx::health_risks::RisksFactors> risksFactors;
 
   std::function<void(Event)> eventCallback;
@@ -271,6 +363,13 @@ SHEN_PUBLIC_API std::string GetSDKConfigString();
 SHEN_PUBLIC_API void ApplySDKConfig(std::string config_json);
 
 /**
+ * Sets the content-addressable logo id used by generated PDFs. Pass an empty string to clear it.
+ */
+SHEN_PUBLIC_API void SetPdfLogoId(std::string logo_id);
+SHEN_PUBLIC_API void SetIncludeTimestampInPdf(bool include);
+SHEN_PUBLIC_API bool GetIncludeTimestampInPdf();
+
+/**
  * Sets the operational mode of the SDK.
  * @param mode The operational mode to set.
  */
@@ -281,6 +380,34 @@ SHEN_PUBLIC_API void SetOperatingMode(OperatingMode mode);
  * @return The operational mode of the SDK.
  */
 SHEN_PUBLIC_API OperatingMode GetOperatingMode();
+
+/**
+ * Starts measurement using the same flow as clicking the START button in the SDK UI.
+ */
+SHEN_PUBLIC_API void StartMeasurement();
+
+/**
+ * Stops measurement using the same flow as clicking the STOP button in the SDK UI.
+ */
+SHEN_PUBLIC_API void StopMeasurement();
+
+/**
+ * Resets the current measurement session state.
+ * Stops active measurement mode and clears the previous result so the flow starts from "Start" again.
+ */
+SHEN_PUBLIC_API void ResetMeasurementSession();
+
+/**
+ * Returns whether measurement is ready to be started now.
+ * This matches SDK pre-start readiness checks (positioning conditions + required start models availability).
+ */
+SHEN_PUBLIC_API bool IsReadyToStartMeasurement();
+
+/**
+ * Returns whether all models required to begin a measurement have finished downloading.
+ * Unlike IsReadyToStartMeasurement(), this does not depend on camera or face-positioning readiness.
+ */
+SHEN_PUBLIC_API bool AreRequiredModelsDownloaded();
 
 /**
  * Sets the view mode of the SDK.
@@ -306,8 +433,24 @@ SHEN_PUBLIC_API void SetPrecisionMode(PrecisionMode mode);
  */
 SHEN_PUBLIC_API PrecisionMode GetPrecisionMode();
 
+SHEN_PUBLIC_API void SetApplyPrecisionModeToBloodPressure(bool apply);
+SHEN_PUBLIC_API bool GetApplyPrecisionModeToBloodPressure();
+SHEN_PUBLIC_API void SetBlockingMeasurementConditions(std::vector<MeasurementEnvironmentCondition> conditions);
+SHEN_PUBLIC_API std::vector<MeasurementEnvironmentCondition> GetBlockingMeasurementConditions();
+SHEN_PUBLIC_API void SetWarningMeasurementConditions(std::vector<MeasurementEnvironmentCondition> conditions);
+SHEN_PUBLIC_API std::vector<MeasurementEnvironmentCondition> GetWarningMeasurementConditions();
+/**
+ * Returns the highest-priority violated measurement environment condition among currently enabled
+ * blocking/warning conditions.
+ * Returns std::nullopt when all enabled conditions are currently satisfied.
+ */
+SHEN_PUBLIC_API std::optional<MeasurementEnvironmentCondition> GetCurrentViolatedMeasurementEnvironmentCondition();
+
 /**
  * Sets the measurement preset of the SDK.
+ * Preset is treated as a live control in playground-style flows, so changing it can affect an in-progress session
+ * immediately. Production SDK integrations are expected to set the preset before measurement start and not mutate it
+ * during recording.
  * @param preset The measurement preset to set.
  */
 SHEN_PUBLIC_API void SetMeasurementPreset(MeasurementPreset preset);
@@ -341,15 +484,25 @@ SHEN_PUBLIC_API MeasurementPreset GetMeasurementPreset();
 
 /**
  * Sets the camera mode of the SDK.
+ * Re-applying `CameraMode::CustomFrames` starts a new logical external-frame session so the SDK can treat a
+ * restarted host camera pipeline as a fresh feed.
  * @param mode The camera mode to set.
  */
 SHEN_PUBLIC_API void SetCameraMode(CameraMode mode);
 
 /**
  * Gets the camera mode of the SDK.
+ * Returns the currently requested camera mode even if camera startup failed.
+ * Use GetLastCameraError() to distinguish an active camera from a failed startup.
  * @return The camera mode of the SDK.
  */
 SHEN_PUBLIC_API CameraMode GetCameraMode();
+
+/**
+ * Gets the latest camera startup error of the SDK, if any.
+ * @return The latest camera startup error, or std::nullopt when camera startup is healthy or the camera is off.
+ */
+SHEN_PUBLIC_API std::optional<CameraError> GetLastCameraError();
 
 /**
  *  Selects the camera by ID (and changes to DeviceID mode if needed)
@@ -359,6 +512,19 @@ SHEN_PUBLIC_API CameraMode GetCameraMode();
  */
 SHEN_PUBLIC_API void SelectCameraByDeviceId(std::string device_id, std::optional<bool> facing_user = std::nullopt);
 
+#ifndef __EMSCRIPTEN__
+/**
+ * Submits the next BGR frame to the SDK when camera mode is set to CustomFrames.
+ * The frame must already be in the intended processed orientation and size.
+ * `metadata.timestampUs` should be a monotonic capture timestamp in microseconds when available.
+ * If `metadata.timestampUs < 0`, the SDK synthesizes monotonic timestamps from frame submission time.
+ * For best accuracy, submit frames in capture order using source timestamps when available and prefer a stable
+ * sampling rate of at least 30 FPS.
+ * Returns `true` if the frame was accepted for processing, or `false` if the SDK is not initialized,
+ * not in CustomFrames mode, or the frame is empty.
+ */
+SHEN_PUBLIC_API bool HandleNextFrame(const cv::Mat& frame_bgr, frame_metadata metadata = {});
+#else
 /**
  *  Sets custom media stream as camera input (and changes to MediaStream mode if needed)
  *  and optionally specifies whether the camera is facing the user
@@ -366,6 +532,7 @@ SHEN_PUBLIC_API void SelectCameraByDeviceId(std::string device_id, std::optional
  * @param facing_user Whether the camera is facing the user.
  */
 SHEN_PUBLIC_API void SetMediaStream(std::any stream, std::optional<bool> facing_user = std::nullopt);
+#endif
 
 /**
  * Sets the custom color theme of the SDK.
@@ -470,6 +637,8 @@ SHEN_PUBLIC_API void SetShowOutOfRangeResultIndicators(bool show);
 SHEN_PUBLIC_API bool GetShowOutOfRangeResultIndicators();
 SHEN_PUBLIC_API void SetShowTrialMetricLabels(bool show);
 SHEN_PUBLIC_API bool GetShowTrialMetricLabels();
+SHEN_PUBLIC_API void SetShowExpectedErrors(bool show);
+SHEN_PUBLIC_API bool GetShowExpectedErrors();
 SHEN_PUBLIC_API void SetShowSignalTile(bool show);
 SHEN_PUBLIC_API bool GetShowSignalTile();
 SHEN_PUBLIC_API void SetShowSignalQualityIndicator(bool show);
@@ -481,6 +650,8 @@ SHEN_PUBLIC_API bool GetShowInfoButton();
 SHEN_PUBLIC_API bool GetShowDisclaimer();
 SHEN_PUBLIC_API void SetEnableMeasurementsDashboard(bool enable);
 SHEN_PUBLIC_API bool GetEnableMeasurementsDashboard();
+SHEN_PUBLIC_API void SetUiVersion(UiVersion version);
+SHEN_PUBLIC_API UiVersion GetUiVersion();
 SHEN_PUBLIC_API void SetUiFlowScreens(std::vector<shen::Screen> screens);
 SHEN_PUBLIC_API std::vector<shen::Screen> GetUiFlowScreens();
 
@@ -515,6 +686,7 @@ enum class MeasurementState {
   RunningSignalGood,               // Measurement proceeding: Signal quality is good
   RunningSignalBad,                // Measurement stalled due to poor signal quality
   RunningSignalBadDeviceUnstable,  // Measurement stalled due to poor signal quality (because of unstable device)
+  Finalizing,                      // Measurement capture has ended and final result computation is in progress
   Finished,                        // Measurement has finished successfully
   Failed,                          // Measurement has failed
 };
@@ -568,6 +740,20 @@ struct heartbeat {
   double duration_ms;         // heartbeat duration, rounded to 1 ms
 };
 
+struct measurement_quality_metrics {
+  std::optional<double> ppg_quality_index;                   // PPG quality index [0,1]
+  std::optional<double> bcg_quality_index;                   // BCG quality index [0,1]
+  std::optional<double> blood_pressure_quality_index;        // Blood pressure quality index [0,1]
+  std::optional<double> expected_sbp_median_abs_error_mmHg;  // Expected SBP median absolute error
+  std::optional<double> expected_sbp_p80_abs_error_mmHg;     // Expected SBP 80th percentile absolute error
+  std::optional<double> expected_sbp_mean_abs_error_mmHg;    // Expected SBP mean absolute error
+  std::optional<double> expected_sbp_balanced_mae_mmHg;      // Expected SBP balanced MAE
+  std::optional<double> expected_dbp_median_abs_error_mmHg;  // Expected DBP median absolute error
+  std::optional<double> expected_dbp_p80_abs_error_mmHg;     // Expected DBP 80th percentile absolute error
+  std::optional<double> expected_dbp_mean_abs_error_mmHg;    // Expected DBP mean absolute error
+  std::optional<double> expected_dbp_balanced_mae_mmHg;      // Expected DBP balanced MAE
+};
+
 struct measurement_results {
   double heart_rate_bpm;                                // Heart rate, rounded to 1 BPM
   std::optional<double> hrv_sdnn_ms;                    // Heart rate variability, SDNN metric, rounded to 1 ms
@@ -577,16 +763,15 @@ struct measurement_results {
   std::optional<double> breathing_rate_bpm;             // Breathing rate, rounded to 1 BPM
   std::optional<double> systolic_blood_pressure_mmhg;   // Systolic blood pressure, rounded to 1 mmHg
   std::optional<double> diastolic_blood_pressure_mmhg;  // Diastolic blood pressure, rounded to 1 mmHg
-  std::optional<double> systolic_blood_pressure_confidence;   // Confidence of systolic BP prediction [0,1]
-  std::optional<double> diastolic_blood_pressure_confidence;  // Confidence of diastolic BP prediction [0,1]
   std::optional<double> cardiac_workload_mmhg_per_sec;  // Cardiac workload, rounded to 1 mmHg/s
   std::optional<double> age_years;                      // Age, rounded to 1 year
   std::optional<double> bmi_kg_per_m2;                  // BMI, rounded to 0.01 kg/m^2
   std::optional<mx::BmiCategory> bmi_category;          // BMI category
   std::optional<double> weight_kg;                      // Weight, rounded to 1 kg
   std::optional<double> height_cm;                      // Height, rounded to 1 cm
-  std::vector<heartbeat> heartbeats;                    // Heartbeat locations
-  double average_signal_quality;                        // Average signal quality metric value
+  std::optional<measurement_quality_metrics> quality_metrics;  // Measurement quality/error metrics
+  std::vector<heartbeat> heartbeats;                           // Heartbeat locations
+  double average_signal_quality;  // Displayed signal quality metric [0,1], matching live quality
 };
 
 struct measurement_results_with_metadata {
@@ -696,6 +881,8 @@ SHEN_PUBLIC_API void SetRecordingEnabled(bool enabled);
  */
 SHEN_PUBLIC_API bool GetRecordingEnabled();
 
+SHEN_PUBLIC_API void SetExternalExerciseTargetBreathingRate(std::optional<double> breathing_rate_bpm);
+
 /**
  * Gets the total number of seconds of bad signal since tracking started.
  * @return The total number of seconds of bad signal since tracking started.
@@ -705,6 +892,7 @@ SHEN_PUBLIC_API float GetTotalBadSignalSeconds();
 /**
  * Gets the current value of the signal quality metric.
  * Higher values indicate better signal quality.
+ * The returned metric follows the same logic as the on-screen stars.
  */
 SHEN_PUBLIC_API float GetCurrentSignalQualityMetric();
 
@@ -768,6 +956,13 @@ SHEN_PUBLIC_API std::string GetSelectedLanguage();
  * @note Will return an empty string if the SDK hasn't been initialized yet
  */
 SHEN_PUBLIC_API std::string GetPricingPlan();
+
+/**
+ * Gets whether this is the General Wellness SDK.
+ * @return True if the active license is for the General Wellness SDK.
+ * @note Will return false if the SDK hasn't been initialized yet
+ */
+SHEN_PUBLIC_API bool IsGeneralWellnessSdk();
 
 /**
  * Gets the current color theme of the SDK.

@@ -12,26 +12,25 @@ import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import android.app.Activity;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import android.util.Log;
+import android.util.Base64;
 import java.util.Optional;
 import java.util.List;
 import java.util.ArrayList;
 
 public class ShenaiSdkModule extends ReactContextBaseJavaModule {
+    private static final ShenAIAndroidSDK shenai_sdk = new ShenAIAndroidSDK();
 
-    private final ReactApplicationContext reactContext;
-
-    private ShenAIAndroidSDK shenai_sdk = new ShenAIAndroidSDK();
+    public static ShenAIAndroidSDK getSdkInstance() {
+        return shenai_sdk;
+    }
 
     ShenaiSdkModule(ReactApplicationContext context) {
         super(context);
-        this.reactContext = context;
     }
 
     @NonNull
@@ -45,6 +44,24 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void removeListeners(Integer count) {}
+
+    private void emitShenaiEvent(String jsEvent) {
+        final ReactApplicationContext reactContext = getReactApplicationContext();
+        if (!reactContext.hasActiveCatalystInstance()) {
+            return;
+        }
+
+        reactContext.runOnJSQueueThread(() -> {
+            if (!reactContext.hasActiveCatalystInstance()) {
+                return;
+            }
+            WritableMap params = Arguments.createMap();
+            params.putString("EventName", jsEvent);
+            reactContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("ShenAIEvent", params);
+        });
+    }
 
     @ReactMethod
     public void initialize(String apiKey, String userId, ReadableMap settings, Promise promise) {
@@ -78,6 +95,9 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             if (settings.hasKey("initializationMode")) {
                 shenaiSettings.initializationMode = ShenAIAndroidSDK.InitializationMode.values()[settings.getInt("initializationMode")];
             }
+            if (settings.hasKey("offlineProcessing")) {
+                shenaiSettings.offlineProcessing = settings.getBoolean("offlineProcessing");
+            }
             if (settings.hasKey("showFacePositioningOverlay")) {
                 shenaiSettings.showFacePositioningOverlay = settings.getBoolean("showFacePositioningOverlay");
             }
@@ -93,11 +113,11 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             if (settings.hasKey("showBloodFlow")) {
                 shenaiSettings.showBloodFlow = settings.getBoolean("showBloodFlow");
             }
-            if (settings.hasKey("proVersionLock")) {
-                shenaiSettings.proVersionLock = settings.getBoolean("proVersionLock");
-            }
             if (settings.hasKey("hideShenaiLogo")) {
                 shenaiSettings.hideShenaiLogo = settings.getBoolean("hideShenaiLogo");
+            }
+            if (settings.hasKey("includeTimestampInPdf")) {
+                shenaiSettings.includeTimestampInPdf = settings.getBoolean("includeTimestampInPdf");
             }
             if (settings.hasKey("enableStartAfterSuccess")) {
                 shenaiSettings.enableStartAfterSuccess = settings.getBoolean("enableStartAfterSuccess");
@@ -139,8 +159,32 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             if (settings.hasKey("enableMeasurementsDashboard")) {
                 shenaiSettings.enableMeasurementsDashboard = settings.getBoolean("enableMeasurementsDashboard");
             }
+            if (settings.hasKey("uiVersion")) {
+                int rawVersion = settings.getInt("uiVersion");
+                shenaiSettings.uiVersion = ShenAIAndroidSDK.UiVersion.values()[rawVersion];
+            }
             if (settings.hasKey("showTrialMetricLabels")) {
                 shenaiSettings.showTrialMetricLabels = settings.getBoolean("showTrialMetricLabels");
+            }
+            if (settings.hasKey("applyPrecisionModeToBloodPressure")) {
+                shenaiSettings.applyPrecisionModeToBloodPressure =
+                        settings.getBoolean("applyPrecisionModeToBloodPressure");
+            }
+            if (settings.hasKey("blockingMeasurementConditions")) {
+                ReadableArray array = settings.getArray("blockingMeasurementConditions");
+                shenaiSettings.blockingMeasurementConditions.clear();
+                for (int i = 0; i < array.size(); i++) {
+                    shenaiSettings.blockingMeasurementConditions.add(
+                            ShenAIAndroidSDK.MeasurementEnvironmentCondition.values()[array.getInt(i)]);
+                }
+            }
+            if (settings.hasKey("warningMeasurementConditions")) {
+                ReadableArray array = settings.getArray("warningMeasurementConditions");
+                shenaiSettings.warningMeasurementConditions.clear();
+                for (int i = 0; i < array.size(); i++) {
+                    shenaiSettings.warningMeasurementConditions.add(
+                            ShenAIAndroidSDK.MeasurementEnvironmentCondition.values()[array.getInt(i)]);
+                }
             }
             if (settings.hasKey("uiFlowScreens")) {
                 ReadableArray array = settings.getArray("uiFlowScreens");
@@ -148,6 +192,15 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
                 for (int i = 0; i < array.size(); i++) {
                     shenaiSettings.uiFlowScreens.add(ShenAIAndroidSDK.Screen.values()[array.getInt(i)]);
                 }
+            }
+            if (settings.hasKey("frameWidth")) {
+                shenaiSettings.frameWidth = settings.getInt("frameWidth");
+            }
+            if (settings.hasKey("frameHeight")) {
+                shenaiSettings.frameHeight = settings.getInt("frameHeight");
+            }
+            if (settings.hasKey("rotation")) {
+                shenaiSettings.rotation = settings.getInt("rotation");
             }
             if (settings.hasKey("risksFactors")) {
                 ReadableMap factorsMap = settings.getMap("risksFactors");
@@ -176,19 +229,13 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
                         default:
                             jsEvent = "UNKNOWN";
                     }
-                    WritableMap params = Arguments.createMap();
-                    params.putString("EventName", jsEvent);
-
-                    getReactApplicationContext()
-                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                        .emit("ShenAIEvent", params);
+                    emitShenaiEvent(jsEvent);
                 }
             };
             // Add mappings for other settings as needed
         }
 
         ShenAIAndroidSDK.InitializationResult result = shenai_sdk.initialize(currentActivity, apiKey, userId, shenaiSettings);
-
         promise.resolve(result.ordinal());
     }
 
@@ -279,6 +326,12 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
         if (theme.hasKey("tileColor")) {
             shenaiTheme.tileColor = theme.getString("tileColor");
         }
+        if (theme.hasKey("buttonMainColor")) {
+            shenaiTheme.buttonMainColor = theme.getString("buttonMainColor");
+        }
+        if (theme.hasKey("buttonSecondaryColor")) {
+            shenaiTheme.buttonSecondaryColor = theme.getString("buttonSecondaryColor");
+        }
         shenai_sdk.setCustomColorTheme(shenaiTheme);
         promise.resolve(null);
     }
@@ -298,6 +351,24 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void setOperatingMode(int operatingMode, Promise promise) {
         shenai_sdk.setOperatingMode(ShenAIAndroidSDK.OperatingMode.values()[operatingMode]);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void startMeasurement(Promise promise) {
+        shenai_sdk.startMeasurement();
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void stopMeasurement(Promise promise) {
+        shenai_sdk.stopMeasurement();
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void resetMeasurementSession(Promise promise) {
+        shenai_sdk.resetMeasurementSession();
         promise.resolve(null);
     }
 
@@ -326,6 +397,70 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void setApplyPrecisionModeToBloodPressure(boolean apply, Promise promise) {
+        shenai_sdk.setApplyPrecisionModeToBloodPressure(apply);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void getApplyPrecisionModeToBloodPressure(Promise promise) {
+        promise.resolve(shenai_sdk.getApplyPrecisionModeToBloodPressure());
+    }
+
+    @ReactMethod
+    public void setBlockingMeasurementConditions(ReadableArray conditions, Promise promise) {
+        ShenAIAndroidSDK.MeasurementEnvironmentCondition[] values =
+                new ShenAIAndroidSDK.MeasurementEnvironmentCondition[conditions == null ? 0 : conditions.size()];
+        if (conditions != null) {
+            for (int i = 0; i < conditions.size(); i++) {
+                values[i] = ShenAIAndroidSDK.MeasurementEnvironmentCondition.values()[conditions.getInt(i)];
+            }
+        }
+        shenai_sdk.setBlockingMeasurementConditions(values);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void getBlockingMeasurementConditions(Promise promise) {
+        ShenAIAndroidSDK.MeasurementEnvironmentCondition[] values = shenai_sdk.getBlockingMeasurementConditions();
+        WritableArray array = Arguments.createArray();
+        for (ShenAIAndroidSDK.MeasurementEnvironmentCondition value : values) {
+            array.pushInt(value.ordinal());
+        }
+        promise.resolve(array);
+    }
+
+    @ReactMethod
+    public void setWarningMeasurementConditions(ReadableArray conditions, Promise promise) {
+        ShenAIAndroidSDK.MeasurementEnvironmentCondition[] values =
+                new ShenAIAndroidSDK.MeasurementEnvironmentCondition[conditions == null ? 0 : conditions.size()];
+        if (conditions != null) {
+            for (int i = 0; i < conditions.size(); i++) {
+                values[i] = ShenAIAndroidSDK.MeasurementEnvironmentCondition.values()[conditions.getInt(i)];
+            }
+        }
+        shenai_sdk.setWarningMeasurementConditions(values);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void getWarningMeasurementConditions(Promise promise) {
+        ShenAIAndroidSDK.MeasurementEnvironmentCondition[] values = shenai_sdk.getWarningMeasurementConditions();
+        WritableArray array = Arguments.createArray();
+        for (ShenAIAndroidSDK.MeasurementEnvironmentCondition value : values) {
+            array.pushInt(value.ordinal());
+        }
+        promise.resolve(array);
+    }
+
+    @ReactMethod
+    public void getCurrentViolatedMeasurementEnvironmentCondition(Promise promise) {
+        ShenAIAndroidSDK.MeasurementEnvironmentCondition value =
+            shenai_sdk.getCurrentViolatedMeasurementEnvironmentCondition();
+        promise.resolve(value == null ? null : value.ordinal());
+    }
+
+    @ReactMethod
     public void setMeasurementPreset(int measurementPreset, Promise promise) {
         shenai_sdk.setMeasurementPreset(ShenAIAndroidSDK.MeasurementPreset.values()[measurementPreset]);
         promise.resolve(null);
@@ -347,6 +482,12 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     public void getCameraMode(Promise promise) {
         ShenAIAndroidSDK.CameraMode result = shenai_sdk.getCameraMode();
         promise.resolve(result.ordinal());
+    }
+
+    @ReactMethod
+    public void getLastCameraError(Promise promise) {
+        ShenAIAndroidSDK.CameraError result = shenai_sdk.getLastCameraError();
+        promise.resolve(result == null ? null : result.ordinal());
     }
 
     @ReactMethod
@@ -435,6 +576,18 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void setIncludeTimestampInPdf(boolean include, Promise promise) {
+        shenai_sdk.setIncludeTimestampInPdf(include);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void getIncludeTimestampInPdf(Promise promise) {
+        boolean result = shenai_sdk.getIncludeTimestampInPdf();
+        promise.resolve(result);
+    }
+
+    @ReactMethod
     public void setShowStartStopButton(boolean showStartStopButton, Promise promise) {
         shenai_sdk.setShowStartStopButton(showStartStopButton);
         promise.resolve(null);
@@ -517,6 +670,16 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void isReadyToStartMeasurement(Promise promise) {
+        promise.resolve(shenai_sdk.isReadyToStartMeasurement());
+    }
+
+    @ReactMethod
+    public void areRequiredModelsDownloaded(Promise promise) {
+        promise.resolve(shenai_sdk.areRequiredModelsDownloaded());
+    }
+
+    @ReactMethod
     public void getMeasurementProgressPercentage(Promise promise) {
         float result = shenai_sdk.getMeasurementProgressPercentage();
         promise.resolve((double) result);
@@ -544,11 +707,15 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     }
 
     private void resolveMeasurementResults(Promise promise, ShenAIAndroidSDK.MeasurementResults results) {
-        if (results != null) {
-            WritableMap resultMap = convertMeasurementResultsToMap(results);
-            promise.resolve(resultMap);
-        } else {
-            promise.resolve(null);
+        try {
+            if (results != null) {
+                WritableMap resultMap = convertMeasurementResultsToMap(results);
+                promise.resolve(resultMap);
+            } else {
+                promise.resolve(null);
+            }
+        } catch (RuntimeException e) {
+            promise.reject("ERROR_MEASUREMENT_RESULTS", "Failed to convert measurement results", e);
         }
     }
 
@@ -560,13 +727,79 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
     WritableMap mdMap = Arguments.createMap();
 
     WritableMap resultsMap = convertMeasurementResultsToMap(nativeObj.measurementResults);
-
-    mdMap.putMap("measurementResults", resultsMap);
+    if (resultsMap != null) {
+        mdMap.putMap("measurementResults", resultsMap);
+    } else {
+        mdMap.putNull("measurementResults");
+    }
     mdMap.putDouble("epochTimestamp", nativeObj.epochTimestamp);
     mdMap.putBoolean("isCalibration", nativeObj.isCalibration);
 
     return mdMap;
 }
+
+    private WritableMap convertMeasurementQualityMetricsToMap(ShenAIAndroidSDK.MeasurementQualityMetrics metrics) {
+        if (metrics == null) {
+            return null;
+        }
+        WritableMap map = Arguments.createMap();
+        if (metrics.ppgQualityIndex != null && metrics.ppgQualityIndex.isPresent()) {
+            map.putDouble("ppgQualityIndex", metrics.ppgQualityIndex.get());
+        } else {
+            map.putNull("ppgQualityIndex");
+        }
+        if (metrics.bcgQualityIndex != null && metrics.bcgQualityIndex.isPresent()) {
+            map.putDouble("bcgQualityIndex", metrics.bcgQualityIndex.get());
+        } else {
+            map.putNull("bcgQualityIndex");
+        }
+        if (metrics.bloodPressureQualityIndex != null && metrics.bloodPressureQualityIndex.isPresent()) {
+            map.putDouble("bloodPressureQualityIndex", metrics.bloodPressureQualityIndex.get());
+        } else {
+            map.putNull("bloodPressureQualityIndex");
+        }
+        if (metrics.expectedSbpMedianAbsErrorMmhg != null && metrics.expectedSbpMedianAbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedSbpMedianAbsErrorMmhg", metrics.expectedSbpMedianAbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedSbpMedianAbsErrorMmhg");
+        }
+        if (metrics.expectedSbpP80AbsErrorMmhg != null && metrics.expectedSbpP80AbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedSbpP80AbsErrorMmhg", metrics.expectedSbpP80AbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedSbpP80AbsErrorMmhg");
+        }
+        if (metrics.expectedSbpMeanAbsErrorMmhg != null && metrics.expectedSbpMeanAbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedSbpMeanAbsErrorMmhg", metrics.expectedSbpMeanAbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedSbpMeanAbsErrorMmhg");
+        }
+        if (metrics.expectedSbpBalancedMaeMmhg != null && metrics.expectedSbpBalancedMaeMmhg.isPresent()) {
+            map.putDouble("expectedSbpBalancedMaeMmhg", metrics.expectedSbpBalancedMaeMmhg.get());
+        } else {
+            map.putNull("expectedSbpBalancedMaeMmhg");
+        }
+        if (metrics.expectedDbpMedianAbsErrorMmhg != null && metrics.expectedDbpMedianAbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedDbpMedianAbsErrorMmhg", metrics.expectedDbpMedianAbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedDbpMedianAbsErrorMmhg");
+        }
+        if (metrics.expectedDbpP80AbsErrorMmhg != null && metrics.expectedDbpP80AbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedDbpP80AbsErrorMmhg", metrics.expectedDbpP80AbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedDbpP80AbsErrorMmhg");
+        }
+        if (metrics.expectedDbpMeanAbsErrorMmhg != null && metrics.expectedDbpMeanAbsErrorMmhg.isPresent()) {
+            map.putDouble("expectedDbpMeanAbsErrorMmhg", metrics.expectedDbpMeanAbsErrorMmhg.get());
+        } else {
+            map.putNull("expectedDbpMeanAbsErrorMmhg");
+        }
+        if (metrics.expectedDbpBalancedMaeMmhg != null && metrics.expectedDbpBalancedMaeMmhg.isPresent()) {
+            map.putDouble("expectedDbpBalancedMaeMmhg", metrics.expectedDbpBalancedMaeMmhg.get());
+        } else {
+            map.putNull("expectedDbpBalancedMaeMmhg");
+        }
+        return map;
+    }
 
     private WritableMap convertMeasurementResultsToMap(ShenAIAndroidSDK.MeasurementResults results) {
         if (results == null) {
@@ -622,18 +855,6 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             resultMap.putNull("diastolicBloodPressureMmhg");
         }
 
-        if (results.systolicBloodPressureConfidence.isPresent()) {
-            resultMap.putDouble("systolicBloodPressureConfidence", results.systolicBloodPressureConfidence.get());
-        } else {
-            resultMap.putNull("systolicBloodPressureConfidence");
-        }
-
-        if (results.diastolicBloodPressureConfidence.isPresent()) {
-            resultMap.putDouble("diastolicBloodPressureConfidence", results.diastolicBloodPressureConfidence.get());
-        } else {
-            resultMap.putNull("diastolicBloodPressureConfidence");
-        }
-
         if (results.cardiacWorkloadMmhgPerSec.isPresent()) {
             resultMap.putDouble("cardiacWorkloadMmhgPerSec", results.cardiacWorkloadMmhgPerSec.get());
         } else {
@@ -668,6 +889,13 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             resultMap.putDouble("heightCm", results.heightCm.get());
         } else {
             resultMap.putNull("heightCm");
+        }
+
+        WritableMap qualityMetricsMap = convertMeasurementQualityMetricsToMap(results.qualityMetrics);
+        if (qualityMetricsMap != null) {
+            resultMap.putMap("qualityMetrics", qualityMetricsMap);
+        } else {
+            resultMap.putNull("qualityMetrics");
         }
 
         return resultMap;
@@ -716,6 +944,9 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
 
     private WritableArray convertHeartbeatsToArray(ShenAIAndroidSDK.Heartbeat[] heartbeats) {
         WritableArray array = Arguments.createArray();
+        if (heartbeats == null) {
+            return array;
+        }
         for (ShenAIAndroidSDK.Heartbeat hb : heartbeats) {
             WritableMap hbMap = Arguments.createMap();
             hbMap.putDouble("startLocationSec", hb.startLocationSec);
@@ -1048,12 +1279,7 @@ public class ShenaiSdkModule extends ReactContextBaseJavaModule {
             promise.resolve(null);
             return;
         }
-
-        WritableArray array = Arguments.createArray();
-        for (byte b : bytes) {
-            array.pushInt(b & 0xFF);      // store as unsigned ints 0-255
-        }
-        promise.resolve(array);
+        promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP));
     }
 
     @ReactMethod

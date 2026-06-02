@@ -9,10 +9,12 @@ buildscript {
   }
 }
 
+def shenaiSdkAndroidProjectDir = project.projectDir
+
 rootProject.allprojects {
   repositories {
     flatDir {
-      dirs project(':react-native-shenai-sdk').file('libs')
+      dirs new File(shenaiSdkAndroidProjectDir, 'libs')
     }
   }
 }
@@ -90,4 +92,3 @@ dependencies {
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-native:+"
 }
-

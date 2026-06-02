@@ -14,6 +14,7 @@ import {
   PrecisionMode,
   OnboardingMode,
   CameraMode,
+  UiVersion,
   Gender,
   FaceState as SdkFaceState,
   MeasurementState as SdkMeasurementState,
@@ -135,6 +136,13 @@ export async function initShenAI(
     measurementPreset: MeasurementPreset.THIRTY_SECONDS_ALL_METRICS,
     precisionMode: PrecisionMode.RELAXED,
     cameraMode: CameraMode.FACING_USER,
+    // RES-133: SDK 3.x defaults to on-demand server models. Force fully
+    // on-device processing so biometric/face data never leaves the device
+    // (matches our App Store privacy + medical-device declarations).
+    offlineProcessing: true,
+    // SDK 3.x introduced UI V2/V3. Pin V1 to preserve the 2.11.6 scan UX
+    // (face-positioning overlay only, our own React UI layered on top).
+    uiVersion: UiVersion.V1,
     showUserInterface: true,
     showFacePositioningOverlay: true,
     showVisualWarnings: false,
@@ -178,7 +186,7 @@ export async function initShenAI(
   }
 }
 
-// In v2.11.6, measurement starts automatically when in MEASURE mode and face is detected
+// Measurement starts automatically when in MEASURE mode and a face is detected.
 export async function startScan(): Promise<void> {
   await setOperatingMode(OperatingMode.MEASURE);
 }
@@ -228,7 +236,7 @@ export async function getFaceStateValue(): Promise<FaceState> {
   return FACE_STATE_MAP[state] ?? "NOT_VISIBLE";
 }
 
-// In v2.11.6, readiness is determined by face state being OK
+// Readiness is determined by face state being OK.
 export async function isReady(): Promise<boolean> {
   const face = await sdkGetFaceState();
   return face === SdkFaceState.OK;
@@ -245,6 +253,9 @@ const MEASUREMENT_STATE_MAP: Record<number, MeasurementState> = {
   [SdkMeasurementState.RUNNING_SIGNAL_GOOD]: "RUNNING",
   [SdkMeasurementState.RUNNING_SIGNAL_BAD]: "RUNNING",
   [SdkMeasurementState.RUNNING_SIGNAL_BAD_DEVICE_UNSTABLE]: "RUNNING",
+  // RES-133: SDK 3.x added FINALIZING (capture done, computing final result).
+  // Treat as still-running so the UI doesn't snap back to "not started".
+  [SdkMeasurementState.FINALIZING]: "RUNNING",
   [SdkMeasurementState.FINISHED]: "FINISHED",
   [SdkMeasurementState.FAILED]: "FAILED",
 };

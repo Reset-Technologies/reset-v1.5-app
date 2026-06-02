@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { isInitialized, getHeartRate4s, getHeartRate10s, getRealtimeMetrics, getMeasurementResults, getMeasurementProgressPercentage, getRealtimeHeartbeats } from "react-native-shenai-sdk";
+import { isInitialized, getHeartRate4s, getHeartRate10s, getRealtimeMetrics, getMeasurementResults, getMeasurementProgressPercentage, getRealtimeHeartbeats } from "./index";
 
 /**
  * Type utility to unwrap the type from a Promise.
@@ -81,4 +81,3 @@ export const useMeasurementProgress = (update_interval_ms = 1000) => useSDKPolli
  * @returns The latest heartbeats or null if uninitialized/error/bad signal.
  */
 export const useRealtimeHeartbeats = () => useSDKPolling(getRealtimeHeartbeats, 1000);
-//# sourceMappingURL=hooks.js.map
