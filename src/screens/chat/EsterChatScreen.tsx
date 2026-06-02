@@ -12,6 +12,7 @@ import {
   Keyboard,
   Linking,
   Easing,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -21,6 +22,8 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 import { K, toMetabolicType } from "../../constants/colors";
 import { useApp } from "../../context/AppContext";
 import { fonts, spacing, radius } from "../../constants/typography";
@@ -30,11 +33,14 @@ import {
   sendMessage as sendChatMessage,
   getSessions,
   getSessionMessages,
+  synthesizeSpeech,
 } from "../../services/chat";
 import type { Meal } from "../../components";
 import * as BrazeService from "../../services/braze";
 
 const PENDING_NEW_CHAT_KEY = "@reset_pending_new_chat";
+// RES-132: persisted user preference for Ester text-to-speech in chat.
+const TTS_ENABLED_KEY = "@reset_ester_tts_enabled";
 
 const ESTER_AVATAR_LIGHT = require("../../../assets/images/ester-avatar.png");
 const ESTER_AVATAR_DARK = require("../../../assets/images/ester-avatar-silver.png");
@@ -117,6 +123,28 @@ export function EsterChatScreen() {
   // start so the new session isn't killed by its predecessor's tail event.
   const startedAtRef = useRef<number>(0);
   const SUPPRESS_END_MS = 600;
+
+  // RES-132 — Ester text-to-speech. Off by default; toggled by the header
+  // speaker icon and persisted. A ref mirrors the state so the async
+  // send-flow reads the latest value (and can bail if toggled off mid-synth).
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const ttsEnabledRef = useRef(false);
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
+  // While Ester is speaking, reveal her message text in step with playback so
+  // the words appear roughly as they're voiced. Only the actively-spoken
+  // message is gated; everything else renders its full text.
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [revealedCount, setRevealedCount] = useState(0);
+  const revealTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Refs mirror the reveal state so the async toggle handler can read the live
+  // values (and take a timed stream over with voice mid-flight — RES-132).
+  const speakingMessageIdRef = useRef<string | null>(null);
+  const revealedCountRef = useRef(0);
+  const revealStateRef = useRef<{ id: string; text: string } | null>(null);
+  const takeoverInFlightRef = useRef(false);
+  // True while the mid-stream takeover is synthesizing — drives the loading
+  // affordance so the brief freeze doesn't read as a hang.
+  const [isPreparingVoice, setIsPreparingVoice] = useState(false);
 
   const evening = palette.evening;
   const esterAvatar = evening ? ESTER_AVATAR_DARK : ESTER_AVATAR_LIGHT;
@@ -301,6 +329,8 @@ export function EsterChatScreen() {
   const hasUserMessage = messages.some((m) => m.sender === "user");
 
   const startListening = async () => {
+    // Don't let Ester's voice bleed into the mic while the user is talking.
+    stopSpeaking();
     try {
       const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!result.granted) return;
@@ -357,6 +387,205 @@ export function EsterChatScreen() {
     stopListening();
   };
 
+  // RES-132 — load persisted TTS preference, configure audio, release on unmount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(TTS_ENABLED_KEY);
+        if (saved === "1") {
+          setTtsEnabled(true);
+          ttsEnabledRef.current = true;
+        }
+      } catch {}
+      try {
+        // Let Ester speak even when the ringer is on silent — the user opted in.
+        await setAudioModeAsync({ playsInSilentMode: true });
+      } catch {}
+    })();
+    return () => {
+      if (revealTickRef.current) clearInterval(revealTickRef.current);
+      try {
+        audioPlayerRef.current?.remove();
+      } catch {}
+      audioPlayerRef.current = null;
+    };
+  }, []);
+
+  // Reveal-state setters that keep the render state and the refs in lockstep.
+  const setReveal = (n: number) => {
+    revealedCountRef.current = n;
+    setRevealedCount(n);
+  };
+  const setSpeaking = (id: string | null) => {
+    speakingMessageIdRef.current = id;
+    setSpeakingMessageId(id);
+  };
+  const clearRevealTick = () => {
+    if (revealTickRef.current) {
+      clearInterval(revealTickRef.current);
+      revealTickRef.current = null;
+    }
+  };
+
+  // Stop playback and reveal the full text immediately (clearing the gated id
+  // makes the row render its complete message). Used on mute / leave / mic.
+  const stopSpeaking = () => {
+    clearRevealTick();
+    revealStateRef.current = null;
+    try {
+      audioPlayerRef.current?.pause();
+    } catch {}
+    setSpeaking(null);
+  };
+
+  // Reveal `text` in step with the audio player's position. `baseOffset` lets
+  // playback cover only the tail [baseOffset → end] — used when voice takes
+  // over a text stream already in progress.
+  const startRevealTick = (id: string, text: string, baseOffset = 0) => {
+    clearRevealTick();
+    const span = Math.max(1, text.length - baseOffset);
+    revealTickRef.current = setInterval(() => {
+      const player = audioPlayerRef.current;
+      if (!player) return;
+      const dur = player.duration || 0;
+      const cur = player.currentTime || 0;
+      if (dur <= 0) return; // duration not known yet — wait for load
+      setReveal(Math.min(text.length, baseOffset + Math.ceil((span * cur) / dur)));
+      if (cur >= dur - 0.06) {
+        setReveal(text.length);
+        setSpeaking(null);
+        revealStateRef.current = null;
+        clearRevealTick();
+      }
+    }, 50);
+  };
+
+  // Reveal text on a steady timer when there's no audio to sync to (voice off).
+  // ~55 chars/sec reads like a natural typewriter without dragging.
+  const startTimedReveal = (id: string, text: string) => {
+    clearRevealTick();
+    const CHARS_PER_SEC = 55;
+    const startedAt = Date.now();
+    revealTickRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const count = Math.min(text.length, Math.ceil(CHARS_PER_SEC * elapsed));
+      setReveal(count);
+      if (count >= text.length) {
+        setSpeaking(null);
+        revealStateRef.current = null;
+        clearRevealTick();
+      }
+    }, 40);
+  };
+
+  // Append an Ester reply and stream its text in. With voice on, synthesize
+  // first and sync the reveal to playback; with voice off, stream on a timer.
+  // Either way it's best-effort — on failure the full text is shown.
+  const presentEsterMessage = async (message: Message) => {
+    if (ttsEnabledRef.current && message.text.trim()) {
+      try {
+        const { audioBase64 } = await synthesizeSpeech(message.text);
+        if (ttsEnabledRef.current) {
+          const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
+          await FileSystem.writeAsStringAsync(uri, audioBase64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          if (!audioPlayerRef.current) {
+            audioPlayerRef.current = createAudioPlayer({ uri });
+          } else {
+            audioPlayerRef.current.replace({ uri });
+          }
+          setMessages((prev) => [...prev, message]);
+          revealStateRef.current = { id: message.id, text: message.text };
+          setSpeaking(message.id);
+          setReveal(0);
+          audioPlayerRef.current.play();
+          startRevealTick(message.id, message.text);
+          return;
+        }
+      } catch {
+        // fall through to text-only streaming
+      }
+    }
+    // Voice off (or synthesis failed): stream the text on a timer, no audio.
+    setMessages((prev) => [...prev, message]);
+    if (message.text.trim()) {
+      revealStateRef.current = { id: message.id, text: message.text };
+      setSpeaking(message.id);
+      setReveal(0);
+      startTimedReveal(message.id, message.text);
+    }
+  };
+
+  // Advance an index forward to the start of the next word so the voice never
+  // begins mid-word when it takes over a stream in progress.
+  const snapToWordStart = (text: string, idx: number) => {
+    let i = Math.min(idx, text.length);
+    while (i < text.length && !/\s/.test(text[i])) i++; // finish current word
+    while (i < text.length && /\s/.test(text[i])) i++; // skip whitespace
+    return i;
+  };
+
+  // Option A: when voice is flipped on mid-stream, freeze the text at the
+  // current word, synthesize only the remaining tail, then resume with the
+  // reveal synced to that audio. ~1s synth gap reads as Ester taking a breath.
+  const takeOverWithVoice = async () => {
+    const active = revealStateRef.current;
+    if (!active || takeoverInFlightRef.current) return;
+    const { id, text } = active;
+    const offset = snapToWordStart(text, revealedCountRef.current);
+    const remainder = text.slice(offset).trim();
+    clearRevealTick(); // freeze the timed reveal at the current word
+    setReveal(offset);
+    if (!remainder) {
+      setReveal(text.length);
+      setSpeaking(null);
+      revealStateRef.current = null;
+      return;
+    }
+    takeoverInFlightRef.current = true;
+    setIsPreparingVoice(true);
+    try {
+      const { audioBase64 } = await synthesizeSpeech(remainder);
+      // Bail if the user muted again or moved on during synthesis.
+      if (!ttsEnabledRef.current || speakingMessageIdRef.current !== id) return;
+      const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
+      await FileSystem.writeAsStringAsync(uri, audioBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = createAudioPlayer({ uri });
+      } else {
+        audioPlayerRef.current.replace({ uri });
+      }
+      audioPlayerRef.current.play();
+      startRevealTick(id, text, offset);
+    } catch {
+      // Synthesis failed — just finish revealing the text silently.
+      setReveal(text.length);
+      setSpeaking(null);
+      revealStateRef.current = null;
+    } finally {
+      takeoverInFlightRef.current = false;
+      setIsPreparingVoice(false);
+    }
+  };
+
+  const toggleTts = async () => {
+    const next = !ttsEnabledRef.current;
+    setTtsEnabled(next);
+    ttsEnabledRef.current = next;
+    if (!next) {
+      stopSpeaking();
+    } else if (revealStateRef.current) {
+      // Turned on while a (voice-off) stream is mid-flight → take it over.
+      takeOverWithVoice();
+    }
+    try {
+      await AsyncStorage.setItem(TTS_ENABLED_KEY, next ? "1" : "0");
+    } catch {}
+  };
+
   const submitVoiceTranscript = async () => {
     const finalText = transcript.trim();
     stopListening();
@@ -407,7 +636,8 @@ export function EsterChatScreen() {
         crisisType: response.crisisType,
         toolCalls: response.toolCalls as ToolCall[] | undefined,
       };
-      setMessages((prev) => [...prev, esterMessage]);
+      // Stream the reply in — synced to voice when on, on a timer when off.
+      await presentEsterMessage(esterMessage);
     } catch {
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
@@ -436,11 +666,13 @@ export function EsterChatScreen() {
 
   const handleClose = () => {
     if (isListening) cancelListening();
+    stopSpeaking();
     navigation.goBack();
   };
 
   const handleNewChat = async () => {
     if (isListening) cancelListening();
+    stopSpeaking();
     setChatSessionId(undefined);
     setMessages([defaultGreeting]);
     setInputText("");
@@ -501,10 +733,17 @@ export function EsterChatScreen() {
           <View style={styles.headerRightGroup}>
             <TouchableOpacity
               style={styles.headerIconButton}
-              disabled
+              onPress={toggleTts}
+              disabled={isPreparingVoice}
+              accessibilityLabel={ttsEnabled ? "Mute Ester's voice" : "Enable Ester's voice"}
+              accessibilityState={{ selected: ttsEnabled, busy: isPreparingVoice }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MuteIcon color={colors.headerIcon} />
+              {isPreparingVoice ? (
+                <ActivityIndicator size="small" color={colors.headerIcon} />
+              ) : (
+                <MuteIcon color={colors.headerIcon} muted={!ttsEnabled} />
+              )}
             </TouchableOpacity>
           </View>
           </View>
@@ -552,6 +791,11 @@ export function EsterChatScreen() {
                     palette={colors}
                     showTimestamp={showTimestamp}
                     formatTime={formatTime}
+                    displayText={
+                      message.id === speakingMessageId
+                        ? message.text.slice(0, revealedCount)
+                        : undefined
+                    }
                   />
                   {message.toolCalls?.map((tc, idx) =>
                     tc.toolName === "recommend_meal" && tc.data?.success ? (
@@ -589,7 +833,7 @@ export function EsterChatScreen() {
               </View>
             )}
 
-            {isTyping && (
+            {(isTyping || isPreparingVoice) && (
               <TypingIndicator
                 bg={colors.typingBubbleBg}
                 dotColor={colors.typingDot}
@@ -734,9 +978,12 @@ interface MessageRowProps {
   palette: PaletteColors;
   showTimestamp: boolean;
   formatTime: (d: Date) => string;
+  // When set, render this (partially-revealed) text instead of message.text —
+  // used to stream an Ester reply in sync with its voice playback (RES-132).
+  displayText?: string;
 }
 
-function MessageRow({ message, palette, showTimestamp, formatTime }: MessageRowProps) {
+function MessageRow({ message, palette, showTimestamp, formatTime, displayText }: MessageRowProps) {
   if (message.sender === "user") {
     return (
       <View style={styles.userRow}>
@@ -833,7 +1080,7 @@ function MessageRow({ message, palette, showTimestamp, formatTime }: MessageRowP
   };
   return (
     <View style={styles.esterRow}>
-      <Markdown style={mdStyles}>{message.text}</Markdown>
+      <Markdown style={mdStyles}>{displayText ?? message.text}</Markdown>
     </View>
   );
 }
@@ -1048,13 +1295,41 @@ function PlusIcon({ color }: { color: string }) {
   );
 }
 
-function MuteIcon({ color }: { color: string }) {
+// Speaker glyph. When `muted`, the crossed-out "X" is drawn over it (TTS off);
+// otherwise just the speaker (TTS on). Two sub-paths split from the original
+// single-path Figma export.
+const SPEAKER_PATH =
+  "M4.33008 9.59621H1.05437C0.753764 9.59621 0.502833 9.49559 0.301583 9.29434C0.100528 9.09328 0 8.84235 0 8.54155V4.81755C0 4.51674 0.100528 4.26581 0.301583 4.06475C0.502833 3.8635 0.753764 3.76288 1.05437 3.76288H4.33008L7.82104 0.271922C8.10065 -0.0076896 8.42256 -0.0716623 8.78675 0.0800044C9.15094 0.231865 9.33304 0.506713 9.33304 0.904547V12.4545C9.33304 12.8524 9.15094 13.1272 8.78675 13.2791C8.42256 13.4308 8.10065 13.3668 7.82104 13.0872L4.33008 9.59621ZM7.58304 3.00455L5.07471 5.51288H1.74971V7.84621H5.07471L7.58304 10.3545V3.00455Z";
+const MUTE_X_PATH =
+  "M16.378 7.90892L13.9595 10.3277C13.7979 10.4891 13.5948 10.5717 13.3502 10.5756C13.1058 10.5793 12.899 10.4967 12.7298 10.3277C12.5608 10.1585 12.4763 9.9536 12.4763 9.71288C12.4763 9.47216 12.5608 9.26721 12.7298 9.09805L15.1486 6.67955L12.7298 4.26105C12.5684 4.09946 12.4859 3.89637 12.4822 3.65175C12.4783 3.40734 12.5608 3.20055 12.7298 3.03138C12.899 2.86241 13.1039 2.77792 13.3446 2.77792C13.5855 2.77792 13.7905 2.86241 13.9595 3.03138L16.378 5.45017L18.7965 3.03138C18.958 2.86999 19.1611 2.78735 19.4057 2.78346C19.6504 2.77977 19.8572 2.86241 20.0261 3.03138C20.1951 3.20055 20.2796 3.40549 20.2796 3.64621C20.2796 3.88694 20.1951 4.09188 20.0261 4.26105L17.6073 6.67955L20.0261 9.09805C20.1877 9.25963 20.2703 9.46273 20.274 9.70734C20.2777 9.95175 20.1951 10.1585 20.0261 10.3277C19.8572 10.4967 19.6522 10.5812 19.4113 10.5812C19.1706 10.5812 18.9656 10.4967 18.7965 10.3277L16.378 7.90892Z";
+
+// Two concentric arcs opening rightward from the speaker — the familiar
+// "sound on" wave glyph, shown only when TTS is enabled.
+const WAVE_INNER_PATH = "M11.4 4.9A2.9 2.9 0 0 1 11.4 9.1";
+const WAVE_OUTER_PATH = "M13.4 3.1A5.1 5.1 0 0 1 13.4 10.9";
+
+function MuteIcon({ color, muted = true }: { color: string; muted?: boolean }) {
   return (
     <Svg width={21} height={14} viewBox="0 0 21 14" fill="none">
-      <Path
-        d="M16.378 7.90892L13.9595 10.3277C13.7979 10.4891 13.5948 10.5717 13.3502 10.5756C13.1058 10.5793 12.899 10.4967 12.7298 10.3277C12.5608 10.1585 12.4763 9.9536 12.4763 9.71288C12.4763 9.47216 12.5608 9.26721 12.7298 9.09805L15.1486 6.67955L12.7298 4.26105C12.5684 4.09946 12.4859 3.89637 12.4822 3.65175C12.4783 3.40734 12.5608 3.20055 12.7298 3.03138C12.899 2.86241 13.1039 2.77792 13.3446 2.77792C13.5855 2.77792 13.7905 2.86241 13.9595 3.03138L16.378 5.45017L18.7965 3.03138C18.958 2.86999 19.1611 2.78735 19.4057 2.78346C19.6504 2.77977 19.8572 2.86241 20.0261 3.03138C20.1951 3.20055 20.2796 3.40549 20.2796 3.64621C20.2796 3.88694 20.1951 4.09188 20.0261 4.26105L17.6073 6.67955L20.0261 9.09805C20.1877 9.25963 20.2703 9.46273 20.274 9.70734C20.2777 9.95175 20.1951 10.1585 20.0261 10.3277C19.8572 10.4967 19.6522 10.5812 19.4113 10.5812C19.1706 10.5812 18.9656 10.4967 18.7965 10.3277L16.378 7.90892ZM4.33008 9.59621H1.05437C0.753764 9.59621 0.502833 9.49559 0.301583 9.29434C0.100528 9.09328 0 8.84235 0 8.54155V4.81755C0 4.51674 0.100528 4.26581 0.301583 4.06475C0.502833 3.8635 0.753764 3.76288 1.05437 3.76288H4.33008L7.82104 0.271922C8.10065 -0.0076896 8.42256 -0.0716623 8.78675 0.0800044C9.15094 0.231865 9.33304 0.506713 9.33304 0.904547V12.4545C9.33304 12.8524 9.15094 13.1272 8.78675 13.2791C8.42256 13.4308 8.10065 13.3668 7.82104 13.0872L4.33008 9.59621ZM7.58304 3.00455L5.07471 5.51288H1.74971V7.84621H5.07471L7.58304 10.3545V3.00455Z"
-        fill={color}
-      />
+      <Path d={SPEAKER_PATH} fill={color} />
+      {muted ? (
+        <Path d={MUTE_X_PATH} fill={color} />
+      ) : (
+        <>
+          <Path
+            d={WAVE_INNER_PATH}
+            stroke={color}
+            strokeWidth={1.4}
+            strokeLinecap="round"
+          />
+          <Path
+            d={WAVE_OUTER_PATH}
+            stroke={color}
+            strokeWidth={1.4}
+            strokeLinecap="round"
+          />
+        </>
+      )}
     </Svg>
   );
 }

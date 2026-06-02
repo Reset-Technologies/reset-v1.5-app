@@ -35,20 +35,6 @@ function CloseIcon({ size = 24, color = K.brown }: { size?: number; color?: stri
   );
 }
 
-function MuteIcon({ size = 24, color = K.brown }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 10v4h4l5 5V5L7 10H3z" fill={color} />
-      <Path
-        d="M16 9l5 5m0-5l-5 5"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
 function ArrowForward({ size = 28, color = K.white }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -106,7 +92,7 @@ export function SampleMealSheet({
         />
 
         <View style={styles.sheet}>
-          {/* Top bar — close / logo / mute */}
+          {/* Top bar — close / logo (spacer keeps the logo centered). */}
           <View style={styles.topBar}>
             <TouchableOpacity
               onPress={onClose}
@@ -117,9 +103,7 @@ export function SampleMealSheet({
               <CloseIcon />
             </TouchableOpacity>
             <Image source={BRAND_LOGO} style={styles.logo} resizeMode="contain" />
-            <View style={styles.iconBtn}>
-              <MuteIcon />
-            </View>
+            <View style={styles.iconBtn} />
           </View>
 
           <ScrollView

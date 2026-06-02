@@ -49,6 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-font",
     "expo-video",
+    "expo-audio",
     // "expo-apple-authentication", // TODO: re-enable once added to paid dev team
     [
       "expo-camera",

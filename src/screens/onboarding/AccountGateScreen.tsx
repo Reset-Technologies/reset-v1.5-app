@@ -73,25 +73,6 @@ const TYPE_BLURB: Record<MetabolicType, string> = {
   Rebounder: "The diet always works. Until it doesn't. Again.",
 };
 
-function MuteIcon({ size = 28 }: { size?: number }) {
-  // Speaker with a slash — placeholder, matches the Figma "no sound" glyph
-  // visually closely enough for v1.
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M3 10v4h4l5 5V5L7 10H3z"
-        fill={WHITE}
-      />
-      <Path
-        d="M15 9l5 5m0-5l-5 5"
-        stroke={WHITE}
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
 function TypeCardMini({ type, label, blurb }: { type: MetabolicType; label: string; blurb: string }) {
   const logo = TYPE_LOGO[type];
   return (
@@ -209,13 +190,11 @@ export function AccountGateScreen({ navigation }: Props) {
       </View>
 
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        {/* Top bar: Ester logo centered, mute icon right */}
+        {/* Top bar: Ester logo centered (spacers keep it centered). */}
         <View style={styles.topBar}>
           <View style={{ width: 28 }} />
           <Image source={ESTER_AVATAR} style={styles.avatar} resizeMode="contain" />
-          <TouchableOpacity hitSlop={12} style={styles.muteBtn}>
-            <MuteIcon />
-          </TouchableOpacity>
+          <View style={{ width: 28 }} />
         </View>
 
         <View style={styles.center}>
@@ -290,7 +269,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   avatar: { width: 40, height: 40 },
-  muteBtn: { padding: 6 },
 
   center: {
     flex: 1,

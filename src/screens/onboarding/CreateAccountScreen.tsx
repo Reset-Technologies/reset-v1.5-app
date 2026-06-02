@@ -61,20 +61,6 @@ function VisibilityIcon({ off, size = 24 }: { off: boolean; size?: number }) {
   );
 }
 
-function MuteIcon({ size = 28 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 10v4h4l5 5V5L7 10H3z" fill={WHITE} />
-      <Path
-        d="M15 9l5 5m0-5l-5 5"
-        stroke={WHITE}
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
 export function CreateAccountScreen({ navigation }: Props) {
   const { state, setUserAccount, setAuth, setTypingResult, completeOnboarding } = useApp();
   const [firstName, setFirstName] = useState("");
@@ -180,13 +166,11 @@ export function CreateAccountScreen({ navigation }: Props) {
           style={styles.kbView}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          {/* Top bar */}
+          {/* Top bar (spacers keep the logo centered). */}
           <View style={styles.topBar}>
             <View style={{ width: 28 }} />
             <Image source={ESTER_AVATAR} style={styles.avatar} resizeMode="contain" />
-            <TouchableOpacity hitSlop={12} style={styles.muteBtn}>
-              <MuteIcon />
-            </TouchableOpacity>
+            <View style={{ width: 28 }} />
           </View>
 
           <ScrollView
@@ -311,7 +295,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   avatar: { width: 40, height: 40 },
-  muteBtn: { padding: 6 },
 
   content: {
     flexGrow: 1,
