@@ -31,7 +31,7 @@ type Props = NativeStackScreenProps<any, "Survey">;
 const ESTER_BADGE = require("../../../assets/images/ester-avatar-silver.png");
 // Plays on the post-scan splash (Figma 1553-17494) and again on the
 // "Analyzing your responses" interstitial (Figma 1565-7668).
-const POST_SCAN_VIDEO = require("../../../assets/videos/post-scan-intro.mp4");
+const POST_SCAN_VIDEO = require("../../../assets/videos/post-scan-intro.mov");
 
 // ── Ester "typing" indicator (three pulsing dots, bare — wrap in a bubble at
 //    the call site). ───────────────────────────────────────────────────
@@ -391,12 +391,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // The blend goes on the wrapper view; iOS' AVPlayerLayer ignores
-  // mixBlendMode applied directly to the VideoView.
+  // RES-134: the video now ships with a real alpha channel (HEVC w/ alpha),
+  // so no mixBlendMode hack is needed — it composites straight over the maroon.
   logoVideoBlend: {
-    width: "100%",
+    width: "175%",
     aspectRatio: 1,
-    mixBlendMode: "lighten",
   },
   logoVideo: {
     width: "100%",
@@ -408,12 +407,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+    // Shift the centered group (video + bubble) up a touch.
+    paddingBottom: 120,
   },
   analyzingVideoBlend: {
-    width: 200,
-    height: 200,
-    marginBottom: 24,
-    mixBlendMode: "lighten",
+    width: 450,
+    height: 450,
+    // The video frame has ~22.7% transparent padding below the logo art
+    // (~102px at this 450px size). Pull the bubble up with a negative margin
+    // so it sits ~20px under the *visible* logo, not the box edge.
+    marginBottom: -82,
   },
   analyzingVideo: {
     width: "100%",
