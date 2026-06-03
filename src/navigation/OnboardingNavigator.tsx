@@ -119,7 +119,14 @@ export function OnboardingNavigator() {
       <Stack.Screen
         name="TypeReveal"
         component={TypeRevealScreen}
-        options={{ animation: "fade" }}
+        options={{
+          animation: "fade",
+          // The card stack uses its own left-swipe PanResponder to advance.
+          // Leave the native back gesture on and a right-swipe pops TypeReveal,
+          // revealing the (now stale) AccountGate sign-up screen underneath.
+          gestureEnabled: false,
+          fullScreenGestureEnabled: false,
+        }}
       />
       <Stack.Screen
         name="Paywall"

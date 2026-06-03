@@ -56,3 +56,19 @@ export async function getSessionMessages(
 export async function deleteSession(sessionId: string): Promise<void> {
   await apiClient(`/api/chat/sessions/${sessionId}`, { method: "DELETE" });
 }
+
+export interface TtsResult {
+  audioBase64: string;
+  mimeType: string;
+}
+
+/**
+ * RES-132 — synthesize an Ester reply into speech (Ester's voice) for on-device
+ * playback. Returns base64 mp3 audio.
+ */
+export async function synthesizeSpeech(text: string): Promise<TtsResult> {
+  return apiClient<TtsResult>("/api/chat/tts", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}

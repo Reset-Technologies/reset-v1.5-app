@@ -84,24 +84,19 @@ const STARTING_READ_TAGLINE =
 const STARTING_READ_PARAGRAPH =
   "Without a scan, I'm working from your answers alone. A balanced baseline is the right place to start, and the first scan will tell me how your body actually responds.";
 
-// Figma-derived card geometry (target frame is 402-wide). Scale to actual
-// screen width so the same proportions hold on smaller phones. All cards
-// share the same 378×738 footprint per Figma — the stack-peek effect
-// comes purely from the staggered bottom offsets + the inset "Bubble"
-// shadow on each card, not from narrowing widths.
-const SCALE = Math.min(1, SCREEN_W / 402);
-const CARD_W = Math.round(378 * SCALE);
+// Card width fills the screen with a fixed 12px gutter on each side, on every
+// device — replaces the old 378px Figma-frame cap so larger phones (e.g. Pro
+// Max) aren't letterboxed. All cards share the same footprint; the stack-peek
+// effect comes from the staggered offsets + the inset "Bubble" shadow.
+const CARD_SIDE_MARGIN = 12;
+const CARD_W = SCREEN_W - CARD_SIDE_MARGIN * 2;
 const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W];
-// Figma 1916-17871 card layout: width 378, height 738. Use the Figma value
-// directly so the inner `justify-content: center` lands exactly where the
-// design expects. (iPhone 16 Pro window height = 852pt, so 738 fits with
-// the back card bottom-anchored at 50.)
-const CARD_H = 738;
-// Cards are bottom-anchored so the breathing room below the back (lowest-
-// sitting) card stays an exact 50px regardless of safe-area variations.
-// 6px between each per Figma — just a thin sliver of the next card visible
-// at the bottom edge.
-const CARD_BOTTOMS = [62, 56, 50, 44]; // idx 0 (front) → idx 3 (back)
+// Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
+const CARD_H = 812;
+// The stack is centered vertically; each card behind the front sits 6px lower
+// so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
+const CARD_STACK_STEP = 6;
+const CARD_TOP = Math.max(0, Math.round((SCREEN_H - CARD_H) / 2));
 
 const TOTAL_CARDS = 4;
 
@@ -343,29 +338,22 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
           <View style={styles.mealTeaser}>
             <Image
               source={MEAL_TEASER_BG}
-              style={StyleSheet.absoluteFill}
+              style={styles.mealTeaserImage}
               resizeMode="cover"
               blurRadius={5.5}
             />
             <View style={StyleSheet.absoluteFill}>
-              {/* Two gradients composited per Figma 1652:14295:
-                  - amber at ~46.6° peeking from the upper-right corner
-                    (stop past 100% in the original, so only a hint shows)
-                  - maroon at ~192.6° (almost straight down) darkening the
-                    bottom for legibility of the white title. */}
+              {/* Maroon bottom-darkening for white-title legibility. (The Figma
+                  amber upper-right peek was removed — corner-to-corner gradients
+                  stretch into a full-height band on wider cards.) */}
               <Svg width="100%" height="100%" preserveAspectRatio="none">
                 <Defs>
-                  <LinearGradient id="mealAmber" x1="0" y1="1" x2="1" y2="0">
-                    <Stop offset="0.75" stopColor="#C8A128" stopOpacity="0" />
-                    <Stop offset="1" stopColor="#C8A128" stopOpacity="0.55" />
-                  </LinearGradient>
                   <LinearGradient id="mealMaroon" x1="0.05" y1="0" x2="0" y2="1">
                     <Stop offset="0.41" stopColor={MAROON} stopOpacity="0" />
                     <Stop offset="0.91" stopColor={MAROON} stopOpacity="1" />
                   </LinearGradient>
                 </Defs>
                 <Rect x="0" y="0" width="100%" height="100%" fill="url(#mealMaroon)" />
-                <Rect x="0" y="0" width="100%" height="100%" fill="url(#mealAmber)" />
               </Svg>
             </View>
             <Text style={styles.mealTeaserTitle}>Want to see it?</Text>
@@ -655,7 +643,6 @@ export function TypeRevealScreen({ navigation }: Props) {
     }
 
     const cardW = CARD_WIDTHS[idx];
-    const cardBottom = CARD_BOTTOMS[idx];
 
     return (
       <Animated.View
@@ -665,7 +652,7 @@ export function TypeRevealScreen({ navigation }: Props) {
           styles.cardSlot,
           {
             width: cardW,
-            bottom: cardBottom,
+            top: CARD_TOP + idx * CARD_STACK_STEP,
             left: (SCREEN_W - cardW) / 2,
             transform: [
               { translateX },
@@ -980,6 +967,17 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "flex-end",
     padding: 16,
+  },
+  // Explicit numeric width (= full card width, wider than the bubble) anchored
+  // with a left bleed guarantees the cover image fills the whole bubble and
+  // overruns both edges — so the 330px asset is actually upscaled (left/right
+  // alone left it at intrinsic width) and the blurRadius edge-fade is clipped.
+  mealTeaserImage: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: -24,
+    width: CARD_W,
   },
   mealTeaserTitle: {
     fontFamily: fonts.dmSans,

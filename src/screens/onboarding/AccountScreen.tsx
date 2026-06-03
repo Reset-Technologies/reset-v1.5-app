@@ -63,7 +63,9 @@ export function AccountScreen({ navigation }: Props) {
   // straight to the app.
   const finishAccount = () => {
     if (state.biometrics) {
-      navigation.navigate("TypeReveal");
+      // reset (not navigate) so the now-stale account screens leave the stack —
+      // a signed-up user must never be able to land back on a sign-up screen.
+      navigation.reset({ index: 0, routes: [{ name: "TypeReveal" }] });
     } else {
       completeOnboarding();
     }
