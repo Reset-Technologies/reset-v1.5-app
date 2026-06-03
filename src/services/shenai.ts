@@ -149,8 +149,10 @@ export async function initShenAI(
     uiVersion: UiVersion.V1,
     showUserInterface: true,
     showFacePositioningOverlay: true,
-    showVisualWarnings: false,
-    showFaceMask: false,
+    // Red low-signal indicator so the user knows to hold still / fix lighting.
+    showVisualWarnings: true,
+    // 3D face-mask mesh rendered over the face on the camera feed.
+    showFaceMask: true,
     // Blood-flow visualization animated over the user's face during the
     // measurement (the effect ShenAI flagged for us).
     showBloodFlow: true,
