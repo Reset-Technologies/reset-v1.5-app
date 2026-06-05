@@ -365,12 +365,29 @@ export function PaywallScreen({ navigation }: Props) {
     }
     setPurchasing(true);
     const outcome = await purchasePackage(pkg);
-    setPurchasing(false);
-    if (outcome.userCancelled) return;
-    if (outcome.error) {
-      toast.show({ message: "Purchase couldn't be completed. Please try again." });
+    if (outcome.userCancelled) {
+      setPurchasing(false);
       return;
     }
+    if (outcome.error) {
+      // The purchase failed, but the user may already own the subscription
+      // (reinstall, new device, or a StoreKit "already subscribed" state where
+      // purchasePackage throws instead of completing). Try a restore before
+      // surfacing an error — if it recovers pro, treat it as success so the
+      // wall self-heals instead of dead-ending on the "try again" toast.
+      const restored = await restorePurchases();
+      setPurchasing(false);
+      if (restored.isPro) {
+        setSubscriptionTier("pro");
+        if (!isGate) proceedToApp();
+      } else {
+        toast.show({
+          message: "Purchase couldn't be completed. Please try again.",
+        });
+      }
+      return;
+    }
+    setPurchasing(false);
     if (outcome.isPro) {
       // Optimistic local flip; the backend reconciles via RevenueCat webhook
       // and getProfile() re-syncs the tier on next launch. In the gate, this
