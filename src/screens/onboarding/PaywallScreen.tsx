@@ -6,12 +6,20 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { PurchasesPackage } from "react-native-purchases";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
+import { useToast } from "../../context/ToastContext";
 import { logEvent } from "../../services/braze";
+import {
+  getCurrentOffering,
+  purchasePackage,
+  restorePurchases,
+} from "../../services/revenuecat";
 import { rootNavigationRef } from "../../navigation/rootNavigationRef";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
@@ -39,6 +47,69 @@ const FEATURES: { label: string; pro: boolean; free: boolean }[] = [
 ];
 
 const COL_W = 52;
+
+// Shown before the RevenueCat offering loads, or when the dashboard isn't set
+// up yet (no offering available). Once live packages load, the real localized
+// store prices replace these. Keep in sync with the Figma defaults.
+const FALLBACK_MONTHLY = { price: "$19.99", billed: "Billed monthly" };
+const FALLBACK_YEARLY = {
+  price: "$149.99",
+  unit: "$12.49/mo",
+  billed: "Billed annually",
+  saleTag: "Save 37%",
+};
+
+// Format `amount` using the symbol/placement of a reference localized price
+// string (e.g. "$19.99" → "$12.49"; "19,99 €" → "12,49 €"). Lets us render a
+// per-month figure for the yearly plan without a full Intl currency formatter
+// (Hermes' Intl currency support is unreliable on-device).
+function formatLikePrice(amount: number, refPriceString: string): string {
+  const prefix = refPriceString.match(/^[^\d]*/)?.[0] ?? "";
+  const suffix = refPriceString.match(/[^\d]*$/)?.[0] ?? "";
+  return `${prefix}${amount.toFixed(2)}${suffix}`;
+}
+
+// Display fields derived from a live monthly + annual package pair.
+interface PlanDisplay {
+  monthly: { price: string; billed: string };
+  yearly: { price: string; unit?: string; billed: string; saleTag?: string };
+}
+
+function buildPlanDisplay(
+  monthly: PurchasesPackage | null,
+  annual: PurchasesPackage | null,
+): PlanDisplay {
+  const display: PlanDisplay = {
+    monthly: FALLBACK_MONTHLY,
+    yearly: FALLBACK_YEARLY,
+  };
+  if (monthly) {
+    display.monthly = {
+      price: monthly.product.priceString,
+      billed: "Billed monthly",
+    };
+  }
+  if (annual) {
+    const perMonth = formatLikePrice(
+      annual.product.price / 12,
+      annual.product.priceString,
+    );
+    let saleTag: string | undefined;
+    if (monthly) {
+      const pct = Math.round(
+        (1 - annual.product.price / (monthly.product.price * 12)) * 100,
+      );
+      if (pct > 0) saleTag = `Save ${pct}%`;
+    }
+    display.yearly = {
+      price: annual.product.priceString,
+      unit: `${perMonth}/mo`,
+      billed: "Billed annually",
+      saleTag,
+    };
+  }
+  return display;
+}
 
 function CheckIcon() {
   return (
@@ -202,24 +273,60 @@ function PlanCard({
 }
 
 export function PaywallScreen({ navigation }: Props) {
-  const { setHomeV2Enabled, completeOnboarding } = useApp();
+  const { state, setHomeV2Enabled, completeOnboarding, setSubscriptionTier } =
+    useApp();
+  const toast = useToast();
+  // Gate mode: the Paywall doubles as a hard wall for free users who have
+  // already finished onboarding (RootNavigator routes them here instead of
+  // Main). In that mode there is no "skip into the app" — subscribing flips the
+  // tier to 'pro', which re-renders RootNavigator straight into Main.
+  const isGate = state.user.hasCompletedOnboarding;
   // Yearly is the default per Figma (the highlighted card on first render).
   const [selectedPlan, setSelectedPlan] = React.useState<"monthly" | "yearly">(
     "yearly"
   );
+  const [monthlyPkg, setMonthlyPkg] = React.useState<PurchasesPackage | null>(
+    null,
+  );
+  const [annualPkg, setAnnualPkg] = React.useState<PurchasesPackage | null>(
+    null,
+  );
+  const [purchasing, setPurchasing] = React.useState(false);
+  const [restoring, setRestoring] = React.useState(false);
 
   React.useEffect(() => {
     logEvent("onboarding_paywall_view");
   }, []);
 
-  const handleClose = () => {
-    logEvent("onboarding_paywall_close");
-    setHomeV2Enabled(true);
-    completeOnboarding();
-  };
+  // Load the current RevenueCat offering for live, localized prices. Returns
+  // null until the dashboard is configured — the cards then keep their static
+  // fallback prices and Subscribe just completes onboarding.
+  React.useEffect(() => {
+    let cancelled = false;
+    getCurrentOffering().then((offering) => {
+      if (cancelled || !offering) return;
+      const pkgs = offering.availablePackages;
+      const monthly =
+        offering.monthly ??
+        pkgs.find((p) => p.packageType === "MONTHLY") ??
+        null;
+      const annual =
+        offering.annual ??
+        pkgs.find((p) => p.packageType === "ANNUAL") ??
+        null;
+      setMonthlyPkg(monthly);
+      setAnnualPkg(annual);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const handleSubscribe = () => {
-    logEvent("onboarding_paywall_subscribe");
+  const plans = buildPlanDisplay(monthlyPkg, annualPkg);
+
+  // Shared exit path: flip to the new home, finish onboarding, then deep-link
+  // into the post-onboarding meal flow once the Main stack has mounted.
+  const proceedToApp = () => {
     setHomeV2Enabled(true);
     completeOnboarding();
     // Defer deep navigation until the Main stack has actually mounted —
@@ -242,6 +349,69 @@ export function PaywallScreen({ navigation }: Props) {
     }, 80);
   };
 
+  const handleSubscribe = async () => {
+    if (purchasing || restoring) return;
+    logEvent("onboarding_paywall_subscribe", { plan: selectedPlan });
+    const pkg = selectedPlan === "monthly" ? monthlyPkg : annualPkg;
+    if (!pkg) {
+      // No live package. In onboarding we never block the flow; in the gate we
+      // must not grant free access, so surface an error and stay on the wall.
+      if (isGate) {
+        toast.show({ message: "Couldn't load subscription. Please try again." });
+      } else {
+        proceedToApp();
+      }
+      return;
+    }
+    setPurchasing(true);
+    const outcome = await purchasePackage(pkg);
+    if (outcome.userCancelled) {
+      setPurchasing(false);
+      return;
+    }
+    if (outcome.error) {
+      // The purchase failed, but the user may already own the subscription
+      // (reinstall, new device, or a StoreKit "already subscribed" state where
+      // purchasePackage throws instead of completing). Try a restore before
+      // surfacing an error — if it recovers pro, treat it as success so the
+      // wall self-heals instead of dead-ending on the "try again" toast.
+      const restored = await restorePurchases();
+      setPurchasing(false);
+      if (restored.isPro) {
+        setSubscriptionTier("pro");
+        if (!isGate) proceedToApp();
+      } else {
+        toast.show({
+          message: "Purchase couldn't be completed. Please try again.",
+        });
+      }
+      return;
+    }
+    setPurchasing(false);
+    if (outcome.isPro) {
+      // Optimistic local flip; the backend reconciles via RevenueCat webhook
+      // and getProfile() re-syncs the tier on next launch. In the gate, this
+      // re-renders RootNavigator straight into Main (no proceedToApp needed).
+      setSubscriptionTier("pro");
+    }
+    if (!isGate) proceedToApp();
+  };
+
+  const handleRestore = async () => {
+    if (purchasing || restoring) return;
+    logEvent("onboarding_paywall_restore");
+    setRestoring(true);
+    const outcome = await restorePurchases();
+    setRestoring(false);
+    if (outcome.isPro) {
+      setSubscriptionTier("pro");
+      toast.show({ message: "Subscription restored", icon: "✓" });
+      if (!isGate) proceedToApp();
+    } else {
+      toast.show({ message: "No active subscription found to restore." });
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Bottom-darken gradient over the maroon-alt page surface. */}
@@ -262,9 +432,8 @@ export function PaywallScreen({ navigation }: Props) {
             positioned at center per Figma so it sits dead-center regardless
             of the placeholder/X widths. */}
         <View style={styles.topPlaceholder} />
-        <TouchableOpacity onPress={handleClose} hitSlop={12} style={styles.closeBtn}>
-          <CloseIcon color={WHITE} size={24} />
-        </TouchableOpacity>
+        {/* No skip — the paywall is a hard wall in both onboarding and the
+            post-onboarding gate; free users must subscribe to enter the app. */}
         <Image source={RESET_LOGO} style={styles.topLogo} resizeMode="contain" />
       </View>
 
@@ -287,21 +456,21 @@ export function PaywallScreen({ navigation }: Props) {
         <View style={styles.plansRow}>
           <PlanCard
             label="Monthly"
-            price="$19.99"
-            billed="Billed monthly"
+            price={plans.monthly.price}
+            billed={plans.monthly.billed}
             variant="monthly"
             selected={selectedPlan === "monthly"}
             onPress={() => setSelectedPlan("monthly")}
           />
           <PlanCard
             label="Yearly"
-            unit="$12.49/mo"
-            price="$149.99"
-            billed="Billed annually"
+            unit={plans.yearly.unit}
+            price={plans.yearly.price}
+            billed={plans.yearly.billed}
             variant="yearly"
             selected={selectedPlan === "yearly"}
             onPress={() => setSelectedPlan("yearly")}
-            saleTag="Save 37%"
+            saleTag={plans.yearly.saleTag}
           />
         </View>
 
@@ -310,14 +479,26 @@ export function PaywallScreen({ navigation }: Props) {
           <TouchableOpacity
             onPress={handleSubscribe}
             activeOpacity={0.85}
-            style={styles.subscribeBtn}
+            disabled={purchasing || restoring}
+            style={[
+              styles.subscribeBtn,
+              (purchasing || restoring) && styles.subscribeBtnDisabled,
+            ]}
           >
-            <Text style={styles.subscribeText}>Subscribe</Text>
+            {purchasing ? (
+              <ActivityIndicator color={WHITE} />
+            ) : (
+              <Text style={styles.subscribeText}>Subscribe</Text>
+            )}
           </TouchableOpacity>
           <View style={styles.footerRow}>
             <Text style={styles.footerText}>Privacy Policy</Text>
             <View style={styles.footerDot} />
-            <Text style={styles.footerText}>Restore Purchase</Text>
+            <TouchableOpacity onPress={handleRestore} disabled={restoring} hitSlop={8}>
+              <Text style={styles.footerText}>
+                {restoring ? "Restoring…" : "Restore Purchase"}
+              </Text>
+            </TouchableOpacity>
             <View style={styles.footerDot} />
             <Text style={styles.footerText}>Terms of Use</Text>
           </View>
@@ -354,7 +535,6 @@ const styles = StyleSheet.create({
     marginLeft: -22,
     top: 0,
   },
-  closeBtn: { padding: 8 },
 
   // Body
   body: {
@@ -618,6 +798,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  subscribeBtnDisabled: {
+    opacity: 0.6,
   },
   subscribeText: {
     fontFamily: fonts.dmSansBold,

@@ -83,6 +83,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
+    // RevenueCat public SDK keys (platform-specific). Safe to ship in the
+    // bundle — these are the *public* client keys, not a secret key — so they
+    // live here as defaults (same as the Braze keys above), overridable via
+    // env. iOS is live; Android stays empty until an Android RevenueCat app
+    // exists (the revenuecat service treats an empty key as "not configured"
+    // and the paywall falls back to static prices).
+    revenueCatIosApiKey:
+      process.env.REVENUECAT_IOS_API_KEY ?? "appl_fFSqzbabmCIEVvADlYAwdtHxhMv",
+    revenueCatAndroidApiKey: process.env.REVENUECAT_ANDROID_API_KEY ?? "",
     eas: {
       projectId: "e1576fd6-3519-4c0f-95e8-abf43df86a02",
     },

@@ -6,6 +6,11 @@ import { getTokens, clearTokens } from "../services/apiClient";
 import { fetchMe, AuthUser } from "../services/auth";
 import { getProfile } from "../services/profile";
 import * as BrazeService from "../services/braze";
+import {
+  configureRevenueCat,
+  loginRevenueCat,
+  logoutRevenueCat,
+} from "../services/revenuecat";
 import { requestPushPermission } from "../services/pushNotifications";
 import { notifyAppOpened } from "../services/notifications";
 
@@ -297,6 +302,7 @@ interface AppContextValue {
   dispatch: React.Dispatch<AppAction>;
   setQuizAnswer: (questionId: string, answer: string) => void;
   setMetabolicType: (type: MetabolicType) => void;
+  setSubscriptionTier: (tier: SubscriptionTier) => void;
   setTypingResult: (payload: {
     metabolicType: MetabolicType;
     startingRead: boolean;
@@ -326,6 +332,13 @@ interface AppProviderProps {
 
 export function AppProvider({ children }: AppProviderProps) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+
+  // Configure RevenueCat as early as possible (anonymous). No-ops until the
+  // dashboard + public key are in place. loginRevenueCat() later attaches the
+  // backend user id once the user authenticates.
+  useEffect(() => {
+    configureRevenueCat();
+  }, []);
 
   // Load saved state on mount
   useEffect(() => {
@@ -377,6 +390,7 @@ export function AppProvider({ children }: AppProviderProps) {
 
           // Re-identify with Braze on session restore + register push token
           BrazeService.changeUser(authUser.id);
+          loginRevenueCat(authUser.id);
           requestPushPermission();
 
           // Always re-sync metabolicType + subscriptionTier from the backend so
@@ -478,6 +492,10 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: "SET_METABOLIC_TYPE", payload: type });
   };
 
+  const setSubscriptionTier = (tier: SubscriptionTier) => {
+    dispatch({ type: "SET_SUBSCRIPTION_TIER", payload: tier });
+  };
+
   const setGoal = (goal: string) => {
     dispatch({ type: "SET_GOAL", payload: goal });
   };
@@ -507,8 +525,9 @@ export function AppProvider({ children }: AppProviderProps) {
       type: "SET_AUTH",
       payload: { isAuthenticated: true, authUser: user },
     });
-    // Identify user with Braze and request push permission
+    // Identify user with Braze + RevenueCat and request push permission
     BrazeService.changeUser(user.id);
+    loginRevenueCat(user.id);
     requestPushPermission();
     // Pull metabolicType + subscriptionTier from backend so type-derived UI
     // and Ester's account-status gating both match the user we just signed in
@@ -536,6 +555,8 @@ export function AppProvider({ children }: AppProviderProps) {
       type: "SET_AUTH",
       payload: { isAuthenticated: false, authUser: null },
     });
+    // Drop the RevenueCat identity so the next user starts clean.
+    logoutRevenueCat();
   };
 
   const setHomeV2Enabled = (enabled: boolean) => {
@@ -565,6 +586,7 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch,
     setQuizAnswer,
     setMetabolicType,
+    setSubscriptionTier,
     setTypingResult,
     setGoal,
     setCalibration,
