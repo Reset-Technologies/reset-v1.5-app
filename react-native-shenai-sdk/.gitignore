@@ -1,6 +1,11 @@
 # Shen.AI SDK Binaries
 ios/ShenaiSDK.framework
 libs/
+# ...but DO ship the prebuilt Android SDK aar (committed to git) so EAS Build
+# includes it in the upload — EAS drops tracked-but-gitignored files, which was
+# making the Android build fail with "Could not find :shenai_sdk:".
+!/android/libs/
+!/android/libs/shenai_sdk.aar
 
 .yarn-metadata.json
 
