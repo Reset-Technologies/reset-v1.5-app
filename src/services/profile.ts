@@ -64,6 +64,22 @@ export async function getProfile(): Promise<UserProfile> {
   return apiClient<UserProfile>("/api/profile");
 }
 
+/**
+ * Dev-only: persist the caller's subscription tier in the backend. Backs the
+ * local "Subscribe" testing shortcut on the paywall so a dev-granted pro
+ * survives re-login instead of living only in client state. The backend
+ * hard-gates this to the local env (403 everywhere else), and the call site is
+ * compiled out of production via __DEV__.
+ */
+export async function setSubscriptionTierDev(
+  tier: "free" | "pro",
+): Promise<void> {
+  await apiClient("/api/profile/dev/subscription-tier", {
+    method: "POST",
+    body: JSON.stringify({ tier }),
+  });
+}
+
 export interface UpdateProfileData {
   primaryBucket?: string;
   secondaryBucket?: string;

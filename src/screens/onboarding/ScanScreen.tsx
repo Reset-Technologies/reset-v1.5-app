@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Animated,
   TouchableOpacity,
+  Dimensions,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -48,6 +49,13 @@ type Props = NativeStackScreenProps<any, "Scan"> & {
 
 const SHEN_API_KEY =
   Constants.expoConfig?.extra?.shenAiApiKey ?? "";
+
+// On short screens (Galaxy S24 ≈ 780dp tall, iPhone SE/mini) the ShenAI view
+// has to share height with our controls below it, leaving the camera small.
+// Dropping the phase bubbles + progress bar reclaims that height for the
+// camera. Larger phones (iPhone 14/15 ≈ 844dp+) keep the full controls.
+const SCREEN_H = Dimensions.get("window").height;
+const IS_SHORT_SCREEN = SCREEN_H < 800;
 
 const SCAN_PHASES = [
   {
@@ -498,6 +506,35 @@ export function ScanScreen({ navigation, route }: Props) {
     }
   }, [navigation, mode]);
 
+  // TEMP / DEV-ONLY: skip the camera scan with mock biometrics so post-scan
+  // screens (Survey → TypeReveal → Paywall) can be reached on the iOS
+  // simulator, where ShenAI has no camera and never completes. Gated on
+  // __DEV__ so it never ships. Remove when sim testing is done.
+  const devSkipScan = useCallback(async () => {
+    try {
+      await shutdownShenAI();
+    } catch {
+      // SDK may not have initialized on the sim — safe to ignore.
+    }
+    setBiometrics({
+      stressIndex: 65,
+      heartRate: 72,
+      wellness: 78,
+      vascularAge: 4,
+      raw: {
+        heartRate: 72,
+        wellnessScore: 78,
+        stressIndex: 65,
+        signalQuality: 1,
+      } as ScanResults,
+    });
+    if (mode === "rescan") {
+      navigation.goBack();
+    } else {
+      navigation.replace("Survey", { step: 0 });
+    }
+  }, [navigation, setBiometrics, mode]);
+
   // Persistent exit: tearing down any in-flight scan and returning the user
   // to the screen that pushed Scan. Partial data is never persisted because
   // setBiometrics / submitScanResults only run after a FINISHED measurement.
@@ -592,7 +629,14 @@ export function ScanScreen({ navigation, route }: Props) {
           <Text style={styles.esterText}>{getEsterMessage()}</Text>
         </View>
 
-        {screenState === "measuring" && (
+        {/* TEMP / DEV-ONLY immediate skip — see devSkipScan. Remove before ship. */}
+        {__DEV__ && (
+          <TouchableOpacity style={styles.devSkipButton} onPress={devSkipScan}>
+            <Text style={styles.devSkipText}>DEV: skip scan →</Text>
+          </TouchableOpacity>
+        )}
+
+        {screenState === "measuring" && !IS_SHORT_SCREEN && (
           <View style={styles.phaseIndicators}>
             {SCAN_PHASES.map((p, i) => (
               <View
@@ -616,7 +660,7 @@ export function ScanScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {screenState === "measuring" && (
+        {screenState === "measuring" && !IS_SHORT_SCREEN && (
           <View style={styles.progressContainer}>
             <View style={styles.progressTrack}>
               <Animated.View
@@ -702,6 +746,18 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
     lineHeight: 20,
     fontStyle: "italic",
+  },
+  // TEMP / DEV-ONLY skip button styling.
+  devSkipButton: {
+    backgroundColor: "#FF3B30",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  devSkipText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   errorActions: {
     flexDirection: "row",

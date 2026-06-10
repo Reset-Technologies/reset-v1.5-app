@@ -19,8 +19,9 @@ import {
 } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Rect, Stop, Circle } from "react-native-svg";
-import { K } from "../../constants/colors";
+import { K, toMetabolicType, type MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { useApp } from "../../context/AppContext";
 import type { Meal } from "../../components";
 import {
   getMealDetail,
@@ -104,11 +105,44 @@ function parseInstructions(instructions: string | null): string[] {
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1));
 }
 
-function CardGradient() {
+// The user's metabolic-type mascot, used as the avatar in the "Message from
+// Ester" bubble so the card reflects who Ester is talking to. (Ember's asset is
+// the legacy "Restorer" file name.)
+const TYPE_LOGO: Record<MetabolicType, ReturnType<typeof require>> = {
+  Burner: require("../../../assets/images/type-logos/Burner.png"),
+  Rebounder: require("../../../assets/images/type-logos/Rebounder.png"),
+  Ember: require("../../../assets/images/type-logos/Restorer.png"),
+  Chameleon: require("../../../assets/images/type-logos/Chameleon.png"),
+  Explorer: require("../../../assets/images/type-logos/Explorer.png"),
+};
+
+// Per-type 3-stop ramp for the Ester card background. Same structure as the
+// original gradient (bright type hue → darkened mid → brand dark #361416, so
+// the light text stays legible at the bottom) — only the hue changes per type.
+// Burner keeps the original terracotta ramp.
+const TYPE_GRADIENT: Record<MetabolicType, [string, string, string]> = {
+  Burner: ["#B44420", "#7A2A18", "#361416"], // terracotta / orange
+  Rebounder: ["#7E5C93", "#522F54", "#361416"], // lavender / plum
+  Ember: ["#5B8794", "#34505A", "#361416"], // slate blue
+  Chameleon: ["#8B6F4E", "#574029", "#361416"], // earthy brown
+  Explorer: ["#B89A2E", "#6E5418", "#361416"], // gold / ochre
+};
+
+const DEFAULT_CARD_GRADIENT: [string, string, string] = [
+  "#B44420",
+  "#7A2A18",
+  "#361416",
+];
+
+function CardGradient({
+  colors = DEFAULT_CARD_GRADIENT,
+}: {
+  colors?: [string, string, string];
+}) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   return (
     <View
-      style={[StyleSheet.absoluteFill, { backgroundColor: "#B44420" }]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: colors[0] }]}
       onLayout={(e) =>
         setSize({
           w: e.nativeEvent.layout.width,
@@ -127,9 +161,9 @@ function CardGradient() {
               x2={size.w}
               y2={size.h}
             >
-              <Stop offset="0" stopColor="#B44420" />
-              <Stop offset="0.55" stopColor="#7A2A18" />
-              <Stop offset="1" stopColor="#361416" />
+              <Stop offset="0" stopColor={colors[0]} />
+              <Stop offset="0.55" stopColor={colors[1]} />
+              <Stop offset="1" stopColor={colors[2]} />
             </LinearGradient>
           </Defs>
           <Rect
@@ -303,6 +337,10 @@ export function RecipeDetailScreen() {
   const route = useRoute<RouteProp<RecipeRouteParams, "RecipeDetail">>();
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
+  const { state } = useApp();
+  // The Ester bubble's avatar + gradient reflect the user's metabolic type.
+  const metabolicType: MetabolicType =
+    toMetabolicType(state.user.metabolicType) ?? "Explorer";
 
   const [detail, setDetail] = useState<MealDetail | null>(null);
   const [ingredients, setIngredients] = useState<MealIngredient[]>([]);
@@ -571,9 +609,9 @@ export function RecipeDetailScreen() {
                 <Text style={styles.esterEyebrowText}>Message from Ester</Text>
               </View>
               <View style={styles.esterCard}>
-                <CardGradient />
+                <CardGradient colors={TYPE_GRADIENT[metabolicType]} />
                 <Image
-                  source={require("../../../assets/images/ester-avatar-brown.png")}
+                  source={TYPE_LOGO[metabolicType]}
                   style={styles.esterAvatar}
                   resizeMode="contain"
                 />
@@ -683,9 +721,9 @@ export function RecipeDetailScreen() {
               onPress={handleMoreRecipes}
               activeOpacity={0.85}
             >
-              <CardGradient />
+              <CardGradient colors={TYPE_GRADIENT[metabolicType]} />
               <Image
-                source={require("../../../assets/images/ester-avatar-silver.png")}
+                source={TYPE_LOGO[metabolicType]}
                 style={styles.moreCtaAvatar}
                 resizeMode="contain"
               />

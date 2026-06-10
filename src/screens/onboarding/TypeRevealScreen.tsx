@@ -10,7 +10,9 @@ import {
   Image,
   Share,
   ActivityIndicator,
+  Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { BlurView } from "expo-blur";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
@@ -29,6 +31,14 @@ type Props = NativeStackScreenProps<any, "TypeReveal">;
 
 const SCREEN_W = Dimensions.get("window").width;
 const SCREEN_H = Dimensions.get("window").height;
+
+// Gap between the header, bone card, and share button — scaled to screen
+// height so short screens (e.g. Galaxy S24, ~780dp) pack tighter and keep the
+// header off the card's top edge, while taller screens (iPhones, ~850-930dp)
+// keep the roomy 24px design spacing. Linear from 10 @ 780 to 24 @ 900.
+const INNER_GAP = Math.round(
+  Math.max(10, Math.min(24, 10 + (SCREEN_H - 780) * (14 / 120))),
+);
 
 const MAROON = "#361416";
 const BONE = "#F3EFE3";
@@ -193,7 +203,15 @@ function FrontCard({
               pointerEvents={revealed ? "none" : "auto"}
               style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}
             >
-              <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
+              {Platform.OS === "ios" ? (
+                <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
+              ) : (
+                // expo-blur's Android blur (dimezisBlurView) renders unevenly
+                // against this rounded, layered card — leaving a lighter
+                // un-blurred ring. A uniform frosted-bone panel hides the type
+                // cleanly and edge-to-edge instead.
+                <View style={[StyleSheet.absoluteFill, styles.androidFrost]} />
+              )}
               <View style={styles.blurDim} />
               <View style={styles.revealCenter}>
                 <TouchableOpacity
@@ -382,6 +400,32 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
 // ── Screen ────────────────────────────────────────────────────────────
 export function TypeRevealScreen({ navigation }: Props) {
   const { state } = useApp();
+  const insets = useSafeAreaInsets();
+
+  // The 812px card design height is taller than some Android windows (e.g.
+  // Galaxy S24), where edge-to-edge means SCREEN_H spans behind the system
+  // bars — so the fixed card bled off both edges with no margin. On Android,
+  // cap the card to the inset-safe area with a ~28px top/bottom gutter (closer
+  // to the iOS ~60px margin) and center it within that. The card has slack
+  // inside (content is centered) so shrinking it doesn't clip. iOS keeps the
+  // original fixed 812 / centered layout.
+  const ANDROID_CARD_MARGIN = 20;
+  // The back cards sit CARD_STACK_STEP lower each, so the stack extends this far
+  // below the front card — subtract it so the bottom margin isn't eaten by the
+  // peeking cards (and the whole stack, not just the front card, is centered).
+  const STACK_EXTRA = (TOTAL_CARDS - 1) * CARD_STACK_STEP;
+  let cardH = CARD_H;
+  let cardTop = CARD_TOP;
+  if (Platform.OS === "android") {
+    const availH = SCREEN_H - insets.top - insets.bottom;
+    cardH = Math.min(CARD_H, availH - ANDROID_CARD_MARGIN * 2 - STACK_EXTRA);
+    cardTop =
+      insets.top +
+      Math.max(
+        ANDROID_CARD_MARGIN,
+        Math.round((availH - cardH - STACK_EXTRA) / 2),
+      );
+  }
 
   // `metabolicType` is set in CreateAccountScreen from the backend
   // typing-function response. Fall back to "Explorer" when:
@@ -652,7 +696,8 @@ export function TypeRevealScreen({ navigation }: Props) {
           styles.cardSlot,
           {
             width: cardW,
-            top: CARD_TOP + idx * CARD_STACK_STEP,
+            height: cardH,
+            top: cardTop + idx * CARD_STACK_STEP,
             left: (SCREEN_W - cardW) / 2,
             transform: [
               { translateX },
@@ -729,10 +774,9 @@ const styles = StyleSheet.create({
   },
   topAvatar: { width: 40, height: 40 },
 
-  // Card slot positioning
+  // Card slot positioning. Height is set inline (responsive on Android).
   cardSlot: {
     position: "absolute",
-    height: CARD_H,
   },
 
   // Card chrome — shadow values from Figma 1916-17871 "Bubble" effect.
@@ -740,7 +784,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: WHITE,
     borderRadius: 48,
-    height: CARD_H,
+    // Fill the (responsive) slot height rather than a fixed pixel height, so
+    // the Android inset-aware cardH/cardTop above governs the card size.
+    height: "100%",
     boxShadow:
       "0 0 1px 0 rgba(0,0,0,0.07) inset, 0 2px 6px -1px rgba(34,10,10,0.38), 0 -9px 4px -8px rgba(54,20,22,0.44) inset, 0 -5px 10px -3px rgba(54,20,22,0.38) inset",
     elevation: 6,
@@ -763,7 +809,9 @@ const styles = StyleSheet.create({
   innerStack: {
     flex: 1,
     width: "100%",
-    gap: 24,
+    // Screen-height-scaled gap (see INNER_GAP): tighter on short screens so the
+    // header keeps its top padding, roomy on tall screens.
+    gap: INNER_GAP,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -808,12 +856,21 @@ const styles = StyleSheet.create({
   },
   typeBoneCard: {
     width: "100%",
-    height: 461,
+    // minHeight (not a fixed height) so the longest paragraph (Ember/Restorer)
+    // can grow the card instead of clipping its last line under overflow:hidden
+    // — especially on Android, where text wraps a touch taller.
+    minHeight: 461,
     backgroundColor: BONE,
     borderRadius: 24,
     padding: 24,
     gap: 24,
     overflow: "hidden",
+  },
+  // Android frosted-glass stand-in for BlurView (which blurs unevenly here).
+  // Near-opaque bone fully hides the type until "Tap to reveal"; the maroon
+  // blurDim layer on top adds the same tint iOS gets from its real blur.
+  androidFrost: {
+    backgroundColor: "rgba(243,239,227,0.985)",
   },
   typeLogoWrap: {
     alignItems: "center",

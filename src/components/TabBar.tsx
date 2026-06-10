@@ -253,7 +253,11 @@ const styles = StyleSheet.create({
   iconPill: {
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 999,
+    // The active-icon background is ~30px tall. A concrete radius ≥ half that
+    // keeps the full oval on iOS while staying a value Android reliably rounds
+    // — Android renders very large radii (e.g. 999) on small views as squares.
+    borderRadius: 18,
+    overflow: "hidden",
   },
   esterButton: {
     position: "absolute",

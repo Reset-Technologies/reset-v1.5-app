@@ -14,7 +14,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
@@ -340,7 +340,15 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
         <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
           <View style={styles.continueRow}>
             <TouchableOpacity onPress={commitAnswer} style={styles.arrowBtn} activeOpacity={0.85}>
-              <Text style={styles.arrowGlyph}>→</Text>
+              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M5 12h14M13 5l7 7-7 7"
+                  stroke={MAROON}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
             </TouchableOpacity>
           </View>
         </SafeAreaView>

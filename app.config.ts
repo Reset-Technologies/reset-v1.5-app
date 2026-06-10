@@ -33,7 +33,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
-    minSdkVersion: 26,
     package: "com.betterwell.reset.dev",
     permissions: ["RECORD_AUDIO"],
     adaptiveIcon: {
@@ -50,6 +49,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-font",
     "expo-video",
     "expo-audio",
+    [
+      // ShenAI SDK requires Android minSdk 26. app.config's android.minSdkVersion
+      // is not a real Expo field (it was silently ignored, so prebuild fell back
+      // to the SDK default of 24 and the manifest merge failed). Set it the
+      // canonical way via build properties.
+      "expo-build-properties",
+      {
+        android: {
+          minSdkVersion: 26,
+        },
+      },
+    ],
     // "expo-apple-authentication", // TODO: re-enable once added to paid dev team
     [
       "expo-camera",
@@ -78,6 +89,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "./plugins/withRegisterPush",
+    // Wires Twilio Voice's VoiceApplicationProxy into the Android Application
+    // lifecycle — without it the app crashes on launch (null JSEventEmitter).
+    "./plugins/withTwilioVoiceAndroid",
   ],
   extra: {
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
@@ -86,12 +100,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // RevenueCat public SDK keys (platform-specific). Safe to ship in the
     // bundle — these are the *public* client keys, not a secret key — so they
     // live here as defaults (same as the Braze keys above), overridable via
-    // env. iOS is live; Android stays empty until an Android RevenueCat app
-    // exists (the revenuecat service treats an empty key as "not configured"
-    // and the paywall falls back to static prices).
+    // env. Both platforms point at the same RevenueCat project (same `pro`
+    // entitlement + webhook). Android's offering stays empty until the Play
+    // subscriptions are created (gated on the Play payments profile), so the
+    // paywall falls back to static prices on Android until then.
     revenueCatIosApiKey:
       process.env.REVENUECAT_IOS_API_KEY ?? "appl_fFSqzbabmCIEVvADlYAwdtHxhMv",
-    revenueCatAndroidApiKey: process.env.REVENUECAT_ANDROID_API_KEY ?? "",
+    revenueCatAndroidApiKey:
+      process.env.REVENUECAT_ANDROID_API_KEY ??
+      "goog_BlNBidaCymvrJlRtCgTeutCmrAu",
     eas: {
       projectId: "e1576fd6-3519-4c0f-95e8-abf43df86a02",
     },

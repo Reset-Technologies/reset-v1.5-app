@@ -251,6 +251,33 @@ export function EsterChatScreen() {
     stopListening();
   });
 
+  // Whether the en-US on-device speech model is installed: true = use the
+  // on-device recognizer (faster + audio stays on the device); false/null =
+  // fall back to the network recognizer.
+  const [onDeviceVoiceReady, setOnDeviceVoiceReady] = useState<boolean | null>(
+    null,
+  );
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
+          setOnDeviceVoiceReady(false);
+          return;
+        }
+        const { installedLocales } =
+          await ExpoSpeechRecognitionModule.getSupportedLocales(
+            Platform.OS === "android"
+              ? { androidRecognitionServicePackage: "com.google.android.as" }
+              : {},
+          );
+        setOnDeviceVoiceReady((installedLocales ?? []).includes("en-US"));
+      } catch {
+        setOnDeviceVoiceReady(false);
+      }
+    })();
+  }, []);
+
   const defaultGreeting: Message = {
     id: "initial",
     text:
@@ -355,11 +382,24 @@ export function EsterChatScreen() {
         }
       }, 250);
       setIsListening(true);
+      // On-device only when the en-US model is ALREADY installed: real-time
+      // interim results, audio stays on device, and NO download prompt.
+      // Otherwise the network recognizer (the "Enable" nudge offers on-device).
       ExpoSpeechRecognitionModule.start({
         lang: "en-US",
         interimResults: true,
         continuous: true,
-        requiresOnDeviceRecognition: false,
+        requiresOnDeviceRecognition: onDeviceVoiceReady === true,
+        // Without these, Android finalizes after ~450ms of silence and the
+        // continuous mode restarts — so before/at the start of speech it churns
+        // through empty restarts and drops the first words (a multi-second
+        // "delay"). Extend the silence/min-length windows so it waits for
+        // speech instead of restarting; the user ends the session via send.
+        androidIntentOptions: {
+          EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 6000,
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
+          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
+        },
       });
     } catch {
       // Native module unavailable — falls back to keyboard mode silently
@@ -694,7 +734,14 @@ export function EsterChatScreen() {
         style={[
           styles.container,
           {
-            paddingBottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom,
+            // +gap on Android: under edge-to-edge the keyboard inset reads a
+            // few px short, so the input bar sat flush/barely under the
+            // keyboard. The buffer clears it and leaves a small gap. iOS keeps
+            // the exact inset (keyboardWillShow reports it accurately).
+            paddingBottom:
+              keyboardHeight > 0
+                ? keyboardHeight + (Platform.OS === "android" ? 12 : 0)
+                : insets.bottom,
             backgroundColor: colors.screenBg,
           },
         ]}

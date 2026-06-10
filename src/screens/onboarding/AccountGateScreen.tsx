@@ -12,14 +12,27 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as AppleAuthentication from "expo-apple-authentication";
+import Constants from "expo-constants";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
-import { loginWithApple } from "../../services/auth";
+import { loginWithApple, loginWithGoogle } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
+
+// Google Sign-In is Android-only; importing on iOS crashes in Expo Go.
+const GoogleSignin =
+  Platform.OS === "android"
+    ? require("@react-native-google-signin/google-signin").GoogleSignin
+    : null;
+
+if (GoogleSignin) {
+  GoogleSignin.configure({
+    webClientId: Constants.expoConfig?.extra?.googleWebClientId,
+  });
+}
 
 type Props = NativeStackScreenProps<any, "AccountGate">;
 
@@ -42,7 +55,14 @@ const TYPE_LOGO: Record<MetabolicType, any> = {
   Chameleon: require("../../../assets/images/onboarding/type-logo-chameleon.png"),
   Ember: require("../../../assets/images/onboarding/type-logo-ember.png"),
   Explorer: require("../../../assets/images/onboarding/type-logo-explorer.png"),
-  Rebounder: require("../../../assets/images/onboarding/type-logo-rebounder.png"),
+  // The rebounder logo is a near-neutral silver-mauve; iOS's wide-gamut display
+  // amplifies its faint purple while Android renders the literal sRGB (reads
+  // gray). Android gets a saturation-boosted variant so it matches the iOS
+  // purple; iOS keeps the original.
+  Rebounder:
+    Platform.OS === "android"
+      ? require("../../../assets/images/onboarding/type-logo-rebounder-android.png")
+      : require("../../../assets/images/onboarding/type-logo-rebounder.png"),
 };
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -98,6 +118,10 @@ export function AccountGateScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(Platform.OS === "ios");
+  // Measured height of the graphic area, so the featured card can scale down
+  // to fit short screens (capped at its 373 design height).
+  const [graphicH, setGraphicH] = useState(0);
+  const featuredCardHeight = graphicH ? Math.min(373, graphicH - 24) : 373;
 
   useEffect(() => {
     logEvent("onboarding_account_gate");
@@ -172,6 +196,56 @@ export function AccountGateScreen({ navigation }: Props) {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    logEvent("onboarding_account_gate_googleCTA");
+    setError(null);
+    setIsLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      const idToken = response.data?.idToken;
+      if (!idToken) throw new Error("No ID token from Google");
+
+      const user = await loginWithGoogle(idToken);
+      setUserAccount(user.email ?? "google-user", user.firstName ?? undefined);
+      setAuth(user);
+
+      try {
+        const { primaryBucket, startingRead, glp1Flag } =
+          await syncOnboardingToBackend({
+            goal: state.user.goal,
+            behaviorAnswers: {
+              q1: state.user.quizAnswers.q1,
+              q2: state.user.quizAnswers.q2,
+              q3: state.user.quizAnswers.q3,
+            },
+            tastePreferences: state.user.tastePreferences,
+            dietaryRestrictions: state.user.dietaryRestrictions,
+          });
+        if (primaryBucket) {
+          setTypingResult({
+            metabolicType: primaryBucket,
+            startingRead,
+            glp1Flag,
+          });
+        }
+      } catch {}
+
+      if (state.biometrics?.raw) {
+        try {
+          await submitScanResults(state.biometrics.raw);
+        } catch {}
+      }
+
+      finishAccount();
+    } catch (err: any) {
+      if (err.code === "SIGN_IN_CANCELLED") return;
+      setError(err.message || "Google sign-in failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleEmail = () => {
     logEvent("onboarding_account_gate_emailCTA");
     navigation.navigate("CreateAccount");
@@ -202,7 +276,10 @@ export function AccountGateScreen({ navigation }: Props) {
 
         <View style={styles.center}>
           {/* Stacked graphic: row of mini cards behind, featured card in front */}
-          <View style={styles.graphicWrap}>
+          <View
+            style={styles.graphicWrap}
+            onLayout={(e) => setGraphicH(e.nativeEvent.layout.height)}
+          >
             <View style={styles.bgRow} pointerEvents="none">
               {TYPE_ORDER.map((t) => (
                 <TypeCardMini
@@ -216,7 +293,7 @@ export function AccountGateScreen({ navigation }: Props) {
 
             <Image
               source={FEATURED_CARD}
-              style={styles.featuredCard}
+              style={[styles.featuredCard, { height: featuredCardHeight }]}
               resizeMode="contain"
             />
             {/* Static teaser intentionally uses the designer-baked blur image
@@ -242,6 +319,21 @@ export function AccountGateScreen({ navigation }: Props) {
                   <ActivityIndicator color={MAROON} />
                 ) : (
                   <Text style={styles.primaryBtnText}>Continue with Apple</Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {Platform.OS === "android" && (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleGoogleSignIn}
+                disabled={isLoading}
+                activeOpacity={0.85}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={MAROON} />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Continue with Google</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -334,9 +426,12 @@ const styles = StyleSheet.create({
     lineHeight: 6,
   },
 
-  // Featured card — designer-baked blurred PNG, 240x373 natural size.
+  // Featured card — designer-baked blurred PNG, 240x373 natural size. Height
+  // is set inline from the measured graphic area (capped at 373) so on shorter
+  // screens (e.g. Galaxy S24) it scales down to fit instead of bleeding into
+  // the top logo and the title; aspectRatio derives the width to match.
   featuredCard: {
-    width: 240,
+    height: 373,
     aspectRatio: 240 / 373,
   },
 

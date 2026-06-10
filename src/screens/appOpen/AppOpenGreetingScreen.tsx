@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useApp } from "../../context/AppContext";
+import Svg, { Path } from "react-native-svg";
 import { K, toMetabolicType } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 import {
@@ -250,7 +251,15 @@ export function AppOpenGreetingScreen() {
               onPress={() => navigation.navigate("DataGate")}
               activeOpacity={0.8}
             >
-              <Text style={[styles.arrowIcon, { color: textColor }]}>↓</Text>
+              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M12 5v14M5 12l7 7 7-7"
+                  stroke={textColor}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
             </TouchableOpacity>
           </View>
         </View>

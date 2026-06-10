@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
+import Svg, { Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { typography, spacing, radius } from "../../constants/typography";
 import { getFavorites, removeFavorite } from "../../services/meals";
@@ -91,7 +92,15 @@ export function SavedMealsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>←</Text>
+          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M19 12H5M11 19l-7-7 7-7"
+              stroke={K.brown}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Saved Meals</Text>
         <View style={styles.backButton} />

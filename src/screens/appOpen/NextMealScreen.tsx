@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, CommonActions, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import Svg, { Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 import {
@@ -27,6 +29,22 @@ import { useAppPalette } from "../../hooks/useAppPalette";
 import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
+
+const SCREEN_W = Dimensions.get("window").width;
+const SCREEN_H = Dimensions.get("window").height;
+
+// Horizontal padding inside the card — scaled to screen width. On narrow phones
+// (e.g. Galaxy S24, 360dp) the design's 32px padding squeezed the content into a
+// skinny column that over-wrapped and overflowed onto the cta row; narrow
+// screens get less padding (wider content, less wrapping), wide phones keep 32.
+const CARD_PAD_H = Math.round(
+  Math.max(16, Math.min(spacing.xl, 16 + (SCREEN_W - 360) * (16 / 80))),
+);
+// Vertical gap/padding inside the card — scaled to screen height so short
+// screens pack tighter and the content doesn't overflow the cta row.
+const CARD_GAP_V = Math.round(
+  Math.max(16, Math.min(spacing.xl, 16 + (SCREEN_H - 780) * (16 / 120))),
+);
 
 type FeedbackState = "idle" | "up" | "down";
 
@@ -445,7 +463,15 @@ export function NextMealScreen() {
                 onPress={advanceToInsights}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.arrowIcon, { color: textColor }]}>↓</Text>
+                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 5v14M5 12l7 7 7-7"
+                    stroke={textColor}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
               </TouchableOpacity>
             </View>
           </View>
@@ -466,13 +492,13 @@ const styles = StyleSheet.create({
   },
   cardInner: {
     flex: 1,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
+    paddingHorizontal: CARD_PAD_H,
+    paddingTop: CARD_GAP_V,
     paddingBottom: spacing.lg,
   },
   cardTop: {
     flex: 1,
-    gap: spacing.xl,
+    gap: CARD_GAP_V,
   },
   header: {
     flexDirection: "row",
@@ -673,9 +699,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  arrowIcon: {
-    fontSize: 22,
-    fontWeight: "400",
   },
 });

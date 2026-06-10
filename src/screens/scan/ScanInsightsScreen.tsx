@@ -528,7 +528,15 @@ export function ScanInsightsScreen() {
           activeOpacity={0.8}
           accessibilityLabel="Continue to home"
         >
-          <Text style={[styles.advanceArrow, { color: textColor }]}>↓</Text>
+          <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M12 5v14M5 12l7 7 7-7"
+              stroke={textColor}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
       ) : null}
     </View>

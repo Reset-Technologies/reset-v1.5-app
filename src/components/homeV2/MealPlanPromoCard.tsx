@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 
@@ -32,7 +33,15 @@ export function MealPlanPromoCard({ onPress }: MealPlanPromoCardProps) {
           onPress={onPress}
           activeOpacity={0.85}
         >
-          <Text style={styles.arrowIcon}>→</Text>
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M5 12h14M13 5l7 7-7 7"
+              stroke={K.brown}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
       </View>
     </View>

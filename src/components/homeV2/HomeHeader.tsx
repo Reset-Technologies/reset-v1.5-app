@@ -1,9 +1,16 @@
 import React from "react";
-import { View, Text, StyleSheet, Image } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
 import { fonts, spacing } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { useApp } from "../../context/AppContext";
 import { toMetabolicType } from "../../constants/colors";
+
+const SCREEN_W = Dimensions.get("window").width;
+// The decorative type-logo is 266px by design, which is ~74% of a narrow
+// 360dp screen (Galaxy S24) — it crushes the flex:1 text block so "Today"
+// wraps. Scale it down on narrow screens (leaving ~120px for the title) while
+// keeping the full 266 on iPhone-width screens so iOS is unchanged.
+const MASCOT_SIZE = Math.round(Math.max(210, Math.min(266, SCREEN_W - 145)));
 
 const TYPE_LOGO = {
   Burner: require("../../../assets/images/type-logos/Burner.png"),
@@ -35,7 +42,13 @@ export function HomeHeader({
           <Text style={[styles.metaDate, { color: textColor }]}>{dateLabel}</Text>
           <Text style={[styles.metaDay, { color: subtleText }]}>{dayLabel}</Text>
         </View>
-        <Text style={[styles.title, { color: textColor }]}>{title}</Text>
+        <Text
+          style={[styles.title, { color: textColor }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {title}
+        </Text>
       </View>
       <View style={styles.mascotWrap}>
         <Image
@@ -89,8 +102,8 @@ const styles = StyleSheet.create({
     marginRight: -40,
   },
   mascotImage: {
-    width: 266,
-    height: 266,
+    width: MASCOT_SIZE,
+    height: MASCOT_SIZE,
     transform: [{ rotate: "-10deg" }],
   },
 });

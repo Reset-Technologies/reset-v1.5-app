@@ -20,11 +20,30 @@ import {
   purchasePackage,
   restorePurchases,
 } from "../../services/revenuecat";
+import { setSubscriptionTierDev } from "../../services/profile";
 import { rootNavigationRef } from "../../navigation/rootNavigationRef";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
 
 const SCREEN_W = Dimensions.get("window").width;
+const SCREEN_H = Dimensions.get("window").height;
+
+// Vertical gap between the body sections (title / table / plans / CTA), scaled
+// to screen height. The comparison table is a fixed height; on short screens
+// (e.g. Galaxy S24, ~780dp) the 24px gaps squeeze the table's flex slot until
+// the table overflows it — overlapping the title above and the plan cards
+// below. Tightening the gaps on short screens gives the slot enough room for
+// the table to fit; tall screens (iPhones) keep the roomy 24px design spacing.
+const BODY_GAP = Math.round(
+  Math.max(12, Math.min(24, 12 + (SCREEN_H - 780) * (12 / 120))),
+);
+
+// Vertical padding inside each comparison-table cell, scaled to screen height.
+// On short screens the 7-row table needs to be more compact to fit above the
+// plan cards without overlapping; tall screens keep the roomy 8px design.
+const CELL_PAD_V = Math.round(
+  Math.max(4, Math.min(8, 4 + (SCREEN_H - 780) * (4 / 100))),
+);
 
 const MAROON_ALT = "#513436"; // page-surface-(alt)
 const MAROON = "#361416";
@@ -352,6 +371,26 @@ export function PaywallScreen({ navigation }: Props) {
   const handleSubscribe = async () => {
     if (purchasing || restoring) return;
     logEvent("onboarding_paywall_subscribe", { plan: selectedPlan });
+
+    // Local/dev builds can't complete a real purchase (RevenueCat isn't wired
+    // for Android, and the simulator has no StoreKit), so Subscribe instantly
+    // grants pro and proceeds — letting post-paywall screens be tested.
+    // Compiled out of production builds via __DEV__. Mirrors the
+    // successful-purchase path below. We also persist the tier to the backend
+    // (local-env-gated server-side) so the grant survives re-login rather than
+    // living only in client state; a backend failure still flips locally so the
+    // shortcut never dead-ends.
+    if (__DEV__) {
+      try {
+        await setSubscriptionTierDev("pro");
+      } catch {
+        // Non-fatal: keep the local unblock working even if the backend is down.
+      }
+      setSubscriptionTier("pro");
+      if (!isGate) proceedToApp();
+      return;
+    }
+
     const pkg = selectedPlan === "monthly" ? monthlyPkg : annualPkg;
     if (!pkg) {
       // No live package. In onboarding we never block the flow; in the gate we
@@ -540,7 +579,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     alignItems: "center",
-    gap: 24,
+    gap: BODY_GAP,
     // Figma dev-mode measures 20px from logo bottom to top of the reset
     // wordmark glyphs. With alignItems:center on the title row and pro
     // lineHeight tightened to 40, the wordmark sits ~6px below the row
@@ -573,6 +612,10 @@ const styles = StyleSheet.create({
     // top. Tightening here keeps the row at 40 and the visible glyphs
     // close to the row top.
     lineHeight: 40,
+    // Android adds extra font padding above/below text, which shifts "pro" out
+    // of line with the SVG wordmark (the alignment was tuned to iOS metrics).
+    // Removing it aligns the caps cross-platform; iOS ignores this prop.
+    includeFontPadding: false,
     color: WHITE,
     letterSpacing: -0.4,
   },
@@ -650,7 +693,7 @@ const styles = StyleSheet.create({
     borderColor: DIVIDER,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
+    paddingVertical: CELL_PAD_V,
   },
   cellProLast: {
     borderBottomWidth: 0.5,
@@ -664,7 +707,7 @@ const styles = StyleSheet.create({
     borderColor: DIVIDER,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
+    paddingVertical: CELL_PAD_V,
   },
   cellFreeLast: {
     borderBottomWidth: 0.5,
@@ -680,7 +723,7 @@ const styles = StyleSheet.create({
     borderColor: DIVIDER,
     paddingLeft: 12,
     paddingRight: 12,
-    paddingVertical: 8,
+    paddingVertical: CELL_PAD_V,
     justifyContent: "center",
   },
   cellLabelFirst: {

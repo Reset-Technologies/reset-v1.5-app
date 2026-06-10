@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, CommonActions, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import Svg, { Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 import { getProfile } from "../../services/profile";
@@ -198,7 +199,15 @@ export function DataGateScreen() {
                 onPress={exitToHome}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.arrowIcon, { color: textColor }]}>↓</Text>
+                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 5v14M5 12l7 7 7-7"
+                    stroke={textColor}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
               </TouchableOpacity>
             </View>
           </View>

@@ -11,6 +11,7 @@ import {
   Image,
   ImageSourcePropType,
   Animated,
+  Platform,
 } from "react-native";
 import {
   SafeAreaView,
@@ -219,15 +220,25 @@ export function EducationCarouselScreen({ navigation }: Props) {
   // and avoid setState here — a re-render of Education during the transition
   // can flicker through PreScan on the iOS sim.
   useEffect(() => {
+    const snapToLastSlide = () => {
+      scrollRef.current?.scrollTo({
+        x: (EDU_SLIDE_COUNT - 1) * SCREEN_WIDTH,
+        animated: false,
+      });
+      activeRef.current = EDU_SLIDE_COUNT - 1;
+    };
     const blurUnsub = navigation.addListener("blur", () => {
       if (advancedRef.current) {
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({
-            x: (EDU_SLIDE_COUNT - 1) * SCREEN_WIDTH,
-            animated: false,
-          });
-          activeRef.current = EDU_SLIDE_COUNT - 1;
-        });
+        // Snap back to the last real slide while PreScan covers Education, so
+        // returning here never re-shows the teaser. iOS paints PreScan within
+        // one frame under animation:"none", so rAF hides the snap. Android
+        // needs a few more frames or the snap-back flashes through before
+        // PreScan has painted — defer past the transition there.
+        if (Platform.OS === "android") {
+          setTimeout(snapToLastSlide, 150);
+        } else {
+          requestAnimationFrame(snapToLastSlide);
+        }
       }
     });
     const focusUnsub = navigation.addListener("focus", () => {
@@ -270,6 +281,20 @@ export function EducationCarouselScreen({ navigation }: Props) {
       navigation.navigate("PreScan");
     }
   };
+
+  // The arrow lives in a fixed footer overlay, so without this it stayed
+  // visible as the user swiped onto the PreScan teaser slide and lingered a
+  // beat on PreScan during the animation:"none" handoff. Fade it out early in
+  // the swipe from the last real slide toward the teaser so it's gone before
+  // PreScan loads. (scrollX is native-driven; opacity is native-safe.)
+  const arrowOpacity = scrollX.interpolate({
+    inputRange: [
+      (EDU_SLIDE_COUNT - 1) * SCREEN_WIDTH,
+      (EDU_SLIDE_COUNT - 0.4) * SCREEN_WIDTH,
+    ],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
 
   const renderSlide = (item: Slide) => {
     if (item.variant === "preview") {
@@ -467,15 +492,25 @@ export function EducationCarouselScreen({ navigation }: Props) {
         edges={["bottom"]}
         pointerEvents="box-none"
       >
-        <TouchableOpacity
-          onPress={handleAdvance}
-          style={styles.arrowButton}
-          accessibilityLabel={
-            active < SLIDES.length - 1 ? "Next slide" : "Continue"
-          }
-        >
-          <Text style={styles.arrowGlyph}>→</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ opacity: arrowOpacity }}>
+          <TouchableOpacity
+            onPress={handleAdvance}
+            style={styles.arrowButton}
+            accessibilityLabel={
+              active < SLIDES.length - 1 ? "Next slide" : "Continue"
+            }
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M5 12h14M13 5l7 7-7 7"
+                stroke={K.brown}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </TouchableOpacity>
+        </Animated.View>
       </SafeAreaView>
     </View>
   );
