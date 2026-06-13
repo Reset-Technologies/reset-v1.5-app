@@ -26,6 +26,8 @@ import { logEvent, setCustomAttribute } from "../../services/braze";
 import { ScoreRing } from "../../components/survey/ScoreRing";
 import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
+import { TypeRevealHero } from "./TypeRevealHero";
+import { playRevealHaptics } from "../../utils/revealHaptics";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
 
@@ -160,7 +162,6 @@ function FrontCard({
   onReveal: () => void;
   onShareResults: () => void;
 }) {
-  const logo = TYPE_LOGO[type];
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const revealedOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -178,6 +179,14 @@ function FrontCard({
     ]).start();
   }, [revealed]);
 
+  // RES-138: on reveal, run the building haptic ramp in sync with the reveal
+  // animation. Cancel any pending pulses on unmount / re-reveal.
+  useEffect(() => {
+    if (!revealed) return;
+    const cancel = playRevealHaptics();
+    return cancel;
+  }, [revealed]);
+
   return (
     <View style={[styles.card, { width: CARD_WIDTHS[0], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.cardContentTight}>
@@ -186,7 +195,11 @@ function FrontCard({
 
           <View style={styles.typeBoneCard}>
             <View style={styles.typeLogoWrap}>
-              <Image source={logo} style={styles.typeLogo} resizeMode="contain" />
+              <TypeRevealHero
+                type={type}
+                playing={revealed}
+                style={styles.typeLogo}
+              />
             </View>
             <View style={styles.typeTextWrap}>
               <Text style={styles.typeName}>{TYPE_DISPLAY[type]}</Text>
