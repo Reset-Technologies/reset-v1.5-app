@@ -33,6 +33,9 @@ import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
 
 const SCREEN_H = Dimensions.get("window").height;
+// Extra gap above the modal sheet (on top of the status-bar inset) so it doesn't
+// sit awkwardly tight against the top of the screen.
+const CARD_TOP_GAP = 16;
 // Height of everything in the card that ISN'T the why-bubble text — top bar,
 // heading, hero photo, eyebrow, prompt, the two chips, and the inter-section
 // gaps/padding. The why text's scroll cap is whatever vertical space is left
@@ -377,7 +380,7 @@ export function NextMealScreen() {
   // beyond the leftover space on a given device.
   const whyMaxHeight = Math.max(
     72,
-    SCREEN_H - insets.top - insets.bottom - WHY_RESERVED_H,
+    SCREEN_H - insets.top - CARD_TOP_GAP - insets.bottom - WHY_RESERVED_H,
   );
   const heading = headingFor(fromOnboarding, hasScore);
   // Chat-bubble surface — brown-tinted ghost on light themes, bone-tinted on dark.
@@ -402,7 +405,7 @@ export function NextMealScreen() {
       <View
         style={[
           styles.card,
-          { backgroundColor: cardBg, marginTop: insets.top },
+          { backgroundColor: cardBg, marginTop: insets.top + CARD_TOP_GAP },
         ]}
       >
         {/* Top bar — close (takes over the old down-arrow's advance) + centered
