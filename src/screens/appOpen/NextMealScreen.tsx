@@ -7,14 +7,16 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  ScrollView,
   Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, CommonActions, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import Svg, { Path } from "react-native-svg";
-import { K } from "../../constants/colors";
+import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from "react-native-svg";
+import { K, toMetabolicType } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
+import { useApp } from "../../context/AppContext";
 import {
   getDailyPlan,
   submitMealFeedback,
@@ -25,28 +27,27 @@ import {
   type MealIngredient,
 } from "../../services/meals";
 import { getResetScore } from "../../services/resetScore";
+import { getMealWhy } from "../../services/mealInsights";
 import { useAppPalette } from "../../hooks/useAppPalette";
-import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
 
-const SCREEN_W = Dimensions.get("window").width;
 const SCREEN_H = Dimensions.get("window").height;
+// Height of everything in the card that ISN'T the why-bubble text — top bar,
+// heading, hero photo, eyebrow, prompt, the two chips, and the inter-section
+// gaps/padding. The why text's scroll cap is whatever vertical space is left
+// after these, so the chips never get pushed off the bottom edge.
+const WHY_RESERVED_H = 644;
 
-// Horizontal padding inside the card — scaled to screen width. On narrow phones
-// (e.g. Galaxy S24, 360dp) the design's 32px padding squeezed the content into a
-// skinny column that over-wrapped and overflowed onto the cta row; narrow
-// screens get less padding (wider content, less wrapping), wide phones keep 32.
-const CARD_PAD_H = Math.round(
-  Math.max(16, Math.min(spacing.xl, 16 + (SCREEN_W - 360) * (16 / 80))),
-);
-// Vertical gap/padding inside the card — scaled to screen height so short
-// screens pack tighter and the content doesn't overflow the cta row.
-const CARD_GAP_V = Math.round(
-  Math.max(16, Math.min(spacing.xl, 16 + (SCREEN_H - 780) * (16 / 120))),
-);
-
-type FeedbackState = "idle" | "up" | "down";
+// The user's metabolic-type mark (full-colour), shown centered in the top bar.
+// Ember maps to the "Restorer" asset (display name = Restorer, key = Ember).
+const TYPE_LOGO = {
+  Burner: require("../../../assets/images/type-logos/Burner.png"),
+  Rebounder: require("../../../assets/images/type-logos/Rebounder.png"),
+  Ember: require("../../../assets/images/type-logos/Restorer.png"),
+  Chameleon: require("../../../assets/images/type-logos/Chameleon.png"),
+  Explorer: require("../../../assets/images/type-logos/Explorer.png"),
+};
 
 type Slot = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -65,10 +66,7 @@ function mealsForSlot(plan: DailyPlan, slot: Slot): DailyPlanMeal[] {
   return plan[slot] ?? [];
 }
 
-function pickMealInSlot(
-  plan: DailyPlan,
-  slot: Slot,
-): DailyPlanMeal | null {
+function pickMealInSlot(plan: DailyPlan, slot: Slot): DailyPlanMeal | null {
   const meals = mealsForSlot(plan, slot);
   if (meals.length === 0) return null;
   const eaten = new Set(plan.eatenMealIds?.[slot] ?? []);
@@ -90,13 +88,6 @@ function formatPrep(meal: DailyPlanMeal): string {
   return meal.prepTime ? `${meal.prepTime} mins` : "";
 }
 
-function formatMacros(meal: DailyPlanMeal): string | null {
-  const parts: string[] = [];
-  if (meal.calories) parts.push(`~${Math.round(meal.calories)} cal`);
-  if (meal.protein) parts.push(`${Math.round(meal.protein)}g protein`);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
 // Build tag pills from the meal's classification fields. Only surface
 // positively-framed values — "neutral" and "ultra_processed" don't read as
 // helpful selling points on a recommendation card.
@@ -112,24 +103,130 @@ function buildTags(meal: DailyPlanMeal): string[] {
   return tags.slice(0, 3);
 }
 
+// Render the LLM why-blurb, turning **double-asterisk** spans into bold runs
+// (the generate_meal_why_blurb tool highlights the fit-phrases this way).
+function renderBoldSegments(text: string, boldColor: string): React.ReactNode[] {
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter((p) => p.length > 0)
+    .map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <Text key={i} style={{ fontFamily: fonts.catalogueBold, color: boldColor }}>
+          {part.slice(2, -2)}
+        </Text>
+      ) : (
+        <Text key={i}>{part}</Text>
+      ),
+    );
+}
+
+// A height-capped scroll area with an always-visible mini scrollbar on the
+// right — shown only when the content overflows — so users know the why-blurb
+// has more text below the fold.
+function WhyScroll({
+  maxHeight,
+  thumbColor,
+  trackColor,
+  children,
+}: {
+  maxHeight: number;
+  thumbColor: string;
+  trackColor: string;
+  children: React.ReactNode;
+}) {
+  const [viewH, setViewH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
+
+  // Inset the track from the bubble's top (and bottom) so it doesn't touch the
+  // rounded border corner.
+  const TRACK_INSET = 8;
+  const scrollable = contentH > viewH + 1;
+  const trackH = Math.max(0, viewH - TRACK_INSET * 2);
+  const thumbH = scrollable ? Math.max(24, (viewH / contentH) * trackH) : 0;
+  const maxOffset = Math.max(1, contentH - viewH);
+  const thumbY = scrollable
+    ? (trackH - thumbH) * Math.min(1, Math.max(0, offsetY) / maxOffset)
+    : 0;
+
+  return (
+    <View style={styles.whyScrollWrap}>
+      <ScrollView
+        style={{ maxHeight }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        scrollEventThrottle={16}
+        onLayout={(e) => setViewH(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_, h) => setContentH(h)}
+        onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
+      >
+        {children}
+      </ScrollView>
+      {scrollable ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.scrollTrack,
+            { top: TRACK_INSET, height: trackH, backgroundColor: trackColor },
+          ]}
+        >
+          <View
+            style={[styles.scrollThumb, { height: thumbH, top: thumbY, backgroundColor: thumbColor }]}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Per-variant heading — a regular lead-in + a bold emphasis clause, matching the
+// Figma "picked for your body." treatment. whyLine moved out of the heading and
+// into the "Why this meal?" bubble below the photo.
+function headingFor(fromOnboarding: boolean, hasScore: boolean): {
+  lead: string;
+  strong: string;
+} {
+  if (fromOnboarding) {
+    return {
+      lead: "Here's your first meal recommendation, ",
+      strong: "picked for your body.",
+    };
+  }
+  if (hasScore) {
+    return {
+      lead: "Based on your recent score, ",
+      strong: "I picked this one for you.",
+    };
+  }
+  return {
+    lead: "This one just came across my desk — ",
+    strong: "I think you'd love it.",
+  };
+}
+
 export function NextMealScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AppOpenStackParamList>>();
   const route = useRoute<RouteProp<AppOpenStackParamList, "NextMeal">>();
   // True when the user just finished onboarding (paywall → NextMeal). Switches
-  // the header + intro to a first-meal/welcome variant instead of the daily
-  // "Thinking of you" framing.
+  // the heading to a first-meal/welcome variant instead of the daily framing.
   const fromOnboarding = route.params?.fromOnboarding === true;
+  const { state } = useApp();
+  const metabolicType = toMetabolicType(state.user.metabolicType) ?? "Explorer";
   const insets = useSafeAreaInsets();
-  const { outerBg, innerBg, nestedBg, textColor, subtleText, borderColor, statusBarStyle } =
+  const { evening, outerBg, innerBg, nestedBg, textColor, subtleText, borderColor, statusBarStyle } =
     useAppPalette();
 
   const [plan, setPlan] = useState<DailyPlan | null>(null);
   const [slot, setSlot] = useState<Slot>("breakfast");
   const [meal, setMeal] = useState<DailyPlanMeal | null>(null);
   const [ingredients, setIngredients] = useState<MealIngredient[]>([]);
-  const [feedback, setFeedback] = useState<FeedbackState>("idle");
+  // Richer LLM "why this meal" blurb (3 sentences). Fetched per-meal; the short
+  // template whyLine shows instantly and is swapped out once this resolves.
+  const [esterWhy, setEsterWhy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [hasScore, setHasScore] = useState(false);
   // Tracked separately so an errored fetch doesn't leave the screen stuck
   // in the spinner state. We flip this once the plan-fetch settles either
@@ -163,6 +260,25 @@ export function NextMealScreen() {
         setPlanFetchDone(true);
       });
   }, []);
+
+  useEffect(() => {
+    if (!meal?.id) {
+      setEsterWhy(null);
+      return;
+    }
+    let cancelled = false;
+    setEsterWhy(null);
+    getMealWhy(meal.id)
+      .then((res) => {
+        if (!cancelled) setEsterWhy(res.text);
+      })
+      .catch(() => {
+        // keep the template whyLine fallback
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [meal?.id]);
 
   useEffect(() => {
     if (!meal?.id) {
@@ -206,50 +322,15 @@ export function NextMealScreen() {
     );
   };
 
-  const handleAskEster = () => {
-    logEvent("home_meal_askEsterCTA", { mealId: meal?.id, surface: "nextMeal" });
-    const parent = navigation.getParent();
-    if (meal) {
-      parent?.navigate("EsterChat", { context: "meal", meal });
-    } else {
-      parent?.navigate("EsterChat", { context: "general" });
-    }
-  };
-
-  const handleFeedback = async (value: "up" | "down") => {
-    if (!meal || !plan) return;
-    logEvent(
-      value === "up" ? "home_meal_thumbsUpCTA" : "home_meal_thumbsDownCTA",
-      { slot, mealId: meal.id, surface: "nextMeal" },
-    );
-    setFeedback(value);
-    try {
-      await submitMealFeedback({
-        mealId: meal.id,
-        planId: plan.id,
-        slot,
-        feedback: value,
-      });
-    } catch {
-      setFeedback("idle");
-    }
-  };
-
   const handleRegenerate = async () => {
     if (!plan || !meal || refreshing || slot === "snack") return;
     logEvent("home_meal_replaceCTA", { mealId: meal.id, slot, surface: "nextMeal" });
     setRefreshing(true);
     try {
-      const updated = await replaceMealInSlot(
-        plan.id,
-        slot,
-        [meal.id],
-        meal.id,
-      );
+      const updated = await replaceMealInSlot(plan.id, slot, [meal.id], meal.id);
       setPlan(updated);
       const nextInSlot = pickMealInSlot(updated, slot);
       if (nextInSlot) setMeal(nextInSlot);
-      setFeedback("idle");
     } catch {
       // keep current state
     } finally {
@@ -257,224 +338,246 @@ export function NextMealScreen() {
     }
   };
 
+  // "I like it!" — record the positive signal, then move on. Feedback is
+  // awaited best-effort but never blocks the advance.
+  const handleLike = async () => {
+    if (!meal || !plan || advancing) return;
+    setAdvancing(true);
+    logEvent("home_meal_thumbsUpCTA", { slot, mealId: meal.id, surface: "nextMeal" });
+    try {
+      await submitMealFeedback({ mealId: meal.id, planId: plan.id, slot, feedback: "up" });
+    } catch {
+      // advance regardless — the signal is non-critical
+    }
+    advanceToInsights();
+  };
+
+  // "Not a fan, show me another" — record the negative signal (fire-and-forget)
+  // and swap in a fresh meal for this slot in place.
+  const handleNotAFan = async () => {
+    if (!meal || !plan || refreshing) return;
+    logEvent("home_meal_thumbsDownCTA", { slot, mealId: meal.id, surface: "nextMeal" });
+    submitMealFeedback({ mealId: meal.id, planId: plan.id, slot, feedback: "down" }).catch(
+      () => {},
+    );
+    await handleRegenerate();
+  };
+
   // Show the spinner only while the fetch is in flight. Once it settles
   // (success or failure), fall through to either the meal card or the
   // empty-state copy.
   const loading = !planFetchDone;
   const prepMeta = meal ? formatPrep(meal) : "";
-  const macrosLine = meal ? formatMacros(meal) : null;
+  const ingredientsCount = ingredients.length;
   const tags = meal ? buildTags(meal) : [];
-  const ingredientsLine =
-    ingredients.length > 0
-      ? ingredients
-          .slice(0, 4)
-          .map((i) =>
-            i.ingredientName.charAt(0).toUpperCase() +
-            i.ingredientName.slice(1),
-          )
-          .join(" · ")
-      : null;
-
-  const swipeHandlers = useSwipeToAdvance({
-    axis: "down",
-    onAdvance: advanceToInsights,
-  });
+  // Prefer the richer LLM blurb once it arrives; fall back to the short template.
+  const whyMessage = esterWhy ?? meal?.whyLine ?? "";
+  // Cap the why-bubble text height so a long blurb scrolls in place instead of
+  // shoving the chips past the bottom edge. Grows to fit short copy, scrolls
+  // beyond the leftover space on a given device.
+  const whyMaxHeight = Math.max(
+    72,
+    SCREEN_H - insets.top - insets.bottom - WHY_RESERVED_H,
+  );
+  const heading = headingFor(fromOnboarding, hasScore);
+  // Chat-bubble surface — brown-tinted ghost on light themes, bone-tinted on dark.
+  const chipBg = evening ? "rgba(243,239,227,0.14)" : "rgba(54,20,22,0.12)";
+  // Sheet surface = Figma page-surface-alt (#F3EFE3 / K.bone) on light themes;
+  // the elevated dark surface on evening. NOT innerBg (white) — the design's
+  // sheet is the warm bone tone, not the clean white card interior.
+  const cardBg = evening ? innerBg : K.bone;
+  // Hero photo overlay flips with the theme: a dark scrim + white text on light
+  // themes; a light scrim + dark text on evening (a dark scrim over the dark
+  // card reads muddy). Tag pills and text shadows invert to match.
+  const scrimColor = evening ? K.bone : K.brown;
+  const scrimTopOp = evening ? 0.6 : 0.55;
+  const scrimBotOp = evening ? 0.88 : 0.82;
+  const heroInk = evening ? K.brown : K.white;
+  const heroShadow = evening ? "rgba(250,253,254,0.45)" : "rgba(0,0,0,0.4)";
+  const tagBg = evening ? "rgba(243,239,227,0.6)" : "rgba(54,20,22,0.45)";
 
   return (
-    <View
-      style={[styles.root, { backgroundColor: outerBg }]}
-      {...swipeHandlers}
-    >
+    <View style={[styles.root, { backgroundColor: outerBg }]}>
       <StatusBar barStyle={statusBarStyle} translucent />
       <View
         style={[
-          styles.safe,
-          {
-            paddingTop: insets.top + 12,
-            paddingBottom: insets.bottom + 12,
-          },
+          styles.card,
+          { backgroundColor: cardBg, marginTop: insets.top },
         ]}
       >
-        <View style={[styles.card, { backgroundColor: innerBg }]}>
-          <View style={styles.cardInner}>
-            <View style={styles.cardTop}>
-              <View style={styles.header}>
-                <View style={styles.brandLogo}>
-                  <Image
-                    source={require("../../../assets/images/quick-scan-mascot.png")}
-                    style={[styles.brandLogoImage, { tintColor: textColor }]}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text
-                  style={[styles.title, { color: textColor }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                  pointerEvents="none"
-                >
-                  {fromOnboarding ? "Welcome to Reset" : "Thinking of you"}
-                </Text>
-                {/* Symmetric spacer balancing the logo width so the title's
-                    flex-1 region stays centered on screen. */}
-                <View style={styles.brandLogoSpacer} />
-              </View>
+        {/* Top bar — close (takes over the old down-arrow's advance) + centered
+            brand mark. No mute icon per the latest design. */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={advanceToInsights}
+            activeOpacity={0.7}
+            hitSlop={8}
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M6 6l12 12M18 6L6 18"
+                stroke={textColor}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+            </Svg>
+          </TouchableOpacity>
+          <View style={styles.brandLogo} pointerEvents="none">
+            <Image
+              source={TYPE_LOGO[metabolicType]}
+              style={styles.brandLogoImage}
+              resizeMode="contain"
+            />
+          </View>
+          {/* Spacer balances the close button so the logo stays centered. */}
+          <View style={styles.iconButton} />
+        </View>
 
-              <Text style={[styles.intro, { color: textColor }]}>
-                {fromOnboarding
-                  ? meal?.whyLine
-                    ? `Here's your first meal recommendation, picked for your body. ${meal.whyLine}`
-                    : "Here's your first meal recommendation, picked for your body."
-                  : meal?.whyLine
-                  ? hasScore
-                    ? `Based on your recent score, I picked this for you. ${meal.whyLine}`
-                    : `I picked this one out for you. ${meal.whyLine}`
-                  : "This meal just came across my desk. I think you'd love it — want to add it to the rotation?"}
-              </Text>
+        <View style={[styles.slot, { paddingBottom: spacing.lg + insets.bottom }]}>
+          <Text style={[styles.heading, { color: textColor }]}>
+            <Text style={styles.headingLead}>{heading.lead}</Text>
+            <Text style={styles.headingStrong}>{heading.strong}</Text>
+          </Text>
 
-              {loading ? (
-                <View style={styles.loadingWrap}>
-                  <ActivityIndicator size="small" color={textColor} />
-                </View>
-              ) : meal ? (
-                <View style={[styles.recipeCard, { backgroundColor: nestedBg }]}>
-                  <View style={styles.recipeRow}>
-                    <View style={[styles.recipeImageWrap, { backgroundColor: borderColor }]}>
-                      {meal.imageUrl ? (
-                        <Image
-                          source={{ uri: meal.imageUrl }}
-                          style={styles.recipeImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={[styles.recipeImagePlaceholder, { backgroundColor: borderColor }]} />
-                      )}
-                    </View>
-                    <View style={styles.recipeInfo}>
-                      <Text style={[styles.recipeName, { color: textColor }]} numberOfLines={2}>
-                        {meal.name}
-                      </Text>
-                      {prepMeta ? (
-                        <Text style={[styles.recipeMeta, { color: subtleText }]}>{prepMeta}</Text>
-                      ) : null}
-                      {ingredientsLine ? (
-                        <Text
-                          style={[styles.ingredients, { color: subtleText }]}
-                          numberOfLines={3}
-                        >
-                          {ingredientsLine}
-                        </Text>
-                      ) : null}
-                    </View>
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="small" color={textColor} />
+            </View>
+          ) : meal ? (
+            <>
+              <View style={styles.mealBlock}>
+                {/* Hero photo with overlaid name, tags, and meta. */}
+                <View style={[styles.heroCard, { backgroundColor: nestedBg }]}>
+                  {meal.imageUrl ? (
+                    <Image
+                      source={{ uri: meal.imageUrl }}
+                      style={styles.heroImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.heroImage, { backgroundColor: borderColor }]} />
+                  )}
+                  {/* Legibility scrim — dark at top (name/tags) and bottom (meta),
+                      bright through the middle. Drawn with react-native-svg so we
+                      don't pull in a native gradient module. */}
+                  <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Defs>
+                      <SvgLinearGradient id="heroScrim" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={scrimColor} stopOpacity={scrimTopOp} />
+                        <Stop offset="0.32" stopColor={scrimColor} stopOpacity={0} />
+                        <Stop offset="0.68" stopColor={scrimColor} stopOpacity={0} />
+                        <Stop offset="1" stopColor={scrimColor} stopOpacity={scrimBotOp} />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#heroScrim)" />
+                  </Svg>
+
+                  <View style={styles.heroTop}>
+                    <Text
+                      style={[
+                        styles.heroName,
+                        { color: heroInk, textShadowColor: heroShadow },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {meal.name}
+                    </Text>
+                    {tags.length > 0 ? (
+                      <View style={styles.tagsRow}>
+                        {tags.map((tag) => (
+                          <View key={tag} style={[styles.tagPill, { backgroundColor: tagBg }]}>
+                            <Text style={[styles.tagLabel, { color: heroInk }]}>{tag}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
 
-                  {macrosLine ? (
-                    <Text style={[styles.macros, { color: textColor }]}>
-                      {macrosLine}
-                    </Text>
-                  ) : null}
-
-                  {tags.length > 0 ? (
-                    <View style={styles.tagsRow}>
-                      {tags.map((tag) => (
-                        <View
-                          key={tag}
-                          style={[styles.tagPill, { backgroundColor: innerBg }]}
-                        >
-                          <Text style={[styles.tagLabel, { color: textColor }]}>
-                            {tag}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {feedback === "idle" ? (
-                    <View style={styles.feedbackRow}>
-                      <TouchableOpacity
-                        style={[styles.feedbackButton, { backgroundColor: innerBg }]}
-                        onPress={() => handleFeedback("up")}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={[styles.feedbackLabel, { color: textColor }]}>Sounds great</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                  <View style={styles.heroMeta}>
+                    {prepMeta ? (
+                      <Text
                         style={[
-                          styles.feedbackButton,
-                          styles.feedbackButtonMuted,
-                          { backgroundColor: innerBg },
+                          styles.heroMetaText,
+                          { color: heroInk, textShadowColor: heroShadow },
                         ]}
-                        onPress={() => handleFeedback("down")}
-                        activeOpacity={0.85}
                       >
-                        <Text style={[styles.feedbackLabel, { color: textColor }]}>Not into it</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View style={styles.feedbackAck}>
-                      <Text style={[styles.feedbackAckText, { color: textColor }]}>
-                        {feedback === "up"
-                          ? "Added to your rotation — I'll work it in this week."
-                          : "Got it — I'll steer clear of ones like this."}
+                        {prepMeta}
+                      </Text>
+                    ) : null}
+                    {ingredientsCount > 0 ? (
+                      <Text
+                        style={[
+                          styles.heroMetaText,
+                          { color: heroInk, textShadowColor: heroShadow },
+                        ]}
+                      >
+                        {ingredientsCount} ingredients
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Why this meal — eyebrow + explanation bubble. */}
+                {whyMessage ? (
+                  <View style={styles.whyWrap}>
+                    <View style={styles.eyebrowRow}>
+                      <View style={styles.eyebrowDot} />
+                      <Text style={[styles.eyebrowText, { color: textColor }]}>
+                        Why this meal?
                       </Text>
                     </View>
-                  )}
+                    <View style={styles.whyBubble}>
+                      <WhyScroll
+                        maxHeight={whyMaxHeight}
+                        thumbColor={subtleText}
+                        trackColor={
+                          evening
+                            ? "rgba(250,253,254,0.15)"
+                            : "rgba(54,20,22,0.1)"
+                        }
+                      >
+                        <Text style={[styles.whyText, { color: subtleText }]}>
+                          {renderBoldSegments(whyMessage, textColor)}
+                        </Text>
+                      </WhyScroll>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
 
-                  <TouchableOpacity
-                    style={styles.regenerateRow}
-                    onPress={handleRegenerate}
-                    disabled={refreshing || slot === "snack"}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.regenerateIcon, { color: textColor }]}>↻</Text>
-                    <Text style={[styles.regenerateLabel, { color: textColor }]}>
-                      {refreshing
-                        ? "Finding another…"
-                        : "What else you got for me?"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.emptyWrap}>
-                  <Text style={[styles.emptyText, { color: subtleText }]}>
-                    No meal plan yet — pull one together on the home screen.
+              <Text style={[styles.prompt, { color: textColor }]}>
+                What do you think?
+              </Text>
+
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[styles.chip, { backgroundColor: chipBg }]}
+                  onPress={handleLike}
+                  disabled={advancing}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipLabel, { color: textColor }]}>I like it!</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chip, { backgroundColor: chipBg }]}
+                  onPress={handleNotAFan}
+                  disabled={refreshing || slot === "snack"}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipLabel, { color: textColor }]}>
+                    {refreshing ? "Finding another…" : "Not a fan, show me another"}
                   </Text>
-                </View>
-              )}
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <Text style={[styles.emptyText, { color: subtleText }]}>
+                No meal plan yet — pull one together on the home screen.
+              </Text>
             </View>
-
-            <View style={styles.ctaRow}>
-              <TouchableOpacity
-                style={[styles.askEsterPill, { backgroundColor: innerBg, borderColor }]}
-                onPress={handleAskEster}
-                activeOpacity={0.8}
-              >
-                <View style={styles.askEsterAvatar}>
-                  <Image
-                    source={require("../../../assets/images/ester-logo.png")}
-                    style={styles.askEsterAvatarImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={[styles.askEsterLabel, { color: textColor }]}>Ask Ester</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.arrowButton, { backgroundColor: innerBg, borderColor: textColor }]}
-                onPress={advanceToInsights}
-                activeOpacity={0.8}
-              >
-                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 5v14M5 12l7 7 7-7"
-                    stroke={textColor}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
         </View>
       </View>
     </View>
@@ -483,54 +586,61 @@ export function NextMealScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  safe: { flex: 1 },
   card: {
     flex: 1,
-    marginHorizontal: 12,
-    borderRadius: 28,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
     overflow: "hidden",
+    // Figma sheet shadow: 0 4px 4px rgba(0,0,0,0.25).
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 4,
+    elevation: 6,
   },
-  cardInner: {
-    flex: 1,
-    paddingHorizontal: CARD_PAD_H,
-    paddingTop: CARD_GAP_V,
-    paddingBottom: spacing.lg,
-  },
-  cardTop: {
-    flex: 1,
-    gap: CARD_GAP_V,
-  },
-  header: {
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  iconButton: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
   },
   brandLogo: {
-    width: 48,
-    height: 48,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 8,
+    height: 52,
     alignItems: "center",
     justifyContent: "center",
   },
   brandLogoImage: {
-    width: "100%",
-    height: "100%",
+    width: 40.5,
+    height: 40.5,
   },
-  brandLogoSpacer: {
-    width: 48,
-    height: 48,
-  },
-  title: {
+  slot: {
     flex: 1,
-    textAlign: "center",
-    fontFamily: fonts.dmSansBold,
-    fontSize: 26,
-    letterSpacing: -0.3,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.lg,
   },
-  intro: {
-    fontFamily: fonts.dmSans,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.22,
+  heading: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+  },
+  headingLead: {
+    fontFamily: fonts.catalogue,
+  },
+  headingStrong: {
+    fontFamily: fonts.catalogueBold,
   },
   loadingWrap: {
     paddingVertical: spacing.xl,
@@ -541,163 +651,150 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     textAlign: "center",
   },
-  recipeCard: {
+  mealBlock: {
+    gap: spacing.md,
+  },
+  heroCard: {
+    height: 240,
     borderTopLeftRadius: radius.sm,
-    borderTopRightRadius: radius.sm,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.sm,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  recipeRow: {
-    flexDirection: "row",
-    gap: spacing.md,
-  },
-  recipeImageWrap: {
-    width: 114,
-    height: 114,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.sm,
+    borderTopRightRadius: 40,
     borderBottomLeftRadius: radius.sm,
-    borderBottomRightRadius: 40,
+    borderBottomRightRadius: radius.sm,
     overflow: "hidden",
   },
-  recipeImage: {
+  heroImage: {
+    ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
   },
-  recipeImagePlaceholder: {
-    width: "100%",
-    height: "100%",
+  heroTop: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    top: 12,
+    gap: spacing.xs,
   },
-  recipeInfo: {
-    flex: 1,
-    justifyContent: "flex-start",
-    gap: 4,
-  },
-  recipeName: {
-    fontFamily: fonts.dmSansBold,
-    fontSize: 16,
-    letterSpacing: -0.16,
-  },
-  recipeMeta: {
-    fontFamily: fonts.dmSans,
-    fontSize: 13,
-    letterSpacing: -0.14,
-  },
-  ingredients: {
-    fontFamily: fonts.dmSans,
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: -0.13,
-  },
-  macros: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-    letterSpacing: -0.14,
+  heroName: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    letterSpacing: -0.2,
+    color: K.white,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   tagsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    alignItems: "center",
+    gap: spacing.xs + 2,
   },
   tagPill: {
+    // Dark scrim instead of the white ghost so the white tag text stays
+    // legible over lighter spots in the meal photo.
+    backgroundColor: "rgba(54,20,22,0.45)",
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.full,
+    paddingVertical: 2,
+    borderRadius: radius.sm / 2,
   },
   tagLabel: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.quadrant,
+    fontSize: 12,
+    letterSpacing: -0.12,
+    color: K.white,
+  },
+  heroMeta: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+  },
+  heroMetaText: {
+    fontFamily: fonts.quadrant,
+    fontSize: 12,
+    letterSpacing: -0.12,
+    color: K.white,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  whyWrap: {
+    gap: spacing.xs + 2,
+  },
+  eyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs + 2,
+    paddingHorizontal: spacing.sm,
+  },
+  eyebrowDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: K.blue,
+  },
+  eyebrowText: {
+    fontFamily: fonts.quadrant,
     fontSize: 12,
     letterSpacing: -0.12,
   },
-  feedbackRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
+  whyBubble: {
+    borderWidth: 0.5,
+    borderColor: "#C3B9BA",
+    borderTopLeftRadius: radius.sm / 2,
+    borderTopRightRadius: radius.xl,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+    paddingTop: 10,
+    paddingRight: spacing.md,
+    paddingBottom: spacing.md,
+    paddingLeft: spacing.md,
   },
-  feedbackButton: {
-    flex: 1,
-    borderRadius: radius.sm,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  feedbackButtonMuted: {
-    opacity: 0.7,
-  },
-  feedbackLabel: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-  },
-  feedbackAck: {
-    minHeight: 40,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-  },
-  feedbackAckText: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-  },
-  regenerateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: 8,
-  },
-  regenerateIcon: {
-    fontFamily: fonts.dmSansMedium,
+  whyText: {
+    fontFamily: fonts.catalogue,
     fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.16,
   },
-  regenerateLabel: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
+  whyScrollWrap: {
+    position: "relative",
   },
-  ctaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  scrollTrack: {
+    position: "absolute",
+    right: -8,
+    top: 0,
+    width: 3,
+    borderRadius: 1.5,
   },
-  askEsterPill: {
-    flexDirection: "row",
-    alignItems: "center",
+  scrollThumb: {
+    position: "absolute",
+    left: 0,
+    width: 3,
+    borderRadius: 1.5,
+  },
+  prompt: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+  },
+  actions: {
+    alignItems: "flex-end",
     gap: spacing.sm,
-    paddingVertical: 7,
-    paddingHorizontal: 7,
-    paddingRight: 16,
-    borderRadius: radius.full,
-    borderWidth: 1,
   },
-  askEsterAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: K.brown,
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
+  chip: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.sm / 2,
   },
-  askEsterAvatarImage: {
-    width: "108%",
-    height: "108%",
-  },
-  askEsterLabel: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-  },
-  arrowButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
+  chipLabel: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
   },
 });
