@@ -15,7 +15,8 @@ import {
 } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
-import { VideoView, useVideoPlayer } from "expo-video";
+import { useVideoPlayer } from "expo-video";
+import { PersonaIntroMedia } from "./PersonaIntroMedia";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
@@ -30,7 +31,11 @@ type Props = NativeStackScreenProps<any, "Survey">;
 
 const ESTER_BADGE = require("../../../assets/images/ester-avatar-silver.png");
 // Plays on the post-scan splash (Figma 1553-17494) and again on the
-// "Analyzing your responses" interstitial (Figma 1565-7668).
+// "Analyzing your responses" interstitial (Figma 1565-7668). The player drives
+// the flow (its playToEnd advances the step). Rendering is platform-split in
+// PersonaIntroMedia: iOS plays this HEVC-with-alpha .mov; Android renders a
+// transparent animated WebP (its video stack can't composite HEVC alpha, so it
+// would otherwise show a black box). The WebP is bundled only on Android.
 const POST_SCAN_VIDEO = require("../../../assets/videos/post-scan-intro.mov");
 
 // ── Ester "typing" indicator (three pulsing dots, bare — wrap in a bubble at
@@ -263,23 +268,13 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       {step.kind === "logo" ? (
         <View style={styles.logoWrap} pointerEvents="none">
           <View style={styles.logoVideoBlend}>
-            <VideoView
-              player={introPlayer}
-              style={styles.logoVideo}
-              contentFit="contain"
-              nativeControls={false}
-            />
+            <PersonaIntroMedia player={introPlayer} style={styles.logoVideo} />
           </View>
         </View>
       ) : step.kind === "analyzing" ? (
         <View style={styles.analyzingWrap} pointerEvents="none">
           <View style={styles.analyzingVideoBlend}>
-            <VideoView
-              player={introPlayer}
-              style={styles.analyzingVideo}
-              contentFit="contain"
-              nativeControls={false}
-            />
+            <PersonaIntroMedia player={introPlayer} style={styles.analyzingVideo} />
           </View>
           <View style={styles.analyzingBubble}>
             <TypingDots />
