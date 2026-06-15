@@ -99,10 +99,10 @@ export function ScoreRing({
             priorFraction < filledFraction;
 
           const color = !inFilled
-            ? "#B8D0D6"
+            ? "#B89DA0" // unfilled track — light maroon
             : inGain
               ? K.brown
-              : "#B89DA0";
+              : "#B8D0D6"; // filled — light blue
           const strokeW = inGain ? TICK_WIDTH + 1.5 : TICK_WIDTH;
           return (
             <Line
