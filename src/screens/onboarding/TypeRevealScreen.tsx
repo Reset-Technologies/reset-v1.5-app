@@ -11,6 +11,7 @@ import {
   Share,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -26,6 +27,8 @@ import { logEvent, setCustomAttribute } from "../../services/braze";
 import { ScoreRing } from "../../components/survey/ScoreRing";
 import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
+import { TypeRevealHero } from "./TypeRevealHero";
+import { playRevealHaptics } from "../../utils/revealHaptics";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
 
@@ -106,7 +109,6 @@ const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
-const CARD_TOP = Math.max(0, Math.round((SCREEN_H - CARD_H) / 2));
 
 const TOTAL_CARDS = 4;
 
@@ -160,7 +162,6 @@ function FrontCard({
   onReveal: () => void;
   onShareResults: () => void;
 }) {
-  const logo = TYPE_LOGO[type];
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const revealedOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -178,6 +179,14 @@ function FrontCard({
     ]).start();
   }, [revealed]);
 
+  // RES-138: on reveal, run the building haptic ramp in sync with the reveal
+  // animation. Cancel any pending pulses on unmount / re-reveal.
+  useEffect(() => {
+    if (!revealed) return;
+    const cancel = playRevealHaptics();
+    return cancel;
+  }, [revealed]);
+
   return (
     <View style={[styles.card, { width: CARD_WIDTHS[0], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.cardContentTight}>
@@ -186,7 +195,11 @@ function FrontCard({
 
           <View style={styles.typeBoneCard}>
             <View style={styles.typeLogoWrap}>
-              <Image source={logo} style={styles.typeLogo} resizeMode="contain" />
+              <TypeRevealHero
+                type={type}
+                playing={revealed}
+                style={styles.typeLogo}
+              />
             </View>
             <View style={styles.typeTextWrap}>
               <Text style={styles.typeName}>{TYPE_DISPLAY[type]}</Text>
@@ -309,13 +322,15 @@ function MiddleCard({
 function InsightCard({
   type,
   insightText,
+  bodyMaxHeight,
 }: {
   type: MetabolicType;
   insightText: string;
+  bodyMaxHeight: number;
 }) {
   const logo = TYPE_LOGO[type];
   return (
-    <View style={[styles.card, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
+    <View style={[styles.card, styles.insightCard, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.insightCardContent}>
         <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
         <Text style={styles.midGreeting}>
@@ -326,8 +341,23 @@ function InsightCard({
             <View style={styles.eyebrowDot} />
             <Text style={styles.eyebrowText}>Today's Insight</Text>
           </View>
+          {/* RES-138: only the insight body scrolls, and it scrolls INSIDE the
+              bubble — so a long LLM blurb never runs the bubble outline off the
+              card edge. The logo / header / eyebrow stay fixed and the whole
+              block stays vertically centered. maxHeight lets the bubble grow to
+              fit short insights (compact, the Figma look) and cap + scroll
+              internally for long ones. The bubble's `overflow: hidden` keeps
+              the scrolled text clipped inside the rounded outline. The
+              horizontal card-swipe still wins gesture negotiation because the
+              parent PanResponder only claims on |dx| > |dy| moves. */}
           <View style={styles.insightBubble}>
-            <Text style={styles.insightBody}>{insightText}</Text>
+            <ScrollView
+              style={{ maxHeight: bodyMaxHeight }}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Text style={styles.insightBody}>{insightText}</Text>
+            </ScrollView>
           </View>
         </View>
       </View>
@@ -402,30 +432,26 @@ export function TypeRevealScreen({ navigation }: Props) {
   const { state } = useApp();
   const insets = useSafeAreaInsets();
 
-  // The 812px card design height is taller than some Android windows (e.g.
-  // Galaxy S24), where edge-to-edge means SCREEN_H spans behind the system
-  // bars — so the fixed card bled off both edges with no margin. On Android,
-  // cap the card to the inset-safe area with a ~28px top/bottom gutter (closer
-  // to the iOS ~60px margin) and center it within that. The card has slack
-  // inside (content is centered) so shrinking it doesn't clip. iOS keeps the
-  // original fixed 812 / centered layout.
-  const ANDROID_CARD_MARGIN = 20;
+  // The 812px card design height matches a tall device (iPhone Pro Max ~932,
+  // where it leaves ~60px margins). On shorter windows — most iPhones (e.g. the
+  // 16 Pro ~852) and many Android phones (e.g. Galaxy S24) — a fixed 812 card
+  // fills the screen edge-to-edge and bleeds under the notch / Dynamic Island /
+  // home indicator. So on BOTH platforms cap the card to the inset-safe area
+  // with a gutter and center it within that. The card has slack inside (content
+  // is centered) so shrinking it doesn't clip.
+  const CARD_MARGIN = 20;
   // The back cards sit CARD_STACK_STEP lower each, so the stack extends this far
   // below the front card — subtract it so the bottom margin isn't eaten by the
   // peeking cards (and the whole stack, not just the front card, is centered).
   const STACK_EXTRA = (TOTAL_CARDS - 1) * CARD_STACK_STEP;
-  let cardH = CARD_H;
-  let cardTop = CARD_TOP;
-  if (Platform.OS === "android") {
-    const availH = SCREEN_H - insets.top - insets.bottom;
-    cardH = Math.min(CARD_H, availH - ANDROID_CARD_MARGIN * 2 - STACK_EXTRA);
-    cardTop =
-      insets.top +
-      Math.max(
-        ANDROID_CARD_MARGIN,
-        Math.round((availH - cardH - STACK_EXTRA) / 2),
-      );
-  }
+  const availH = SCREEN_H - insets.top - insets.bottom;
+  const cardH = Math.min(CARD_H, availH - CARD_MARGIN * 2 - STACK_EXTRA);
+  const cardTop =
+    insets.top +
+    Math.max(
+      CARD_MARGIN,
+      Math.round((availH - cardH - STACK_EXTRA) / 2),
+    );
 
   // `metabolicType` is set in CreateAccountScreen from the backend
   // typing-function response. Fall back to "Explorer" when:
@@ -680,6 +706,11 @@ export function TypeRevealScreen({ navigation }: Props) {
         <InsightCard
           type={metabolicType}
           insightText={insightText ?? INSIGHT_FALLBACK}
+          // Cap the bubble's scroll area to whatever room is left after the
+          // fixed logo/header/eyebrow + paddings, so it scrolls internally
+          // before the bubble can reach the card's bottom edge. Derived from
+          // the (responsive) card height so it adapts on Android's shorter card.
+          bodyMaxHeight={Math.max(140, cardH - 288)}
         />
       );
     } else {
@@ -802,7 +833,9 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "center",
     alignItems: "flex-start",
-    gap: 24,
+    // RES-138: 24→16 between the inner stack and the swipe caption — a few more
+    // px reclaimed so the longest type clears the card on short screens.
+    gap: 16,
   },
   // Inner stack — mirrors Figma 2005:26264 (the flex-1 container holding
   // header + bone card + share-button placeholder).
@@ -822,7 +855,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 12,
     minHeight: 44,
-    padding: 16,
+    // RES-138: vertical padding 16→10 (still clears the 44px min tap target)
+    // reclaims ~12px of stack height for the longest type on short screens.
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 4,
     backgroundColor: "rgba(54,20,22,0.12)",
     alignSelf: "center",
@@ -862,7 +898,12 @@ const styles = StyleSheet.create({
     minHeight: 461,
     backgroundColor: BONE,
     borderRadius: 24,
-    padding: 24,
+    // RES-138: trimmed the vertical padding (24→14) to claw back ~20px so the
+    // longest type (Restorer) doesn't push the stack past the card edges on
+    // short screens (Galaxy S24). Horizontal stays 24; the gap stays 24 because
+    // it's the logo↔text clearance that keeps the enlarged hero off the text.
+    paddingHorizontal: 24,
+    paddingVertical: 14,
     gap: 24,
     overflow: "hidden",
   },
@@ -875,11 +916,20 @@ const styles = StyleSheet.create({
   typeLogoWrap: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 48,
+    // RES-138: no horizontal padding so the reveal animation can grow as wide
+    // as the bone card allows (the old 48px was choking the 186px logo down).
+    paddingHorizontal: 0,
   },
   typeLogo: {
-    width: 186,
-    height: 186,
+    // RES-138: the 224×224 box is the LAYOUT footprint — kept fixed so the
+    // type name / tagline / paragraph below don't shift. The reveal animation
+    // is then scaled 2× purely visually via transform (the Kiln video frame
+    // has transparent padding well beyond the actual logo, so the extra size
+    // overflows as transparent margin and the logo reads ~100% bigger without
+    // pushing any other content up or down).
+    width: 224,
+    height: 224,
+    transform: [{ scale: 2 }],
   },
   typeTextWrap: { gap: 8 },
   typeName: {
@@ -1067,6 +1117,15 @@ const styles = StyleSheet.create({
   // Per Figma 2413:8440 — single column, vertically centered, gap 24 between
   // logo / header / insight group; the insight group itself is gap 6 (eyebrow
   // → bubble) so it reads as one unit directly below the header.
+  // Bottom padding insets the scroll VIEWPORT (not the content) up from the
+  // card's bottom edge, so a long/scrolling insight never clips text flush
+  // against the bottom — that gutter of card background is what shows in the
+  // stack-peek when this card sits behind an earlier one. (Content-side
+  // paddingBottom wouldn't help: it only adds space after the last line once
+  // fully scrolled, not at the rest position.)
+  insightCard: {
+    paddingBottom: 28,
+  },
   insightCardContent: {
     flex: 1,
     padding: 24,
@@ -1087,6 +1146,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    // Clip the internally-scrolling body text to the rounded outline.
+    overflow: "hidden",
   },
   insightBody: {
     fontFamily: fonts.dmSans,

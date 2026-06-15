@@ -204,6 +204,11 @@ export function EducationCarouselScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const scrollX = useRef(new Animated.Value(0)).current;
   const advancedRef = useRef(false);
+  // The `focus` listener below snaps `active` to the last real slide so a
+  // return from PreScan lands there (the ScrollView is snapped back on blur).
+  // That must NOT run on the very first focus (initial entry), or slide 0's
+  // arrow sees active === last and jumps straight to PreScan. Skip the first.
+  const firstFocusRef = useRef(true);
 
   const introPlayer = useVideoPlayer(INTRO_VIDEO, (player) => {
     player.loop = true;
@@ -243,6 +248,12 @@ export function EducationCarouselScreen({ navigation }: Props) {
     });
     const focusUnsub = navigation.addListener("focus", () => {
       advancedRef.current = false;
+      // Initial entry must stay on slide 0; only a return from PreScan should
+      // snap to the last real slide (matching the blur snap-back above).
+      if (firstFocusRef.current) {
+        firstFocusRef.current = false;
+        return;
+      }
       setActive(EDU_SLIDE_COUNT - 1);
     });
     return () => {
@@ -278,7 +289,20 @@ export function EducationCarouselScreen({ navigation }: Props) {
       logEvent("onboarding_education_slide", { slide: SLIDES[next].index });
     } else {
       logEvent("onboarding_education_continueCTA");
-      navigation.navigate("PreScan");
+      // Reach PreScan through the same seamless teaser slide the swipe uses,
+      // rather than a hard cut from this slide. Mark advanced so the momentum
+      // handler doesn't also navigate, slide to the teaser (a pixel copy of
+      // PreScan), then push the real screen once it's on-screen —
+      // animation:"none" makes the swap invisible and the `blur` listener snaps
+      // the carousel back to the last real slide underneath. A timer drives the
+      // nav because a programmatic animated scroll doesn't reliably fire
+      // onMomentumScrollEnd on Android.
+      advancedRef.current = true;
+      scrollRef.current?.scrollTo({
+        x: EDU_SLIDE_COUNT * SCREEN_WIDTH,
+        animated: true,
+      });
+      setTimeout(() => navigation.navigate("PreScan"), 320);
     }
   };
 
