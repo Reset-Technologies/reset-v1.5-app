@@ -13,7 +13,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
-import { K, TC, toMetabolicType } from "../../constants/colors";
+import { K, TC, toMetabolicType, MetabolicType } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 import { TYPE_CONFIGS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
@@ -22,7 +22,6 @@ import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 
-const ESTER_AVATAR = require("../../../assets/images/ester-avatar.png");
 
 // Per-type R-block logos. "Ember" alias = the Figma "Restorer" art.
 const TYPE_LOGO = {
@@ -37,26 +36,78 @@ const TYPE_LOGO = {
 // All five share the dark anchor at center-bottom; the outer ring picks up the
 // type's accent. "Ember" alias here = the "Restorer" gradient in Figma.
 const TYPE_GRADIENT_STOPS: Record<
-  "Burner" | "Rebounder" | "Ember" | "Chameleon" | "Explorer",
+  MetabolicType,
   { anchor: string; mid: string; outer: string }
 > = {
-  // Burner: Earth palette per Figma logo (rust-orange + brown anchor)
   Burner: { anchor: "#361416", mid: "#A45937", outer: "#D6B5A5" },
-  // Rebounder: cool slate-purple (anchor → mid → soft lavender edge)
   Rebounder: { anchor: "#2D2435", mid: "#5D5470", outer: "#A89DC0" },
-  // Ember (Restorer): blue-gray + dark maroon anchor
   Ember: { anchor: "#3A1A1F", mid: "#4F5760", outer: "#A8B8BE" },
-  // Chameleon: wine-red anchor transitioning into sage / olive green
   Chameleon: { anchor: "#4A1E2D", mid: "#6B5A4A", outer: "#A8B585" },
-  // Explorer: gold/yellow → muted plum anchor
   Explorer: { anchor: "#4A2A4F", mid: "#8A7060", outer: "#D8B247" },
 };
 
-const HEADER_HEIGHT = 250;
+// Primary accent color per type, sampled from each logo's dominant hue. Used
+// for the headline type word, section-title dots, and confidence accents.
+const TYPE_PRIMARY: Record<MetabolicType, string> = {
+  Burner: "#C2774A", // terracotta / copper-orange
+  Rebounder: "#9479A6", // muted mauve-purple
+  Ember: "#6F949D", // slate blue (Restorer)
+  Chameleon: "#7E8C63", // sage / olive green
+  Explorer: "#BF9B33", // warm gold / amber
+};
 
-// Trend triangle path lifted from ScanInsightsScreen (Figma 950:20753-20776).
-const TREND_TRIANGLE =
-  "M9.35204 4.89235C10.1843 3.8104 11.8157 3.8104 12.648 4.89235L19.4256 13.7032C20.4773 15.0705 19.5026 17.05 17.7776 17.05H4.2224C2.49741 17.05 1.5227 15.0705 2.57444 13.7032L9.35204 4.89235Z";
+// Light tint of each primary — confidence card background.
+const TYPE_TINT: Record<MetabolicType, string> = {
+  Burner: "#F5E9E1",
+  Rebounder: "#F0EBF3",
+  Ember: "#E9F0F2",
+  Chameleon: "#EDEFE6",
+  Explorer: "#F4EFDE",
+};
+
+// Display names (Ember's Kiln-facing name is "Restorer").
+const TYPE_DISPLAY: Record<MetabolicType, string> = {
+  Burner: "Burner",
+  Rebounder: "Rebounder",
+  Ember: "Restorer",
+  Chameleon: "Chameleon",
+  Explorer: "Explorer",
+};
+
+// RES-139: interim goal / strength / weakness copy per type. Confirm final
+// wording with Alex before launch — this is the single place to edit it.
+const PROFILE_COPY: Record<
+  MetabolicType,
+  { goal: string; strength: string; weakness: string }
+> = {
+  Burner: {
+    goal: "Keep your afternoons steady — protein-forward meals head off the stress crash.",
+    strength: "Drive",
+    weakness: "Crashes",
+  },
+  Rebounder: {
+    goal: "Eat enough, consistently. Your metabolism rebuilds when it feels safe.",
+    strength: "Resilience",
+    weakness: "Restriction",
+  },
+  Ember: {
+    goal: "Focus on consistent eating habits — your body does best when it's nourished, not restricted.",
+    strength: "Consistency",
+    weakness: "Recovery",
+  },
+  Chameleon: {
+    goal: "Time meals to your rhythm — work with your cycle, not against it.",
+    strength: "Adaptability",
+    weakness: "Consistency",
+  },
+  Explorer: {
+    goal: "Keep a balanced baseline and check in daily so I can learn your pattern fast.",
+    strength: "Adaptability",
+    weakness: "Quiet signals",
+  },
+};
+
+const HEADER_HEIGHT = 344;
 
 type TrendDirection = "up" | "down" | "same" | null;
 
@@ -67,13 +118,29 @@ function dirFromNumbers(current: number | null, previous: number | null): TrendD
   return "same";
 }
 
-function trendPercent(current: number | null, previous: number | null): number | null {
-  if (current === null || previous === null || previous === 0) return null;
-  return Math.round(((current - previous) / previous) * 100);
+function deltaText(dir: TrendDirection): string {
+  switch (dir) {
+    case "up":
+      return "Up from last week";
+    case "down":
+      return "Down from last week";
+    case "same":
+      return "Same as last week";
+    default:
+      return "Building your baseline";
+  }
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function article(word: string): string {
+  return /^[aeiou]/i.test(word) ? "an" : "a";
 }
 
 // Energy words ordered low → high. Check-in values (low/off/steady/good/high)
-// share the rank space with typeConfig fallback words (okay/moderate/fluctuating/stable).
+// share the rank space with typeConfig fallback words (okay/moderate/...).
 const ENERGY_RANK: Record<string, number> = {
   low: 1,
   off: 1.5,
@@ -93,33 +160,60 @@ function energyRank(word: string | null | undefined): number | null {
 
 type SubscriptionTier = "pro" | "free" | "none";
 
-function buildLpdEntries(profile: UserProfile): Array<{ date: string; note: string }> {
-  const entries: Array<{ date: string; note: string; sortKey: number }> = [];
+// Weekly "living pattern" timeline entries (weekday + MM.DD + Ester note),
+// derived from the user's check-ins. Falls back to an empty list handled by
+// the caller. Limited to the most recent 5 days.
+function buildTimeline(
+  profile: UserProfile,
+): Array<{ weekday: string; dateShort: string; note: string }> {
+  const rows: Array<{
+    weekday: string;
+    dateShort: string;
+    note: string;
+    sortKey: number;
+  }> = [];
+
+  const energyNote: Record<string, string> = {
+    high: "Your energy ran high — meals are fueling you well.",
+    good: "Energy held strong through the day.",
+    steady: "Steady energy. Your pattern is holding.",
+    stable: "Steady energy. Your pattern is holding.",
+    okay: "Moderate energy. I'm watching for the pattern.",
+    off: "Energy dipped a little — I adjusted your plan.",
+    low: "Low energy flagged. I'll tune tomorrow's meals.",
+  };
 
   for (const entry of profile.layer2.energyLog) {
     const d = new Date(entry.date);
-    const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const noteMap: Record<string, string> = {
-      high: "High energy reported. Meals are fueling well.",
-      steady: "Steady energy. Your pattern is holding.",
-      okay: "Moderate energy. Watching for patterns.",
-      low: "Low energy flagged. Adjusting tomorrow's meals.",
-    };
-    entries.push({ date: dateStr, note: noteMap[entry.energy] || `Energy: ${entry.energy}`, sortKey: d.getTime() });
+    rows.push({
+      weekday: d.toLocaleDateString("en-US", { weekday: "long" }),
+      dateShort: d
+        .toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
+        .replace("/", "."),
+      note: energyNote[entry.energy?.toLowerCase()] || `Energy: ${entry.energy}`,
+      sortKey: d.getTime(),
+    });
   }
 
   for (const entry of profile.layer2.stressTags) {
-    if (entry.tags.length > 0) {
+    const real = entry.tags.filter((t) => t.toLowerCase() !== "none");
+    if (real.length > 0) {
       const d = new Date(entry.date);
-      const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      entries.push({ date: dateStr, note: `Stress signals: ${entry.tags.join(", ")}`, sortKey: d.getTime() });
+      rows.push({
+        weekday: d.toLocaleDateString("en-US", { weekday: "long" }),
+        dateShort: d
+          .toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
+          .replace("/", "."),
+        note: `I linked your stress signals to ${real.join(", ").toLowerCase()}.`,
+        sortKey: d.getTime(),
+      });
     }
   }
 
-  return entries
+  return rows
     .sort((a, b) => b.sortKey - a.sortKey)
-    .slice(0, 10)
-    .map(({ date, note }) => ({ date, note }));
+    .slice(0, 5)
+    .map(({ weekday, dateShort, note }) => ({ weekday, dateShort, note }));
 }
 
 export function ProfileScreen() {
@@ -128,7 +222,8 @@ export function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const insets = useSafeAreaInsets();
   const palette = useAppPalette();
-  // Day/night surface tokens for the body content (header/gradient stays as-is).
+  // Neutral surface tokens for the body content (the type-gradient header is
+  // unaffected). Accent surfaces (blue cards) use the design colors directly.
   const surfaces = palette.evening
     ? {
         body: "#3D1F22",
@@ -136,7 +231,9 @@ export function ProfileScreen() {
         confidence: "#1F3D52",
         textStrong: K.bone,
         textSubtle: "#B8A7A8",
-        divider: "#4F2A2D",
+        // Lighter warm tone so outlines + timeline lines read on the dark
+        // maroon body (#3D1F22); the old #4F2A2D was nearly invisible.
+        divider: "#7A565A",
         outlineBorder: "#5A2F32",
       }
     : {
@@ -145,7 +242,7 @@ export function ProfileScreen() {
         confidence: "#E9F0F2",
         textStrong: K.brown,
         textSubtle: "#7e6869",
-        divider: "#C9BEBE",
+        divider: "#C3B9BA",
         outlineBorder: "#9C8E8E",
       };
 
@@ -154,7 +251,10 @@ export function ProfileScreen() {
     toMetabolicType(state.user.metabolicType) ??
     "Explorer";
   const typeConfig = TYPE_CONFIGS[metabolicType];
-  const typeColors = TC[metabolicType];
+  const typeDisplay = TYPE_DISPLAY[metabolicType];
+  const copy = PROFILE_COPY[metabolicType];
+  const primary = TYPE_PRIMARY[metabolicType];
+  const tint = TYPE_TINT[metabolicType];
 
   const loadProfile = useCallback(() => {
     getProfile().then(setProfile).catch(() => null);
@@ -180,40 +280,8 @@ export function ProfileScreen() {
     setCustomAttribute("paid_user", tier === "pro");
   }, [profile, metabolicType, tier]);
 
-  const lpdEntries =
-    profile && profile.layer2.energyLog.length > 0
-      ? buildLpdEntries(profile)
-      : [
-          {
-            date: "—",
-            note: "No check-in data yet. Complete a check-in to start building your pattern.",
-          },
-        ];
-
-  const scanHistoryRaw = profile?.layer3.scanHistory ?? [];
-  const scanEntries = scanHistoryRaw
-    .slice(-10)
-    .reverse()
-    .map((scan: Record<string, any>, i: number) => {
-      const raw = scan.scannedAt ?? scan.timestamp ?? scan.date;
-      const dateLabel = raw
-        ? new Date(raw).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : `Scan ${scanHistoryRaw.length - i}`;
-      return {
-        date: dateLabel,
-        stressIndex: scan.stressIndex ?? scan.stress_index ?? 0,
-        wellness:
-          scan.wellness ??
-          Math.round(
-            (scan.parasympatheticActivity ?? 50) * 0.6 +
-              ((scan.hrvSdnn ?? 40) / 80) * 40,
-          ),
-      };
-    });
+  const timeline =
+    profile && profile.layer2.energyLog.length > 0 ? buildTimeline(profile) : [];
 
   const lastScanAt = profile?.layer3?.latestScan?.scannedAt ?? null;
   const lastCheckInDate = profile?.layer2?.energyLog?.length
@@ -225,15 +293,11 @@ export function ProfileScreen() {
   );
 
   const latestScan = biometricsFresh ? profile?.layer3.latestScan : null;
-  // Stress comes from the latest check-in's stressTags (RES-122 refactor):
-  // "None" → low, any other tag(s) → high. Falls back to typeConfig if no
-  // check-ins exist yet.
-  const stressTagsSorted = (() => {
-    const log = profile?.layer2?.stressTags ?? [];
-    return [...log].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-  })();
+
+  // --- Signals (stress / energy / recovery) -------------------------------
+  const stressTagsSorted = [...(profile?.layer2?.stressTags ?? [])].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
   const stressLevelFromTags = (tags: string[] | undefined) => {
     if (!tags || tags.length === 0) return null;
     const onlyNone = tags.every((t) => t.toLowerCase() === "none");
@@ -241,62 +305,82 @@ export function ProfileScreen() {
   };
   const currentStressLevel = stressLevelFromTags(stressTagsSorted[0]?.tags);
   const priorStressLevel = stressLevelFromTags(stressTagsSorted[1]?.tags);
-  const stressValue = currentStressLevel ?? typeConfig.signals.stress;
+  const stressWord =
+    currentStressLevel === "low"
+      ? "Stable"
+      : currentStressLevel === "high"
+        ? "Elevated"
+        : cap(String(typeConfig.signals.stress));
 
-  const recoveryValue = latestScan
-    ? `${latestScan.parasympatheticActivity ?? latestScan.parasympathetic_activity ?? "—"}`
-    : typeConfig.signals.recovery;
-  // Energy comes from the latest check-in's energy field (RES-122 refactor);
-  // mirrors the Stress pattern. Falls back to typeConfig.signals.energy when
-  // no check-ins exist.
-  const energyLogSorted = (() => {
-    const log = profile?.layer2?.energyLog ?? [];
-    return [...log].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-  })();
-  const energyValue = energyLogSorted[0]?.energy ?? typeConfig.signals.energy;
+  const energyLogSorted = [...(profile?.layer2?.energyLog ?? [])].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+  const energyWord = cap(
+    String(energyLogSorted[0]?.energy ?? typeConfig.signals.energy),
+  );
 
-  // Prior scan = second-most-recent (by scannedAt). Used to compute Recovery
-  // trend direction + delta.
-  const priorScan = (() => {
-    const history = profile?.layer3?.scanHistory ?? [];
-    if (history.length < 2) return null;
-    const sorted = [...history].sort((a: any, b: any) => {
-      const at = a.scannedAt ?? a.timestamp ?? a.date;
-      const bt = b.scannedAt ?? b.timestamp ?? b.date;
-      return new Date(bt).getTime() - new Date(at).getTime();
-    });
-    return sorted[1] ?? null;
-  })();
+  const scanHistorySorted = [...(profile?.layer3?.scanHistory ?? [])].sort(
+    (a: any, b: any) =>
+      new Date(a.scannedAt ?? a.timestamp ?? a.date).getTime() -
+      new Date(b.scannedAt ?? b.timestamp ?? b.date).getTime(),
+  );
+  const para = (s: any): number | null =>
+    s?.parasympatheticActivity ?? s?.parasympathetic_activity ?? null;
+  const stressIdx = (s: any): number | null =>
+    s?.stressIndex ?? s?.stress_index ?? null;
 
-  // Stress trend: map low=0, high=1 then reuse dirFromNumbers.
+  const recoveryCurrent = latestScan ? para(latestScan) : null;
+  const recoveryPrior =
+    scanHistorySorted.length >= 2
+      ? para(scanHistorySorted[scanHistorySorted.length - 2])
+      : null;
+  const recoveryWord =
+    recoveryCurrent != null
+      ? recoveryCurrent >= 45
+        ? "Strong"
+        : recoveryCurrent >= 30
+          ? "Building"
+          : "Slow"
+      : cap(String(typeConfig.signals.recovery));
+
+  // Sparkline series (chronological, last 7 points).
+  const stressSeries = scanHistorySorted
+    .map(stressIdx)
+    .filter((n): n is number => n != null)
+    .slice(-7);
+  const recoverySeries = scanHistorySorted
+    .map(para)
+    .filter((n): n is number => n != null)
+    .slice(-7);
+  const energySeries = [...energyLogSorted]
+    .reverse()
+    .map((e) => energyRank(e.energy))
+    .filter((n): n is number => n != null)
+    .slice(-7);
+  const latestStressIdx = stressSeries.length ? stressSeries[stressSeries.length - 1] : null;
+
+  // Normalized 0–1 value level per signal — drives the single-data-point line
+  // slope (up = high, down = low, flat = middle). Ranges are the plausible
+  // span for each metric (stress/recovery indices, energy rank 1–4).
+  const norm01 = (v: number | null, lo: number, hi: number) =>
+    v == null ? 0.5 : Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+  const stressLevel = norm01(latestStressIdx, 20, 80);
+  const recoveryLevel = norm01(recoveryCurrent, 20, 60);
+  const energyLevel = norm01(energyRank(energyLogSorted[0]?.energy ?? null), 1, 4);
+
+  // Trends
   const STRESS_RANK = { low: 0, high: 1 } as const;
   const stressTrendDir = dirFromNumbers(
     currentStressLevel ? STRESS_RANK[currentStressLevel] : null,
     priorStressLevel ? STRESS_RANK[priorStressLevel] : null,
   );
-  const stressTrendDelta = null;
-
-  const recoveryCurrent = latestScan
-    ? (latestScan.parasympatheticActivity ?? latestScan.parasympathetic_activity ?? null)
-    : null;
-  const recoveryPrior = priorScan
-    ? (priorScan.parasympatheticActivity ?? priorScan.parasympathetic_activity ?? null)
-    : null;
   const recoveryTrendDir = dirFromNumbers(recoveryCurrent, recoveryPrior);
-  const recoveryTrendDelta =
-    recoveryCurrent !== null && recoveryPrior !== null
-      ? recoveryCurrent - recoveryPrior
-      : null;
-
-  // Energy trend uses the last two check-in entries ranked by ENERGY_RANK.
-  const energyCurrentRank = energyRank(energyLogSorted[0]?.energy ?? null);
-  const energyPriorRank = energyRank(energyLogSorted[1]?.energy ?? null);
-  const energyTrendDir = dirFromNumbers(energyCurrentRank, energyPriorRank);
+  const energyTrendDir = dirFromNumbers(
+    energyRank(energyLogSorted[0]?.energy ?? null),
+    energyRank(energyLogSorted[1]?.energy ?? null),
+  );
 
   const confidencePct = Math.round(profile?.confidence?.composite ?? 0);
-  // Crude projection: each 1% gain ≈ 1 day of typical engagement. Cap & floor.
   const daysToFull = profile?.confidence
     ? Math.max(5, Math.min(120, 100 - confidencePct))
     : 0;
@@ -327,12 +411,15 @@ export function ProfileScreen() {
     (navigation as any).navigate("Settings");
   };
 
+  const goScan = () =>
+    hasScan
+      ? navigation.navigate("Scan", { mode: "rescan" })
+      : navigation.navigate("Scan", { mode: "rescan" });
+
   return (
     <View style={[styles.container, { backgroundColor: surfaces.body }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Top-bounce sentinel: extends the gradient outer color above the
-            header so the iOS overscroll bounce reads as a continuation of
-            the gradient instead of revealing the body color. */}
+        {/* Top-bounce sentinel keeps the iOS overscroll reading as gradient. */}
         <View
           style={[
             styles.topBounceSentinel,
@@ -350,219 +437,247 @@ export function ProfileScreen() {
             <SettingsIcon color={K.white} />
           </TouchableOpacity>
           <View style={styles.headerInner}>
-            <Image source={TYPE_LOGO[metabolicType]} style={styles.headerAvatar} resizeMode="contain" />
+            <Image
+              source={TYPE_LOGO[metabolicType]}
+              style={styles.headerAvatar}
+              resizeMode="contain"
+            />
             <Text style={styles.headerName}>{userName}</Text>
+            <View style={styles.headerTag}>
+              <Text style={styles.headerTagText}>{typeDisplay}</Text>
+            </View>
           </View>
         </View>
 
         <View style={[styles.bodyWrap, { backgroundColor: surfaces.body }]}>
-        {/* Your type */}
-        <Section eyebrow="Your type" eyebrowColor={surfaces.textStrong}>
-          <View style={[styles.card, { backgroundColor: surfaces.card }]}>
-            <Text style={[styles.typeTitle, { color: surfaces.textStrong }]}>{typeConfig.title}</Text>
-            <Text style={[styles.typeTagline, { color: surfaces.textSubtle }]}>{typeConfig.tagline}</Text>
-            <Text style={[styles.typeBody, { color: surfaces.textSubtle }]}>{typeConfig.description}</Text>
-          </View>
-        </Section>
+          {/* Headline: "As a {Type}, {tagline}" */}
+          <Text style={[styles.headline, { color: surfaces.textStrong }]}>
+            As {article(typeDisplay)}{" "}
+            <Text style={[styles.headlineType, { color: primary }]}>{typeDisplay},</Text>{" "}
+            {typeConfig.tagline.replace(/\.$/, "")}.
+          </Text>
 
-        {/* Ester confidence */}
-        <Section eyebrow="Ester confidence" eyebrowColor={surfaces.textStrong}>
-          <View style={[styles.confidenceCard, { backgroundColor: surfaces.confidence }]}>
-            <View style={styles.confidencePctRow}>
-              <Text style={[styles.confidencePct, { color: surfaces.textStrong }]}>{confidencePct}%</Text>
-              <ConfidencePie fraction={confidencePct / 100} color={surfaces.textStrong} />
-            </View>
-            <View style={styles.confidenceTextWrap}>
-              <Text style={[styles.confidenceCopy, { color: surfaces.textStrong }]}>
-                We're still learning your signals so continue to scan each day.
-              </Text>
-              <Text style={[styles.confidenceMeta, { color: surfaces.textSubtle }]}>
-                Estimated {daysToFull} days til near 100% confidence
-              </Text>
-            </View>
-          </View>
-        </Section>
-
-        {/* Your signals */}
-        <Section eyebrow="Your signals" eyebrowColor={surfaces.textStrong}>
-          {biometricsFresh ? (
-            <View style={styles.signalGrid}>
-              <SignalCell
-                label="Stress"
-                value={String(stressValue)}
-                cardBg={surfaces.card}
-                labelColor={surfaces.textSubtle}
-                valueColor={surfaces.textStrong}
-                trendDir={stressTrendDir}
-                trendDelta={stressTrendDelta}
-                trendTextColor={surfaces.textSubtle}
-              />
-              <SignalCell
-                label="Energy"
-                value={String(energyValue)}
-                cardBg={surfaces.card}
-                labelColor={surfaces.textSubtle}
-                valueColor={surfaces.textStrong}
-                trendDir={energyTrendDir}
-                trendTextColor={surfaces.textSubtle}
-              />
-              <SignalCell
-                label="Recovery"
-                value={String(recoveryValue)}
-                cardBg={surfaces.card}
-                labelColor={surfaces.textSubtle}
-                valueColor={surfaces.textStrong}
-                trendDir={recoveryTrendDir}
-                trendDelta={recoveryTrendDelta}
-                trendTextColor={surfaces.textSubtle}
-              />
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.staleNudge, { backgroundColor: surfaces.card }]}
-              onPress={() =>
-                hasScan
-                  ? navigation.navigate("Scan", { mode: "rescan" })
-                  : navigation.navigate("EsterChat", { context: "general" })
-              }
-            >
-              <Text style={[styles.staleNudgeTitle, { color: surfaces.textStrong }]}>
-                {hasScan ? "Refresh your signals" : "No recent signals"}
-              </Text>
-              <Text style={[styles.staleNudgeBody, { color: surfaces.textSubtle }]}>
-                {hasScan
-                  ? "A fresh scan sharpens your meal recommendations. Tap to scan."
-                  : "A quick check-in helps Ester tune your meals. Tap to start."}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </Section>
-
-        {/* Living pattern document */}
-        <Section eyebrow="Living pattern document" eyebrowColor={surfaces.textStrong}>
-          <View style={[styles.listCard, { backgroundColor: surfaces.card }]}>
-            {lpdEntries.map((entry, i) => (
-              <View key={i}>
-                <View style={styles.lpdRow}>
-                  <Text style={[styles.lpdDate, { color: surfaces.textSubtle }]}>{entry.date}</Text>
-                  <Text style={[styles.lpdNote, { color: surfaces.textStrong }]}>{entry.note}</Text>
-                </View>
-                {i < lpdEntries.length - 1 ? (
-                  <View style={[styles.divider, { backgroundColor: surfaces.divider }]} />
-                ) : null}
+          {/* Your Goal */}
+          <Section eyebrow="Your goal" eyebrowColor={surfaces.textStrong} dotColor={primary}>
+            <View style={styles.blueCard}>
+              <TypeGradientFill type={metabolicType} idKey="goal" />
+              <Text style={styles.blueCardBody}>{copy.goal}</Text>
+              <View style={styles.ghostArrowButton}>
+                <ArrowForwardIcon />
               </View>
-            ))}
+            </View>
+          </Section>
+
+          {/* Strength + weakness */}
+          <View style={styles.strengthRow}>
+            <View style={styles.strengthCol}>
+              <View style={styles.eyebrowRow}>
+                <View style={[styles.eyebrowDot, { backgroundColor: primary }]} />
+                <Text style={[styles.eyebrowText, { color: surfaces.textStrong }]}>
+                  Your biggest strength
+                </Text>
+              </View>
+              <View style={[styles.blueCard, { alignItems: "center" }]}>
+                <TypeGradientFill type={metabolicType} idKey="strength" />
+                <Text style={styles.blueCardTitle}>{copy.strength}</Text>
+                <View style={styles.ghostArrowButton}>
+                  <ArrowForwardIcon />
+                </View>
+              </View>
+            </View>
+            <View style={styles.strengthCol}>
+              <View style={styles.eyebrowRow}>
+                <View style={[styles.eyebrowDot, { backgroundColor: primary }]} />
+                <Text style={[styles.eyebrowText, { color: surfaces.textStrong }]}>
+                  Your weakness
+                </Text>
+              </View>
+              <View style={[styles.outlineCard, { borderColor: surfaces.divider }]}>
+                <Text style={[styles.outlineCardTitle, { color: surfaces.textSubtle }]}>
+                  {copy.weakness}
+                </Text>
+                <View style={[styles.outlineArrowButton, { borderColor: surfaces.textSubtle }]}>
+                  <ArrowForwardIcon color={surfaces.textSubtle} />
+                </View>
+              </View>
+            </View>
           </View>
-        </Section>
 
-        {/* Scan history */}
-        {hasScan && scanEntries.length > 0 ? (
-          <Section eyebrow="Scan history" eyebrowColor={surfaces.textStrong}>
-            <View style={[styles.listCard, { backgroundColor: surfaces.card }]}>
-              {scanEntries.map((scan, i) => (
-                <View key={i}>
-                  <View style={styles.scanRow}>
-                    <Text style={[styles.scanDate, { color: surfaces.textStrong }]}>{scan.date}</Text>
-                    <View style={styles.scanMetric}>
-                      <Text style={[styles.scanMetricValue, { color: surfaces.textStrong }]}>{scan.stressIndex}</Text>
-                      <Text style={[styles.scanMetricLabel, { color: surfaces.textSubtle }]}>Stress</Text>
-                    </View>
-                    <View style={styles.scanMetric}>
-                      <Text style={[styles.scanMetricValue, { color: surfaces.textStrong }]}>{scan.wellness}</Text>
-                      <Text style={[styles.scanMetricLabel, { color: surfaces.textSubtle }]}>Wellness</Text>
-                    </View>
-                  </View>
-                  {i < scanEntries.length - 1 ? (
-                    <View style={[styles.divider, { backgroundColor: surfaces.divider }]} />
-                  ) : null}
-                </View>
-              ))}
+          {/* Today's signals */}
+          <Section eyebrow="Today's signals" eyebrowColor={surfaces.textStrong} dotColor={primary}>
+            {biometricsFresh ? (
+              <View style={styles.signalStack}>
+                <SignalBanner
+                  title="Stress Index"
+                  delta={deltaText(stressTrendDir)}
+                  value={stressWord}
+                  series={stressSeries}
+                  today={latestStressIdx}
+                  surfaces={surfaces}
+                  accent={primary}
+                  level={stressLevel}
+                  evening={palette.evening}
+                  onPress={goScan}
+                />
+                <SignalBanner
+                  title="Energy"
+                  delta={deltaText(energyTrendDir)}
+                  value={energyWord}
+                  series={energySeries}
+                  today={null}
+                  surfaces={surfaces}
+                  accent={primary}
+                  level={energyLevel}
+                  evening={palette.evening}
+                  onPress={goScan}
+                />
+                <SignalBanner
+                  title="Recovery"
+                  delta={deltaText(recoveryTrendDir)}
+                  value={recoveryWord}
+                  series={recoverySeries}
+                  today={recoveryCurrent}
+                  surfaces={surfaces}
+                  accent={primary}
+                  level={recoveryLevel}
+                  evening={palette.evening}
+                  onPress={goScan}
+                />
+              </View>
+            ) : (
               <TouchableOpacity
-                style={styles.inlineEsterCta}
-                onPress={() => navigation.navigate("Scan", { mode: "rescan" })}
+                style={[styles.staleNudge, { backgroundColor: surfaces.card }]}
+                onPress={() =>
+                  hasScan
+                    ? navigation.navigate("Scan", { mode: "rescan" })
+                    : navigation.navigate("EsterChat", { context: "general" })
+                }
+              >
+                <Text style={[styles.staleNudgeTitle, { color: surfaces.textStrong }]}>
+                  {hasScan ? "Refresh your signals" : "No recent signals"}
+                </Text>
+                <Text style={[styles.staleNudgeBody, { color: surfaces.textSubtle }]}>
+                  {hasScan
+                    ? "A fresh scan sharpens your meal recommendations. Tap to scan."
+                    : "A quick check-in helps Ester tune your meals. Tap to start."}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Section>
+
+          {/* Living pattern document (no eyebrow/title per design) */}
+          <View style={styles.lpdWrap}>
+              {/* Weekly observations card */}
+              <View style={[styles.timelineCard, { borderColor: surfaces.divider }]}>
+                <Image source={TYPE_LOGO[metabolicType]} style={styles.timelineEster} resizeMode="contain" />
+                <View style={styles.timelineBody}>
+                  <Text style={[styles.timelineHeading, { color: surfaces.textStrong }]}>
+                    Here's what I noticed about you this week!
+                  </Text>
+                  {timeline.length > 0 ? (
+                    timeline.map((row, i) => (
+                      <View key={i} style={styles.timelineRow}>
+                        <View style={styles.timelineRail}>
+                          <TimelineNode />
+                          {i < timeline.length - 1 ? (
+                            <View style={[styles.timelineLine, { backgroundColor: surfaces.divider }]} />
+                          ) : null}
+                        </View>
+                        <View style={styles.timelineRowText}>
+                          <View style={styles.timelineDateRow}>
+                            <Text style={[styles.timelineWeekday, { color: surfaces.textStrong }]}>
+                              {row.weekday}
+                            </Text>
+                            <Text style={[styles.timelineDate, { color: surfaces.textSubtle }]}>
+                              {row.dateShort}
+                            </Text>
+                          </View>
+                          <Text style={[styles.timelineNote, { color: surfaces.textStrong }]}>
+                            {row.note}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.timelineNote, { color: surfaces.textSubtle }]}>
+                      Complete a daily check-in and I'll start building your weekly pattern here.
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Scan CTA */}
+              <TouchableOpacity
+                style={styles.scanCta}
+                onPress={goScan}
                 activeOpacity={0.9}
               >
-                <EsterCtaGradient />
-                <Image
-                  source={TYPE_LOGO[metabolicType]}
-                  style={styles.inlineEsterAvatar}
-                  resizeMode="contain"
-                />
-                <View style={styles.inlineEsterTextWrap}>
-                  <Text style={styles.inlineEsterTitle}>
-                    Keep up the momentum.
+                <TypeGradientFill type={metabolicType} idKey="scan" />
+                <Text style={styles.scanCtaText}>
+                  Keep up the momentum.{"  "}
+                  <Text style={styles.scanCtaTextBold}>
+                    {hasScan ? "Start today's scan." : "Start your first scan."}
                   </Text>
-                  <Text style={styles.inlineEsterBody}>
-                    Start today's scan.
-                  </Text>
-                </View>
-                <View style={styles.inlineEsterArrowButton}>
+                </Text>
+                <View style={styles.scanCtaArrow}>
                   <ArrowForwardIcon />
                 </View>
               </TouchableOpacity>
-            </View>
-          </Section>
-        ) : (
-          <Section eyebrow="Scan history" eyebrowColor={surfaces.textStrong}>
-            <View style={[styles.listCard, { backgroundColor: surfaces.card }]}>
+
+              {/* See previous scans */}
               <TouchableOpacity
-                style={styles.inlineEsterCta}
-                onPress={() => navigation.navigate("Scan", { mode: "rescan" })}
-                activeOpacity={0.9}
+                style={[styles.previousScans, { borderColor: surfaces.divider }]}
+                onPress={() => (navigation as any).navigate("WeeklyReview")}
+                activeOpacity={0.8}
               >
-                <EsterCtaGradient />
-                <Image
-                  source={TYPE_LOGO[metabolicType]}
-                  style={styles.inlineEsterAvatar}
-                  resizeMode="contain"
-                />
-                <View style={styles.inlineEsterTextWrap}>
-                  <Text style={styles.inlineEsterTitle}>
-                    No scans yet — start your first.
-                  </Text>
-                  <Text style={styles.inlineEsterBody}>
-                    Tap to begin a face scan.
-                  </Text>
-                </View>
-                <View style={styles.inlineEsterArrowButton}>
-                  <ArrowForwardIcon />
-                </View>
+                <Text style={[styles.previousScansText, { color: surfaces.textStrong }]}>
+                  Or see previous scans
+                </Text>
               </TouchableOpacity>
+          </View>
+
+          {/* Ester confidence */}
+          <Section eyebrow="Ester confidence" eyebrowColor={surfaces.textStrong} dotColor={primary}>
+            <View
+              style={[
+                styles.confidenceCard,
+                // A light tint of the type's primary (lighter than the primary
+                // itself) in both day and evening — the confidence panel always
+                // reads as a pale accent card, so its text stays fixed-dark.
+                { backgroundColor: tint },
+              ]}
+            >
+              <View style={styles.confidenceTopRow}>
+                <View style={styles.confidencePctRow}>
+                  <Text style={[styles.confidencePct, { color: K.brown }]}>
+                    {confidencePct}%
+                  </Text>
+                  <ConfidencePie fraction={confidencePct / 100} color={K.brown} />
+                </View>
+                <Text style={[styles.confidenceCopy, { color: K.brown }]}>
+                  We're still learning your signals so continue to scan each day.
+                </Text>
+              </View>
+              <View style={styles.confidenceFooter}>
+                <Text style={[styles.confidenceMeta, { color: "#513436" }]}>
+                  Estimated {daysToFull} days til near 100% confidence
+                </Text>
+                <TouchableOpacity
+                  style={[styles.confidenceButton, { backgroundColor: primary }]}
+                  onPress={() => navigation.navigate("EsterChat", { context: "general" })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.confidenceButtonText}>What does this mean?</Text>
+                  <InfoIcon />
+                </TouchableOpacity>
+              </View>
             </View>
           </Section>
-        )}
 
-        {/* Quick links */}
-        <View style={[styles.quickLinks, { borderColor: surfaces.outlineBorder }]}>
-          <QuickLinkRow
-            icon="📊"
-            label="Weekly review"
-            labelColor={surfaces.textStrong}
-            chevronColor={surfaces.textSubtle}
-            onPress={() => (navigation as any).navigate("WeeklyReview")}
-          />
-          <View style={[styles.quickLinkDivider, { backgroundColor: surfaces.divider }]} />
-          <QuickLinkRow
-            icon="🍲"
-            label="Saved meals"
-            labelColor={surfaces.textStrong}
-            chevronColor={surfaces.textSubtle}
-            onPress={() => (navigation as any).navigate("SavedMeals")}
-          />
-          <View style={[styles.quickLinkDivider, { backgroundColor: surfaces.divider }]} />
-          <QuickLinkRow
-            icon="⚙"
-            label="Settings"
-            labelColor={surfaces.textStrong}
-            chevronColor={surfaces.textSubtle}
-            onPress={handleSettingsPress}
-          />
-        </View>
-
-        {/* Reset (dev only — kept tucked at bottom) */}
-        <TouchableOpacity style={styles.resetLink} onPress={handleResetProfile}>
-          <Text style={styles.resetLinkText}>Reset profile</Text>
-        </TouchableOpacity>
+          {/* Reset (dev tool — tucked at the bottom) */}
+          <TouchableOpacity style={styles.resetLink} onPress={handleResetProfile}>
+            <Text style={styles.resetLinkText}>Reset profile</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -573,13 +688,14 @@ interface SectionProps {
   eyebrow: string;
   children: React.ReactNode;
   eyebrowColor?: string;
+  dotColor?: string;
 }
 
-function Section({ eyebrow, children, eyebrowColor }: SectionProps) {
+function Section({ eyebrow, children, eyebrowColor, dotColor }: SectionProps) {
   return (
     <View style={styles.section}>
       <View style={styles.eyebrowRow}>
-        <View style={styles.eyebrowDot} />
+        <View style={[styles.eyebrowDot, dotColor ? { backgroundColor: dotColor } : null]} />
         <Text style={[styles.eyebrowText, eyebrowColor ? { color: eyebrowColor } : null]}>
           {eyebrow}
         </Text>
@@ -589,104 +705,230 @@ function Section({ eyebrow, children, eyebrowColor }: SectionProps) {
   );
 }
 
-function SignalCell({
-  label,
+type Surfaces = {
+  body: string;
+  card: string;
+  confidence: string;
+  textStrong: string;
+  textSubtle: string;
+  divider: string;
+  outlineBorder: string;
+};
+
+function SignalBanner({
+  title,
+  delta,
   value,
-  cardBg,
-  labelColor,
-  valueColor,
-  trendDir,
-  trendDelta,
-  trendTextColor,
+  series,
+  today,
+  surfaces,
+  accent,
+  level,
+  evening,
+  onPress,
 }: {
-  label: string;
+  title: string;
+  delta: string;
   value: string;
-  cardBg?: string;
-  labelColor?: string;
-  valueColor?: string;
-  trendDir?: TrendDirection;
-  trendDelta?: number | null;
-  trendTextColor?: string;
+  series: number[];
+  today: number | null;
+  surfaces: Surfaces;
+  accent: string;
+  level: number;
+  evening: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={[styles.signalCell, cardBg ? { backgroundColor: cardBg } : null]}>
-      <Text style={[styles.signalCellLabel, labelColor ? { color: labelColor } : null]}>
-        {label}
-      </Text>
-      <View style={styles.signalCellContent}>
-        <Text
-          style={[styles.signalCellValue, valueColor ? { color: valueColor } : null]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.6}
-        >
-          {value}
-        </Text>
-        {trendDir ? (
-          <View style={styles.signalTrend}>
-            <TrendIcon direction={trendDir} />
-            {trendDelta !== null && trendDelta !== undefined ? (
-              <Text
-                style={[
-                  styles.signalTrendText,
-                  trendTextColor ? { color: trendTextColor } : null,
-                ]}
-              >
-                {Math.abs(trendDelta)}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
+    <View style={[styles.signalBanner, { borderColor: surfaces.divider }]}>
+      <View style={styles.signalBannerLeft}>
+        <View style={styles.signalBannerHead}>
+          <Text style={[styles.signalBannerTitle, { color: surfaces.textStrong }]}>{title}</Text>
+          <Text style={[styles.signalBannerDelta, { color: surfaces.textSubtle }]}>{delta}</Text>
+        </View>
+        <View style={styles.signalBannerValueRow}>
+          <Text style={[styles.signalBannerValue, { color: surfaces.textStrong }]} numberOfLines={1}>
+            {value}
+          </Text>
+          <TouchableOpacity
+            style={[styles.outlineArrowButton, { borderColor: surfaces.textSubtle }]}
+            onPress={onPress}
+            hitSlop={6}
+          >
+            <ArrowForwardIcon color={surfaces.textSubtle} />
+          </TouchableOpacity>
+        </View>
       </View>
+      <MiniGraph data={series} today={today} accent={accent} level={level} evening={evening} />
     </View>
   );
 }
 
-function TrendIcon({ direction }: { direction: "up" | "down" | "same" }) {
-  if (direction === "same") {
+const GRAPH_W = 116;
+const GRAPH_H = 74;
+
+function MiniGraph({
+  data,
+  today,
+  accent,
+  level,
+  evening,
+}: {
+  data: number[];
+  today: number | null;
+  accent: string;
+  // Normalized 0–1 position of the value within its plausible range. Only used
+  // when there's a single data point (no real trend) to pick the line's slope.
+  level: number;
+  evening: boolean;
+}) {
+  // All graph elements are shades of the metabolic type's accent color.
+  const fillId = `graphFill_${accent.replace("#", "")}`;
+  // Inset horizontally so the endpoint dot (r=3) isn't clipped by the SVG edge.
+  const padX = 4;
+  // "Today: NN" pill inverts against the UI: light pill in dark mode, dark pill
+  // in light mode, so it always reads against the background behind it.
+  const pillBg = evening ? "rgba(243,239,227,0.92)" : "rgba(54,20,22,0.88)";
+  const pillTextColor = evening ? K.brown : K.bone;
+
+  // Single data point: no trend to draw, so show one straight accent line whose
+  // slope reflects the value level — up for high, down for low, flat for middle.
+  if (data.length === 1) {
+    const x0 = padX;
+    const x1 = GRAPH_W - padX;
+    const midY = GRAPH_H / 2;
+    const rise = 13;
+    let y0 = midY;
+    let y1 = midY;
+    if (level >= 0.6) {
+      y0 = midY + rise; // high value → ascending
+      y1 = midY - rise;
+    } else if (level <= 0.4) {
+      y0 = midY - rise; // low value → descending
+      y1 = midY + rise;
+    }
+    const line = `M${x0} ${y0.toFixed(1)} L ${x1} ${y1.toFixed(1)}`;
+    const area = `${line} L ${x1} ${GRAPH_H} L ${x0} ${GRAPH_H} Z`;
     return (
-      <Svg width={12} height={12} viewBox="0 0 22 22" fill="none">
-        <Rect x={1.55957} y={8.31641} width={17.6725} height={5.19779} rx={2.07912} fill={K.faded} />
-      </Svg>
+      <View style={styles.graphWrap}>
+        <Svg width={GRAPH_W} height={GRAPH_H}>
+          <Defs>
+            <RadialGradient id={fillId} cx="50%" cy="0%" rx="90%" ry="120%">
+              <Stop offset="0" stopColor={accent} stopOpacity={0.5} />
+              <Stop offset="1" stopColor={accent} stopOpacity={0.06} />
+            </RadialGradient>
+          </Defs>
+          <Path d={area} fill={`url(#${fillId})`} />
+          <Path
+            d={`M${x0} ${GRAPH_H - 4} L ${x1} ${GRAPH_H - 4}`}
+            stroke={accent}
+            strokeOpacity={0.45}
+            strokeWidth={1.8}
+            strokeDasharray="0.5 4"
+            strokeLinecap="round"
+          />
+          <Path d={line} stroke={accent} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <Circle cx={x1} cy={y1} r={3} fill={accent} />
+        </Svg>
+        {today != null ? (
+          <View style={[styles.graphTooltip, { backgroundColor: pillBg }]}>
+            <Text style={[styles.graphTooltipText, { color: pillTextColor }]}>Today: {Math.round(today)}</Text>
+          </View>
+        ) : null}
+      </View>
     );
   }
+
+  if (data.length === 0) {
+    // No data at all — flat dashed baseline, no tooltip.
+    return (
+      <View style={styles.graphWrap}>
+        <Svg width={GRAPH_W} height={GRAPH_H}>
+          <Path
+            d={`M0 ${GRAPH_H - 14} L ${GRAPH_W} ${GRAPH_H - 14}`}
+            stroke={accent}
+            strokeOpacity={0.4}
+            strokeWidth={1.5}
+            strokeDasharray="3 4"
+          />
+        </Svg>
+      </View>
+    );
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const span = max - min || 1;
+  // Reserve extra headroom at the top when the "Today: NN" pill is shown so the
+  // line can't run under it (the pill sits top-right and recovery/stress peaks
+  // land there). Graphs without a pill keep full amplitude.
+  const padTop = today != null ? 24 : 12;
+  const padBottom = 12;
+  const usableH = GRAPH_H - padTop - padBottom;
+  const usableW = GRAPH_W - padX * 2;
+  const stepX = usableW / (data.length - 1);
+  const pts = data.map((v, i) => ({
+    x: padX + i * stepX,
+    y: padTop + (1 - (v - min) / span) * usableH,
+  }));
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const area = `${line} L ${last.x.toFixed(1)} ${GRAPH_H} L ${first.x.toFixed(1)} ${GRAPH_H} Z`;
+
   return (
-    <Svg width={12} height={12} viewBox="0 0 22 22" fill="none">
+    <View style={styles.graphWrap}>
+      <Svg width={GRAPH_W} height={GRAPH_H}>
+        <Defs>
+          <RadialGradient id={fillId} cx="50%" cy="0%" rx="90%" ry="120%">
+            <Stop offset="0" stopColor={accent} stopOpacity={0.5} />
+            <Stop offset="1" stopColor={accent} stopOpacity={0.06} />
+          </RadialGradient>
+        </Defs>
+        <Path d={area} fill={`url(#${fillId})`} />
+        {/* Dotted baseline near the bottom of the fade (per Figma). */}
+        <Path
+          d={`M${first.x.toFixed(1)} ${GRAPH_H - 4} L ${last.x.toFixed(1)} ${GRAPH_H - 4}`}
+          stroke={accent}
+          strokeOpacity={0.45}
+          strokeWidth={1.8}
+          strokeDasharray="0.5 4"
+          strokeLinecap="round"
+        />
+        <Path d={line} stroke={accent} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <Circle cx={last.x} cy={last.y} r={3} fill={accent} />
+      </Svg>
+      {today != null ? (
+        <View style={styles.graphTooltip}>
+          <Text style={styles.graphTooltipText}>Today: {Math.round(today)}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ArrowForwardIcon({ color = K.white }: { color?: string }) {
+  return (
+    <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
       <Path
-        d={TREND_TRIANGLE}
-        fill={direction === "up" ? K.ochre : K.blue}
-        transform={direction === "down" ? "rotate(180 11 11)" : undefined}
+        d="M8.08467 5.29883H0.5C0.358111 5.29883 0.239333 5.25094 0.143667 5.15517C0.0478888 5.0595 0 4.94072 0 4.79883C0 4.65694 0.0478888 4.53817 0.143667 4.4425C0.239333 4.34672 0.358111 4.29883 0.5 4.29883H8.08467L4.6385 0.852666C4.53939 0.753555 4.49044 0.637555 4.49167 0.504666C4.493 0.371777 4.54533 0.253611 4.64867 0.150166C4.75211 0.0536109 4.86922 0.00361094 5 0.000166493C5.13078 -0.00327795 5.24789 0.0467221 5.35133 0.150166L9.57817 4.377C9.64061 4.43944 9.68461 4.50528 9.71017 4.5745C9.73583 4.64372 9.74867 4.7185 9.74867 4.79883C9.74867 4.87917 9.73583 4.95394 9.71017 5.02317C9.68461 5.09239 9.64061 5.15822 9.57817 5.22067L5.35133 9.4475C5.259 9.53983 5.14467 9.58705 5.00833 9.58917C4.872 9.59128 4.75211 9.54405 4.64867 9.4475C4.54533 9.34405 4.49367 9.22528 4.49367 9.09117C4.49367 8.95694 4.54533 8.83811 4.64867 8.73467L8.08467 5.29883Z"
+        fill={color}
       />
     </Svg>
   );
 }
 
-function QuickLinkRow({
-  icon,
-  label,
-  onPress,
-  labelColor,
-  chevronColor,
-}: {
-  icon: string;
-  label: string;
-  onPress: () => void;
-  labelColor?: string;
-  chevronColor?: string;
-}) {
+function InfoIcon() {
   return (
-    <TouchableOpacity style={styles.quickLinkRow} onPress={onPress} activeOpacity={0.7}>
-      <Text style={styles.quickLinkIcon}>{icon}</Text>
-      <Text style={[styles.quickLinkLabel, labelColor ? { color: labelColor } : null]}>
-        {label}
-      </Text>
-      <Text style={[styles.quickLinkChevron, chevronColor ? { color: chevronColor } : null]}>›</Text>
-    </TouchableOpacity>
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={K.brown} strokeWidth={1.6} />
+      <Path d="M12 11v5" stroke={K.brown} strokeWidth={1.6} strokeLinecap="round" />
+      <Circle cx={12} cy={8} r={1} fill={K.brown} />
+    </Svg>
   );
 }
 
-const PIE_SIZE = 24;
-const PIE_RADIUS = 10;
+const PIE_SIZE = 22;
+const PIE_RADIUS = 9;
 const PIE_CENTER = PIE_SIZE / 2;
 
 function buildPieSlicePath(fraction: number): string {
@@ -706,100 +948,73 @@ function buildPieSlicePath(fraction: number): string {
           A ${PIE_RADIUS} ${PIE_RADIUS} 0 ${largeArc} 1 ${endX} ${endY} Z`;
 }
 
-function ConfidencePie({
-  fraction,
-  color,
-}: {
-  fraction: number;
-  color: string;
-}) {
-  const path = buildPieSlicePath(fraction);
+// Glossy "gem" bullet for the weekly-pattern timeline (per Figma): a #C3B9BA
+// circle with a top-down white gloss at 50%, plus an approximated inner shadow
+// (faint inner stroke) and a soft drop shadow (on the wrapping View).
+function TimelineNode() {
   return (
-    <Svg
-      width={PIE_SIZE}
-      height={PIE_SIZE}
-      viewBox={`0 0 ${PIE_SIZE} ${PIE_SIZE}`}
-    >
-      <Circle
-        cx={PIE_CENTER}
-        cy={PIE_CENTER}
-        r={PIE_RADIUS}
-        fill="none"
-        stroke={color}
-        strokeWidth={1.5}
-      />
-      {path ? <Path d={path} fill={color} /> : null}
-    </Svg>
-  );
-}
-
-function ArrowForwardIcon() {
-  return (
-    <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
-      <Path
-        d="M8.08467 5.29883H0.5C0.358111 5.29883 0.239333 5.25094 0.143667 5.15517C0.0478888 5.0595 0 4.94072 0 4.79883C0 4.65694 0.0478888 4.53817 0.143667 4.4425C0.239333 4.34672 0.358111 4.29883 0.5 4.29883H8.08467L4.6385 0.852666C4.53939 0.753555 4.49044 0.637555 4.49167 0.504666C4.493 0.371777 4.54533 0.253611 4.64867 0.150166C4.75211 0.0536109 4.86922 0.00361094 5 0.000166493C5.13078 -0.00327795 5.24789 0.0467221 5.35133 0.150166L9.57817 4.377C9.64061 4.43944 9.68461 4.50528 9.71017 4.5745C9.73583 4.64372 9.74867 4.7185 9.74867 4.79883C9.74867 4.87917 9.73583 4.95394 9.71017 5.02317C9.68461 5.09239 9.64061 5.15822 9.57817 5.22067L5.35133 9.4475C5.259 9.53983 5.14467 9.58705 5.00833 9.58917C4.872 9.59128 4.75211 9.54405 4.64867 9.4475C4.54533 9.34405 4.49367 9.22528 4.49367 9.09117C4.49367 8.95694 4.54533 8.83811 4.64867 8.73467L8.08467 5.29883Z"
-        fill={K.white}
-      />
-    </Svg>
-  );
-}
-
-function EsterCtaGradient() {
-  // blue/800 across most of the container, with dark brown anchored at the
-  // bottom-middle (radial focal point) to keep that brown highlight area.
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Svg width="100%" height="100%" preserveAspectRatio="none">
+    <View style={styles.timelineNode}>
+      <Svg width={12} height={12} viewBox="0 0 12 12">
         <Defs>
-          <RadialGradient
-            id="esterCtaBg"
-            cx="50%"
-            cy="100%"
-            rx="70%"
-            ry="120%"
-            fx="50%"
-            fy="100%"
-          >
-            <Stop offset="0" stopColor="#2E2422" />
-            <Stop offset="0.2" stopColor="#4A4443" />
-            <Stop offset="0.4" stopColor="#5C5756" />
-            <Stop offset="0.6" stopColor="#737574" />
-            <Stop offset="0.8" stopColor="#8C9090" />
-            <Stop offset="1" stopColor="#B8BCBC" />
-          </RadialGradient>
+          <LinearGradient id="timelineNodeGloss" x1="6" y1="0" x2="6" y2="12" gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={1} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+          </LinearGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#esterCtaBg)" />
+        <Circle cx={6} cy={6} r={6} fill="#C3B9BA" />
+        <Circle cx={6} cy={6} r={6} fill="url(#timelineNodeGloss)" fillOpacity={0.5} />
+        <Circle cx={6} cy={6} r={5.6} fill="none" stroke="rgba(0,0,0,0.16)" strokeWidth={0.7} />
       </Svg>
     </View>
   );
 }
 
-function HeaderTypeGradient({
-  type,
-}: {
-  type: keyof typeof TYPE_GRADIENT_STOPS;
-}) {
+function ConfidencePie({ fraction, color }: { fraction: number; color: string }) {
+  const path = buildPieSlicePath(fraction);
+  return (
+    <Svg width={PIE_SIZE} height={PIE_SIZE} viewBox={`0 0 ${PIE_SIZE} ${PIE_SIZE}`}>
+      <Circle cx={PIE_CENTER} cy={PIE_CENTER} r={PIE_RADIUS} fill="none" stroke={color} strokeWidth={1.5} />
+      {path ? <Path d={path} fill={color} /> : null}
+    </Svg>
+  );
+}
+
+function HeaderTypeGradient({ type }: { type: MetabolicType }) {
   const stops = TYPE_GRADIENT_STOPS[type];
   const gradientId = `headerBg_${type}`;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
-          <RadialGradient
-            id={gradientId}
-            cx="50%"
-            cy="100%"
-            rx="80%"
-            ry="105%"
-            fx="50%"
-            fy="100%"
-          >
+          <RadialGradient id={gradientId} cx="50%" cy="100%" rx="80%" ry="105%" fx="50%" fy="100%">
             <Stop offset="0" stopColor={stops.anchor} />
             <Stop offset="0.5" stopColor={stops.mid} />
             <Stop offset="1" stopColor={stops.outer} />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+      </Svg>
+    </View>
+  );
+}
+
+// Same per-type radial gradient as the header, sized to whatever card it fills
+// (percentages scale to the card box). Unique id per use so multiple instances
+// don't collide. Render as the first child of an overflow-hidden card.
+function TypeGradientFill({ type, idKey }: { type: MetabolicType; idKey: string }) {
+  const stops = TYPE_GRADIENT_STOPS[type];
+  const id = `grad_${type}_${idKey}`;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%" preserveAspectRatio="none">
+        <Defs>
+          <RadialGradient id={id} cx="50%" cy="100%" rx="80%" ry="120%" fx="50%" fy="100%">
+            <Stop offset="0" stopColor={stops.anchor} />
+            <Stop offset="0.5" stopColor={stops.mid} />
+            <Stop offset="1" stopColor={stops.outer} />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
       </Svg>
     </View>
   );
@@ -817,17 +1032,14 @@ function SettingsIcon({ color }: { color: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: K.white,
-  },
+  container: { flex: 1, backgroundColor: K.white },
   bodyWrap: {
     backgroundColor: K.white,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingTop: 24,
     paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingBottom: 40,
     gap: 24,
     marginTop: -16,
   },
@@ -848,7 +1060,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 8,
   },
   headerCogWrap: {
     position: "absolute",
@@ -858,21 +1070,46 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
   headerAvatar: {
-    width: 88,
-    height: 88,
+    width: 132,
+    height: 132,
+    // The R-mark art sits left in its canvas (the antenna dot on the upper-right
+    // widens the bounding box), so contain-centering leaves the body visually
+    // left of center. Nudge right so the mark reads centered under the name.
+    transform: [{ translateX: 7 }],
   },
   headerName: {
     fontFamily: fonts.catalogue,
     fontSize: 32,
     color: K.white,
     letterSpacing: -0.32,
-    marginTop: 0,
+    marginTop: 4,
   },
-  section: {
-    // padding + gap are provided by bodyWrap
+  headerTag: {
+    backgroundColor: "rgba(250,253,254,0.24)",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 5,
   },
+  headerTagText: {
+    fontFamily: fonts.quadrant,
+    fontSize: 14,
+    color: K.white,
+    letterSpacing: -0.14,
+  },
+  headline: {
+    fontFamily: fonts.catalogue,
+    fontSize: 24,
+    color: K.brown,
+    letterSpacing: -0.24,
+    lineHeight: 30,
+  },
+  headlineType: {
+    color: "#5C7177",
+  },
+  section: {},
   eyebrowRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -884,7 +1121,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#92B4BD",
+    backgroundColor: K.blue,
   },
   eyebrowText: {
     fontFamily: fonts.quadrant,
@@ -892,117 +1129,144 @@ const styles = StyleSheet.create({
     color: K.brown,
     letterSpacing: -0.12,
   },
-  card: {
-    backgroundColor: K.bone,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 24,
-    borderBottomRightRadius: 24,
-    borderBottomLeftRadius: 24,
-    paddingTop: 10,
-    paddingRight: 16,
-    paddingBottom: 16,
-    paddingLeft: 12,
+  // Blue accent card (goal / strength / scan CTA share the bubble shape).
+  blueCard: {
+    flexDirection: "row",
     alignItems: "flex-start",
-    alignSelf: "stretch",
-    gap: 4,
+    gap: 8,
+    backgroundColor: K.blue,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    paddingTop: 8,
+    paddingRight: 8,
+    paddingBottom: 12,
+    paddingLeft: 10,
+    overflow: "hidden",
   },
-  typeTitle: {
-    fontFamily: fonts.catalogue,
-    fontSize: 24,
-    color: K.brown,
-    letterSpacing: -0.24,
-  },
-  typeTagline: {
+  blueCardBody: {
+    flex: 1,
     fontFamily: fonts.catalogue,
     fontSize: 16,
-    color: "#7e6869",
+    color: K.white,
     letterSpacing: -0.16,
+    paddingLeft: 4,
   },
-  typeBody: {
-    marginTop: 8,
-    fontFamily: fonts.quadrant,
-    fontSize: 14,
-    color: "#7e6869",
-    letterSpacing: -0.14,
+  blueCardTitle: {
+    flex: 1,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    color: K.white,
+    letterSpacing: -0.2,
+    paddingLeft: 4,
   },
-  confidenceCard: {
-    backgroundColor: "#E9F0F2",
-    borderRadius: 4,
-    padding: 16,
+  ghostArrowButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: "rgba(250,253,254,0.24)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  strengthRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  strengthCol: {
+    flex: 1,
+  },
+  outlineCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 8,
+    borderWidth: 0.5,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    paddingTop: 8,
+    paddingRight: 8,
+    paddingBottom: 12,
+    paddingLeft: 10,
   },
-  confidencePctRow: {
+  outlineCardTitle: {
+    flex: 1,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    letterSpacing: -0.2,
+    paddingLeft: 4,
+  },
+  outlineArrowButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Signal banners
+  signalStack: {
+    gap: 8,
+  },
+  signalBanner: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 12,
+    borderWidth: 1,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 4,
+    borderBottomLeftRadius: 24,
+    padding: 16,
+    overflow: "hidden",
+  },
+  signalBannerLeft: {
+    flex: 1,
+    gap: 12,
+  },
+  signalBannerHead: {
+    gap: 4,
+  },
+  signalBannerTitle: {
+    fontFamily: fonts.catalogue,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
+  signalBannerDelta: {
+    fontFamily: fonts.catalogue,
+    fontSize: 12,
+    letterSpacing: -0.12,
+  },
+  signalBannerValueRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
-  confidencePct: {
-    fontFamily: fonts.catalogueBold,
-    fontSize: 24,
-    color: K.brown,
-    letterSpacing: -0.24,
-  },
-  confidenceTextWrap: {
-    flex: 1,
-    gap: 4,
-  },
-  confidenceCopy: {
-    fontFamily: fonts.catalogue,
-    fontSize: 14,
-    color: K.brown,
-    letterSpacing: -0.14,
-  },
-  confidenceMeta: {
-    fontFamily: fonts.catalogue,
-    fontSize: 12,
-    color: "#513436",
-    letterSpacing: -0.12,
-  },
-  signalGrid: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  signalCell: {
-    flex: 1,
-    backgroundColor: K.bone,
-    borderRadius: 4,
-    padding: 16,
-    alignItems: "flex-start",
-    gap: 16,
-  },
-  signalCellLabel: {
+  signalBannerValue: {
     fontFamily: fonts.quadrant,
-    fontSize: 12,
-    color: "#7e6869",
-    letterSpacing: -0.12,
+    fontSize: 32,
+    letterSpacing: -0.32,
   },
-  signalCellContent: {
-    flex: 1,
-    alignSelf: "stretch",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "flex-end",
-    gap: 4,
+  graphWrap: {
+    width: GRAPH_W,
+    height: GRAPH_H,
+    justifyContent: "center",
   },
-  signalTrend: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
+  graphTooltip: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "rgba(54,20,22,0.12)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
-  signalTrendText: {
-    fontFamily: fonts.catalogue,
-    fontSize: 12,
-    letterSpacing: -0.12,
-  },
-  signalCellValue: {
-    flex: 1,
-    fontFamily: fonts.catalogue,
-    fontSize: 24,
+  graphTooltipText: {
+    fontFamily: fonts.quadrant,
+    fontSize: 10,
     color: K.brown,
-    letterSpacing: -0.24,
-    textTransform: "capitalize",
+    letterSpacing: -0.1,
   },
   staleNudge: {
     backgroundColor: K.bone,
@@ -1022,134 +1286,194 @@ const styles = StyleSheet.create({
     color: "#7e6869",
     letterSpacing: -0.14,
   },
-  listCard: {
-    backgroundColor: K.bone,
-    borderRadius: 4,
-    paddingVertical: 4,
+  // Living pattern document
+  lpdWrap: {
+    gap: 12,
   },
-  lpdRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  timelineCard: {
+    flexDirection: "row",
+    gap: 8,
+    borderWidth: 0.5,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 24,
+    paddingTop: 10,
+    paddingRight: 16,
+    paddingBottom: 16,
+    paddingLeft: 12,
+  },
+  timelineEster: {
+    width: 44,
+    height: 44,
+  },
+  timelineBody: {
+    flex: 1,
+    gap: 10,
+    paddingTop: 2,
+  },
+  timelineHeading: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  timelineRail: {
+    alignItems: "center",
+    width: 12,
+  },
+  timelineNode: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 2,
+    // Soft drop shadow per Figma: 0 -0.52px 1.04px rgba(0,0,0,0.16).
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 1.04,
+    shadowOffset: { width: 0, height: -0.52 },
+    elevation: 1,
+  },
+  timelineLine: {
+    flex: 1,
+    width: 0.5,
+    marginTop: 4,
+  },
+  timelineRowText: {
+    flex: 1,
     gap: 2,
+    paddingBottom: 2,
   },
-  lpdDate: {
+  timelineDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  timelineWeekday: {
     fontFamily: fonts.quadrant,
     fontSize: 12,
-    color: "#7e6869",
+    lineHeight: 16,
     letterSpacing: -0.12,
   },
-  lpdNote: {
-    fontFamily: fonts.catalogue,
-    fontSize: 16,
-    color: K.brown,
-    letterSpacing: -0.16,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#C3B9BA",
-    marginHorizontal: 16,
-  },
-  scanRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  scanDate: {
-    flex: 1,
-    fontFamily: fonts.catalogue,
-    fontSize: 16,
-    color: K.brown,
-    letterSpacing: -0.16,
-  },
-  scanMetric: {
-    alignItems: "center",
-    minWidth: 44,
-  },
-  scanMetricValue: {
-    fontFamily: fonts.catalogue,
-    fontSize: 20,
-    color: K.brown,
-    letterSpacing: -0.20,
-  },
-  scanMetricLabel: {
+  timelineDate: {
     fontFamily: fonts.catalogue,
     fontSize: 12,
-    color: "#7e6869",
+    lineHeight: 16,
     letterSpacing: -0.12,
   },
-  inlineEsterCta: {
+  timelineNote: {
+    fontFamily: fonts.catalogue,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    lineHeight: 19,
+  },
+  scanCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    margin: 12,
-    padding: 12,
-    borderRadius: radius.md,
+    backgroundColor: K.blue,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 24,
+    paddingTop: 10,
+    paddingRight: 12,
+    paddingBottom: 16,
+    paddingLeft: 16,
     overflow: "hidden",
   },
-  inlineEsterAvatar: {
-    width: 33,
-    height: 33,
-  },
-  inlineEsterTextWrap: {
+  scanCtaText: {
     flex: 1,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    color: K.white,
+    letterSpacing: -0.2,
+    lineHeight: 26,
   },
-  inlineEsterArrowButton: {
-    width: 23,
-    height: 23,
+  scanCtaTextBold: {
+    fontFamily: fonts.catalogueBold,
+  },
+  scanCtaArrow: {
+    width: 32,
+    height: 32,
     borderRadius: 999,
-    backgroundColor: "rgba(250, 253, 254, 0.24)",
+    backgroundColor: "rgba(250,253,254,0.24)",
     alignItems: "center",
     justifyContent: "center",
   },
-  inlineEsterTitle: {
+  previousScans: {
+    borderWidth: 0.5,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 40,
+    borderBottomLeftRadius: 40,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  previousScansText: {
     fontFamily: fonts.catalogue,
-    fontSize: 20,
-    color: K.bone,
-    letterSpacing: -0.20,
+    fontSize: 16,
+    letterSpacing: -0.16,
   },
-  inlineEsterBody: {
-    fontFamily: fonts.catalogueBold,
-    fontSize: 20,
-    color: K.bone,
-    letterSpacing: -0.20,
+  // Confidence
+  confidenceCard: {
+    backgroundColor: "#E9F0F2",
+    borderRadius: 4,
+    padding: 16,
+    gap: 16,
   },
-  quickLinks: {
-    backgroundColor: "transparent",
-    borderRadius: radius.lg,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "#9C8E8E",
-    overflow: "hidden",
-  },
-  quickLinkDivider: {
-    height: 1,
-    backgroundColor: "#C9BEBE",
-  },
-  quickLinkRow: {
+  confidenceTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
+    gap: 16,
   },
-  quickLinkIcon: {
-    fontSize: 20,
-    width: 24,
-    textAlign: "center",
+  confidencePctRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
-  quickLinkLabel: {
+  confidencePct: {
+    fontFamily: fonts.catalogueBold,
+    fontSize: 24,
+    color: K.brown,
+    letterSpacing: -0.24,
+  },
+  confidenceCopy: {
     flex: 1,
     fontFamily: fonts.catalogue,
-    fontSize: 20,
+    fontSize: 14,
     color: K.brown,
-    letterSpacing: -0.20,
+    letterSpacing: -0.14,
   },
-  quickLinkChevron: {
-    fontSize: 22,
-    color: K.textMuted,
-    fontWeight: "300",
+  confidenceFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  confidenceMeta: {
+    flex: 1,
+    fontFamily: fonts.catalogue,
+    fontSize: 12,
+    color: "#513436",
+    letterSpacing: -0.12,
+  },
+  confidenceButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: K.blue,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  confidenceButtonText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.brown,
+    letterSpacing: -0.14,
   },
   resetLink: {
     alignSelf: "center",
