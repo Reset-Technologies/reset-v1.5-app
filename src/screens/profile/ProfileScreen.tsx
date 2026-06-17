@@ -476,7 +476,12 @@ export function ProfileScreen() {
 
           {/* Your Goal */}
           <Section eyebrow="Your goal" eyebrowColor={surfaces.textStrong} dotColor={primary}>
-            <View style={styles.blueCard}>
+            <View
+              style={[
+                styles.blueCard,
+                { backgroundColor: TYPE_GRADIENT_STOPS[metabolicType].anchor },
+              ]}
+            >
               <TypeGradientFill type={metabolicType} idKey="goal" />
               <Text style={styles.blueCardBody}>{goalText}</Text>
               <View style={styles.ghostArrowButton}>
@@ -494,9 +499,24 @@ export function ProfileScreen() {
                   Your biggest strength
                 </Text>
               </View>
-              <View style={[styles.blueCard, { alignItems: "center" }]}>
+              <View
+                style={[
+                  styles.blueCard,
+                  {
+                    alignItems: "center",
+                    backgroundColor: TYPE_GRADIENT_STOPS[metabolicType].anchor,
+                  },
+                ]}
+              >
                 <TypeGradientFill type={metabolicType} idKey="strength" />
-                <Text style={styles.blueCardTitle}>{copy.strength}</Text>
+                <Text
+                  style={styles.blueCardTitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {copy.strength}
+                </Text>
                 <View style={styles.ghostArrowButton}>
                   <ArrowForwardIcon />
                 </View>
@@ -510,7 +530,12 @@ export function ProfileScreen() {
                 </Text>
               </View>
               <View style={[styles.outlineCard, { borderColor: surfaces.divider }]}>
-                <Text style={[styles.outlineCardTitle, { color: surfaces.textSubtle }]}>
+                <Text
+                  style={[styles.outlineCardTitle, { color: surfaces.textSubtle }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {copy.weakness}
                 </Text>
                 <View style={[styles.outlineArrowButton, { borderColor: surfaces.textSubtle }]}>
@@ -625,7 +650,10 @@ export function ProfileScreen() {
 
               {/* Scan CTA */}
               <TouchableOpacity
-                style={styles.scanCta}
+                style={[
+                  styles.scanCta,
+                  { backgroundColor: TYPE_GRADIENT_STOPS[metabolicType].anchor },
+                ]}
                 onPress={goScan}
                 activeOpacity={0.9}
               >
@@ -1021,18 +1049,33 @@ function HeaderTypeGradient({ type }: { type: MetabolicType }) {
 function TypeGradientFill({ type, idKey }: { type: MetabolicType; idKey: string }) {
   const stops = TYPE_GRADIENT_STOPS[type];
   const id = `grad_${type}_${idKey}`;
+  // Measure the container and give the Svg explicit pixel dimensions. On Android,
+  // react-native-svg's `height="100%"` doesn't reliably resolve to the parent's
+  // full height, leaving the bottom of taller cards uncovered (the blueCard
+  // backgroundColor showed through as a blue strip — most visible on Chameleon,
+  // whose goal copy is the longest). Explicit sizes render correctly on both OSes.
+  const [size, setSize] = useState({ w: 0, h: 0 });
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Svg width="100%" height="100%" preserveAspectRatio="none">
-        <Defs>
-          <RadialGradient id={id} cx="50%" cy="100%" rx="80%" ry="120%" fx="50%" fy="100%">
-            <Stop offset="0" stopColor={stops.anchor} />
-            <Stop offset="0.5" stopColor={stops.mid} />
-            <Stop offset="1" stopColor={stops.outer} />
-          </RadialGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
-      </Svg>
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize((s) => (s.w === width && s.h === height ? s : { w: width, h: height }));
+      }}
+    >
+      {size.w > 0 && size.h > 0 ? (
+        <Svg width={size.w} height={size.h} preserveAspectRatio="none">
+          <Defs>
+            <RadialGradient id={id} cx="50%" cy="100%" rx="80%" ry="120%" fx="50%" fy="100%">
+              <Stop offset="0" stopColor={stops.anchor} />
+              <Stop offset="0.5" stopColor={stops.mid} />
+              <Stop offset="1" stopColor={stops.outer} />
+            </RadialGradient>
+          </Defs>
+          <Rect x="0" y="0" width={size.w} height={size.h} fill={`url(#${id})`} />
+        </Svg>
+      ) : null}
     </View>
   );
 }
