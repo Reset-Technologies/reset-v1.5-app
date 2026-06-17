@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
+  Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, CommonActions, RouteProp } from "@react-navigation/native";
@@ -33,9 +34,6 @@ import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
 
 const SCREEN_H = Dimensions.get("window").height;
-// Extra gap above the modal sheet (on top of the status-bar inset) so it doesn't
-// sit awkwardly tight against the top of the screen.
-const CARD_TOP_GAP = 16;
 // Height of everything in the card that ISN'T the why-bubble text — top bar,
 // heading, hero photo, eyebrow, prompt, the two chips, and the inter-section
 // gaps/padding. The why text's scroll cap is whatever vertical space is left
@@ -208,6 +206,41 @@ function headingFor(fromOnboarding: boolean, hasScore: boolean): {
   };
 }
 
+// Chat-style typing indicator shown in the why-bubble while the LLM blurb loads,
+// so the user never sees the short template line flash before the paragraph.
+function WhyTypingDots({ color }: { color: string }) {
+  const d0 = useRef(new Animated.Value(0.3)).current;
+  const d1 = useRef(new Animated.Value(0.3)).current;
+  const d2 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const dots = [d0, d1, d2];
+    const loops = dots.map((d, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 160),
+          Animated.timing(d, { toValue: 1, duration: 320, useNativeDriver: true }),
+          Animated.timing(d, { toValue: 0.3, duration: 320, useNativeDriver: true }),
+          Animated.delay((2 - i) * 160),
+        ]),
+      ),
+    );
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [d0, d1, d2]);
+
+  return (
+    <View style={styles.typingRow}>
+      {[d0, d1, d2].map((d, i) => (
+        <Animated.View
+          key={i}
+          style={[styles.typingDot, { backgroundColor: color, opacity: d }]}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function NextMealScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AppOpenStackParamList>>();
@@ -225,9 +258,12 @@ export function NextMealScreen() {
   const [slot, setSlot] = useState<Slot>("breakfast");
   const [meal, setMeal] = useState<DailyPlanMeal | null>(null);
   const [ingredients, setIngredients] = useState<MealIngredient[]>([]);
-  // Richer LLM "why this meal" blurb (3 sentences). Fetched per-meal; the short
-  // template whyLine shows instantly and is swapped out once this resolves.
+  // Richer LLM "why this meal" blurb (3 sentences). Fetched per-meal; while it's
+  // in flight the bubble shows a typing indicator (not the short template
+  // whyLine) to avoid a jarring short-text flash. whyError flips the fallback to
+  // the template whyLine if the fetch fails.
   const [esterWhy, setEsterWhy] = useState<string | null>(null);
+  const [whyError, setWhyError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [hasScore, setHasScore] = useState(false);
@@ -267,16 +303,19 @@ export function NextMealScreen() {
   useEffect(() => {
     if (!meal?.id) {
       setEsterWhy(null);
+      setWhyError(false);
       return;
     }
     let cancelled = false;
     setEsterWhy(null);
+    setWhyError(false);
     getMealWhy(meal.id)
       .then((res) => {
         if (!cancelled) setEsterWhy(res.text);
       })
       .catch(() => {
-        // keep the template whyLine fallback
+        // Fall back to the template whyLine.
+        if (!cancelled) setWhyError(true);
       });
     return () => {
       cancelled = true;
@@ -375,12 +414,15 @@ export function NextMealScreen() {
   const tags = meal ? buildTags(meal) : [];
   // Prefer the richer LLM blurb once it arrives; fall back to the short template.
   const whyMessage = esterWhy ?? meal?.whyLine ?? "";
+  // True while the LLM blurb is still loading (no result yet, no error) — show
+  // the typing indicator instead of the short template line.
+  const whyPending = !!meal && !esterWhy && !whyError;
   // Cap the why-bubble text height so a long blurb scrolls in place instead of
   // shoving the chips past the bottom edge. Grows to fit short copy, scrolls
   // beyond the leftover space on a given device.
   const whyMaxHeight = Math.max(
     72,
-    SCREEN_H - insets.top - CARD_TOP_GAP - insets.bottom - WHY_RESERVED_H,
+    SCREEN_H - insets.top - insets.bottom - WHY_RESERVED_H,
   );
   const heading = headingFor(fromOnboarding, hasScore);
   // Chat-bubble surface — brown-tinted ghost on light themes, bone-tinted on dark.
@@ -405,7 +447,7 @@ export function NextMealScreen() {
       <View
         style={[
           styles.card,
-          { backgroundColor: cardBg, marginTop: insets.top + CARD_TOP_GAP },
+          { backgroundColor: cardBg, paddingTop: insets.top },
         ]}
       >
         {/* Top bar — close (takes over the old down-arrow's advance) + centered
@@ -522,7 +564,7 @@ export function NextMealScreen() {
                 </View>
 
                 {/* Why this meal — eyebrow + explanation bubble. */}
-                {whyMessage ? (
+                {whyMessage || whyPending ? (
                   <View style={styles.whyWrap}>
                     <View style={styles.eyebrowRow}>
                       <View style={styles.eyebrowDot} />
@@ -531,19 +573,23 @@ export function NextMealScreen() {
                       </Text>
                     </View>
                     <View style={styles.whyBubble}>
-                      <WhyScroll
-                        maxHeight={whyMaxHeight}
-                        thumbColor={subtleText}
-                        trackColor={
-                          evening
-                            ? "rgba(250,253,254,0.15)"
-                            : "rgba(54,20,22,0.1)"
-                        }
-                      >
-                        <Text style={[styles.whyText, { color: subtleText }]}>
-                          {renderBoldSegments(whyMessage, textColor)}
-                        </Text>
-                      </WhyScroll>
+                      {whyPending ? (
+                        <WhyTypingDots color={subtleText} />
+                      ) : (
+                        <WhyScroll
+                          maxHeight={whyMaxHeight}
+                          thumbColor={subtleText}
+                          trackColor={
+                            evening
+                              ? "rgba(250,253,254,0.15)"
+                              : "rgba(54,20,22,0.1)"
+                          }
+                        >
+                          <Text style={[styles.whyText, { color: subtleText }]}>
+                            {renderBoldSegments(whyMessage, textColor)}
+                          </Text>
+                        </WhyScroll>
+                      )}
                     </View>
                   </View>
                 ) : null}
@@ -591,15 +637,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   card: {
     flex: 1,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
     overflow: "hidden",
-    // Figma sheet shadow: 0 4px 4px rgba(0,0,0,0.25).
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 4,
-    elevation: 6,
   },
   topBar: {
     flexDirection: "row",
@@ -761,6 +799,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
+  },
+  typingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 22,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   whyScrollWrap: {
     position: "relative",
