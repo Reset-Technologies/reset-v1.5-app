@@ -92,6 +92,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Wires Twilio Voice's VoiceApplicationProxy into the Android Application
     // lifecycle — without it the app crashes on launch (null JSEventEmitter).
     "./plugins/withTwilioVoiceAndroid",
+    // Enables modular headers for GoogleUtilities/RecaptchaInterop so the Swift pod
+    // AppCheckCore can be integrated as a static library (broke after adding
+    // expo-image's SDWebImage stack). See plugins/withModularHeaders.js.
+    "./plugins/withModularHeaders",
   ],
   extra: {
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
