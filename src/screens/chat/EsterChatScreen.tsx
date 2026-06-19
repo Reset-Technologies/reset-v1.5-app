@@ -25,6 +25,10 @@ import {
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import { K, toMetabolicType } from "../../constants/colors";
+import { EsterBackground } from "./EsterBackground";
+import { EsterLogoVideo } from "./EsterLogoVideo";
+import { LiquidGlass } from "./LiquidGlass";
+import { ReadAlongText } from "./ReadAlongText";
 import { useApp } from "../../context/AppContext";
 import { fonts, spacing, radius } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
@@ -44,6 +48,7 @@ const TTS_ENABLED_KEY = "@reset_ester_tts_enabled";
 
 const ESTER_AVATAR_LIGHT = require("../../../assets/images/ester-avatar.png");
 const ESTER_AVATAR_DARK = require("../../../assets/images/ester-avatar-silver.png");
+// RES-140 — frosted "Glass Effect" disc used as the voice button background.
 
 const TYPE_LOGO = {
   Burner: require("../../../assets/images/type-logos/Burner.png"),
@@ -107,6 +112,9 @@ export function EsterChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  // True only during the gap between the user sending and Ester's reply
+  // starting to present — drives the call-view loading dots.
+  const [awaitingReply, setAwaitingReply] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | undefined>();
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -127,8 +135,9 @@ export function EsterChatScreen() {
   // RES-132 — Ester text-to-speech. Off by default; toggled by the header
   // speaker icon and persisted. A ref mirrors the state so the async
   // send-flow reads the latest value (and can bail if toggled off mid-synth).
-  const [ttsEnabled, setTtsEnabled] = useState(false);
-  const ttsEnabledRef = useRef(false);
+  // RES-140 — this is a voice-first screen, so Ester reads aloud by default.
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const ttsEnabledRef = useRef(true);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   // While Ester is speaking, reveal her message text in step with playback so
   // the words appear roughly as they're voiced. Only the actively-spoken
@@ -145,6 +154,11 @@ export function EsterChatScreen() {
   // True while the mid-stream takeover is synthesizing — drives the loading
   // affordance so the brief freeze doesn't read as a hang.
   const [isPreparingVoice, setIsPreparingVoice] = useState(false);
+  // RES-140: the message currently being presented as read-along (set the
+  // moment we begin — through TTS synth + playback — and cleared when the
+  // reveal finishes). While it's set, the call view shows the phrase-by-phrase
+  // teleprompter, not the full sentence; the full text appears only after.
+  const [activeReadId, setActiveReadId] = useState<string | null>(null);
 
   const evening = palette.evening;
   const esterAvatar = evening ? ESTER_AVATAR_DARK : ESTER_AVATAR_LIGHT;
@@ -346,6 +360,13 @@ export function EsterChatScreen() {
           timestamp: new Date(),
         });
       }
+      // Pre-mark the opening line as actively reading BEFORE the messages land,
+      // so the call view never renders the full sentence (even for a frame)
+      // before the teleprompter — regardless of whether these state updates get
+      // batched. Only when it'll actually be read aloud.
+      if (ttsEnabledRef.current) {
+        setActiveReadId(greeting[greeting.length - 1].id);
+      }
       setMessages(greeting);
       setIsLoadingHistory(false);
     }
@@ -431,10 +452,11 @@ export function EsterChatScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // RES-140: voice-first — on by default; only honor an explicit mute.
         const saved = await AsyncStorage.getItem(TTS_ENABLED_KEY);
-        if (saved === "1") {
-          setTtsEnabled(true);
-          ttsEnabledRef.current = true;
+        if (saved === "0") {
+          setTtsEnabled(false);
+          ttsEnabledRef.current = false;
         }
       } catch {}
       try {
@@ -476,6 +498,7 @@ export function EsterChatScreen() {
       audioPlayerRef.current?.pause();
     } catch {}
     setSpeaking(null);
+    setActiveReadId(null);
   };
 
   // Reveal `text` in step with the audio player's position. `baseOffset` lets
@@ -494,6 +517,7 @@ export function EsterChatScreen() {
       if (cur >= dur - 0.06) {
         setReveal(text.length);
         setSpeaking(null);
+        setActiveReadId(null);
         revealStateRef.current = null;
         clearRevealTick();
       }
@@ -512,6 +536,7 @@ export function EsterChatScreen() {
       setReveal(count);
       if (count >= text.length) {
         setSpeaking(null);
+        setActiveReadId(null);
         revealStateRef.current = null;
         clearRevealTick();
       }
@@ -522,6 +547,9 @@ export function EsterChatScreen() {
   // first and sync the reveal to playback; with voice off, stream on a timer.
   // Either way it's best-effort — on failure the full text is shown.
   const presentEsterMessage = async (message: Message) => {
+    // Mark as actively reading from the start (covers the TTS-synth gap) so the
+    // call view shows the teleprompter, not the full sentence, until it's done.
+    if (message.text.trim()) setActiveReadId(message.id);
     if (ttsEnabledRef.current && message.text.trim()) {
       try {
         const { audioBase64 } = await synthesizeSpeech(message.text);
@@ -536,6 +564,7 @@ export function EsterChatScreen() {
             audioPlayerRef.current.replace({ uri });
           }
           setMessages((prev) => [...prev, message]);
+          setAwaitingReply(false);
           revealStateRef.current = { id: message.id, text: message.text };
           setSpeaking(message.id);
           setReveal(0);
@@ -549,6 +578,7 @@ export function EsterChatScreen() {
     }
     // Voice off (or synthesis failed): stream the text on a timer, no audio.
     setMessages((prev) => [...prev, message]);
+    setAwaitingReply(false);
     if (message.text.trim()) {
       revealStateRef.current = { id: message.id, text: message.text };
       setSpeaking(message.id);
@@ -647,6 +677,7 @@ export function EsterChatScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
     setIsTyping(true);
+    setAwaitingReply(true);
 
     try {
       const isNewMealChat = meal && !chatSessionId;
@@ -677,6 +708,9 @@ export function EsterChatScreen() {
         toolCalls: response.toolCalls as ToolCall[] | undefined,
       };
       // Stream the reply in — synced to voice when on, on a timer when off.
+      // presentEsterMessage clears the loading dots the moment the reply lands
+      // (after the TTS-synth gap), so the dots stay up until the teleprompter
+      // takes over — no full-sentence flash of the prior message in between.
       await presentEsterMessage(esterMessage);
     } catch {
       const errorMessage: Message = {
@@ -688,6 +722,7 @@ export function EsterChatScreen() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
+      setAwaitingReply(false);
     }
   };
 
@@ -697,11 +732,6 @@ export function EsterChatScreen() {
 
   const handlePromptTap = (prompt: string) => {
     sendText(prompt);
-  };
-
-  const toggleInputMode = () => {
-    if (isListening) cancelListening();
-    setInputMode((m) => (m === "voice" ? "keyboard" : "voice"));
   };
 
   const handleClose = () => {
@@ -714,6 +744,15 @@ export function EsterChatScreen() {
     if (isListening) cancelListening();
     stopSpeaking();
     setChatSessionId(undefined);
+    // Re-arm the one-shot greeting auto-read for the new conversation.
+    greetingReadRef.current = false;
+    // Pre-mark the greeting as actively reading BEFORE it lands (stopSpeaking
+    // just cleared it) so the teleprompter shows from the first frame instead
+    // of flashing the full sentence. Only when it'll be read aloud.
+    if (ttsEnabledRef.current) {
+      setReveal(0);
+      setActiveReadId(defaultGreeting.id);
+    }
     setMessages([defaultGreeting]);
     setInputText("");
     await AsyncStorage.setItem(PENDING_NEW_CHAT_KEY, "true");
@@ -728,8 +767,83 @@ export function EsterChatScreen() {
     return `${m}:${r.toString().padStart(2, "0")}`;
   };
 
+  // ---- RES-140 voice-screen state -------------------------------------------
+  // Ester is "speaking" whenever a message is being read aloud — drives the
+  // logo animation loop and the read-along text in the call view.
+  const isSpeaking = speakingMessageId !== null;
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+
+  // Call-style elapsed timer shown in the top pill.
+  const [callSeconds, setCallSeconds] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setCallSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // The most recent Ester message — surfaced as read-along text in the call
+  // view. While it's actively being read, only the revealed prefix shows.
+  const currentEster = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === "ester") return messages[i];
+    }
+    return undefined;
+  }, [messages]);
+  const currentEsterText =
+    currentEster && speakingMessageId === currentEster.id
+      ? currentEster.text.slice(0, revealedCount)
+      : currentEster?.text;
+
+  // "Read" action — re-read the current Ester message aloud without re-adding it.
+  const replayCurrentMessage = async () => {
+    const msg = currentEster;
+    if (!msg?.text.trim()) return;
+    setActiveReadId(msg.id);
+    if (!ttsEnabledRef.current) {
+      setTtsEnabled(true);
+      ttsEnabledRef.current = true;
+      try {
+        await AsyncStorage.setItem(TTS_ENABLED_KEY, "1");
+      } catch {}
+    }
+    try {
+      const { audioBase64 } = await synthesizeSpeech(msg.text);
+      const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
+      await FileSystem.writeAsStringAsync(uri, audioBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = createAudioPlayer({ uri });
+      } else {
+        audioPlayerRef.current.replace({ uri });
+      }
+      revealStateRef.current = { id: msg.id, text: msg.text };
+      setSpeaking(msg.id);
+      setReveal(0);
+      audioPlayerRef.current.play();
+      startRevealTick(msg.id, msg.text);
+    } catch {}
+  };
+
+  // RES-140: on a fresh conversation, auto-read Ester's opening line (piece-meal
+  // via the read-along). Fires once, only when there are no user turns yet and
+  // TTS isn't muted — reopening an existing chat won't re-read old messages.
+  const greetingReadRef = useRef(false);
+  useEffect(() => {
+    if (isLoadingHistory || greetingReadRef.current) return;
+    if (!ttsEnabledRef.current) return;
+    if (messages.some((m) => m.sender === "user")) {
+      greetingReadRef.current = true;
+      return;
+    }
+    if (currentEster) {
+      greetingReadRef.current = true;
+      replayCurrentMessage();
+    }
+  }, [isLoadingHistory, currentEster, messages]);
+
   return (
-    <View style={[styles.outerContainer, { backgroundColor: colors.screenBg }]}>
+    <View style={styles.outerContainer}>
+      <EsterBackground type={metabolicType} />
       <View
         style={[
           styles.container,
@@ -742,61 +856,86 @@ export function EsterChatScreen() {
               keyboardHeight > 0
                 ? keyboardHeight + (Platform.OS === "android" ? 12 : 0)
                 : insets.bottom,
-            backgroundColor: colors.screenBg,
           },
         ]}
       >
-        {/* Header: close + new chat | avatar | mute (decorative) */}
-        <View
-          style={[
-            styles.headerOverlay,
-            {
-              paddingTop: insets.top,
-              backgroundColor: colors.headerOverlayBg,
-            },
-          ]}
-          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
-        >
-          <View style={styles.header}>
-          <View style={styles.headerLeftGroup}>
-            <TouchableOpacity
-              style={styles.headerIconButton}
-              onPress={handleClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <CloseIcon color={colors.headerIcon} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerIconButton}
-              onPress={handleNewChat}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <PlusIcon color={colors.headerIcon} />
-            </TouchableOpacity>
+        {/* Top: leave · call timer · new chat */}
+        <View style={[styles.voiceTopBar, { paddingTop: insets.top + 6 }]}>
+          <TouchableOpacity
+            onPress={handleClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <CloseIcon color="#361416" />
+          </TouchableOpacity>
+          <View style={styles.timerPill}>
+            <Text style={styles.timerText}>{formatDuration(callSeconds)}</Text>
           </View>
-          <View style={styles.headerCenter}>
-            <Image source={headerLogo} style={styles.headerAvatar} resizeMode="contain" />
-          </View>
-          <View style={styles.headerRightGroup}>
-            <TouchableOpacity
-              style={styles.headerIconButton}
-              onPress={toggleTts}
-              disabled={isPreparingVoice}
-              accessibilityLabel={ttsEnabled ? "Mute Ester's voice" : "Enable Ester's voice"}
-              accessibilityState={{ selected: ttsEnabled, busy: isPreparingVoice }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              {isPreparingVoice ? (
-                <ActivityIndicator size="small" color={colors.headerIcon} />
-              ) : (
-                <MuteIcon color={colors.headerIcon} muted={!ttsEnabled} />
-              )}
-            </TouchableOpacity>
-          </View>
-          </View>
+          <TouchableOpacity
+            onPress={handleNewChat}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <PlusIcon color="#361416" />
+          </TouchableOpacity>
         </View>
 
-        {/* Messages */}
+        {/* Call body: type logo animation + action column + read-along text */}
+        <View style={styles.voiceBody}>
+          <EsterLogoVideo
+            type={metabolicType}
+            playing={isSpeaking}
+            style={styles.voiceLogo}
+          />
+          <View style={styles.actionsCol}>
+            <VoiceActionButton label="End" variant="end" shine onPress={handleClose}>
+              <PhoneEndIcon color="#FF0099" />
+            </VoiceActionButton>
+            <VoiceActionButton
+              label="Speaker"
+              shine
+              active={ttsEnabled}
+              busy={isPreparingVoice}
+              onPress={toggleTts}
+              // Figma "Liquid Glass" fill stack: #FFFFFF @72% base, then a
+              // #999999 Overlay tint — flattened to plain alpha fills since RN
+              // can't do Figma blend modes.
+              fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+            >
+              <MuteIcon color="#361416" muted={!ttsEnabled} />
+            </VoiceActionButton>
+            <VoiceActionButton
+              label="Read"
+              shine
+              onPress={() => setTranscriptOpen((v) => !v)}
+            >
+              <ReadLinesIcon color="#FF0099" />
+            </VoiceActionButton>
+          </View>
+          {currentEster && !transcriptOpen && !awaitingReply ? (
+            <TouchableOpacity
+              style={styles.currentMsgWrap}
+              activeOpacity={0.9}
+              onPress={() => setTranscriptOpen(true)}
+            >
+              <ReadAlongText
+                text={currentEster.text}
+                revealedCount={revealedCount}
+                active={activeReadId === currentEster.id}
+              />
+            </TouchableOpacity>
+          ) : null}
+          {awaitingReply && !transcriptOpen ? <CallLoadingDots /> : null}
+        </View>
+
+        {/* Transcript pull-up sheet — the full conversation history */}
+        {transcriptOpen && (
+        <View style={styles.transcriptSheet}>
+          <TouchableOpacity
+            style={styles.sheetHandleHit}
+            onPress={() => setTranscriptOpen(false)}
+            hitSlop={{ top: 12, bottom: 12, left: 40, right: 40 }}
+          >
+            <View style={styles.sheetGrip} />
+          </TouchableOpacity>
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
             <Image source={esterAvatar} style={styles.loadingAvatar} resizeMode="contain" />
@@ -807,7 +946,7 @@ export function EsterChatScreen() {
             style={styles.messagesContainer}
             contentContainerStyle={[
               styles.messagesContent,
-              { paddingTop: headerHeight + 24 },
+              { paddingTop: 12, paddingBottom: 96 + insets.bottom },
             ]}
             onContentSizeChange={() =>
               scrollViewRef.current?.scrollToEnd({ animated: true })
@@ -888,29 +1027,45 @@ export function EsterChatScreen() {
             )}
           </ScrollView>
         )}
+        </View>
+        )}
 
         {/* Bottom input area — voice CTA | listening pill | keyboard input */}
         <View style={styles.bottomBar}>
           {inputMode === "voice" && !isListening && (
-            <View style={styles.voiceCtaRow}>
+            <View style={[styles.inputPill, styles.inputPillVoice]}>
+              <LiquidGlass
+                style={StyleSheet.absoluteFill}
+                intensity={30}
+                tint="light"
+                overlay="rgba(255,255,255,0.1)"
+                overlayAndroid="rgba(40,20,22,0.45)"
+                shine
+              />
               <TouchableOpacity
-                style={[
-                  styles.modeToggle,
-                  { backgroundColor: colors.ctaToggleBg },
-                ]}
-                onPress={toggleInputMode}
-                activeOpacity={0.8}
+                style={styles.tapToSpeakHit}
+                onPress={() => setInputMode("keyboard")}
+                activeOpacity={0.7}
               >
-                <KeyboardIcon color={colors.ctaToggleIcon} />
+                <Text style={styles.tapToSpeakText}>Type anything...</Text>
               </TouchableOpacity>
+              {/* Voice button — frosted "Liquid Glass" disc + graphic-eq icon */}
               <TouchableOpacity
-                style={[styles.tapToSpeak, { backgroundColor: colors.ctaBg }]}
+                style={styles.inputSideButton}
                 onPress={startListening}
                 activeOpacity={0.85}
+                accessibilityLabel="Speak to Ester"
               >
-                <Text style={[styles.tapToSpeakText, { color: colors.ctaText }]}>
-                  Tap to speak
-                </Text>
+                <LiquidGlass
+                  style={StyleSheet.absoluteFill}
+                  intensity={24}
+                  tint="light"
+                  overlay="rgba(0,0,0,0)"
+                  overlayAndroid="rgba(0,0,0,0)"
+                  fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+                  shine
+                />
+                <VoiceWaveIcon color="#FAFDFE" />
               </TouchableOpacity>
             </View>
           )}
@@ -953,38 +1108,78 @@ export function EsterChatScreen() {
           )}
 
           {inputMode === "keyboard" && (
-            <View style={styles.keyboardRow}>
-              <TouchableOpacity
-                style={[
-                  styles.modeToggle,
-                  { backgroundColor: colors.ctaToggleBg },
-                ]}
-                onPress={toggleInputMode}
-                activeOpacity={0.8}
-              >
-                <MicIcon color={colors.ctaToggleIcon} />
-              </TouchableOpacity>
-              <View style={[styles.inputPill, { backgroundColor: colors.inputBg }]}>
-                <TextInput
-                  style={[styles.input, { color: colors.inputText }]}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  placeholder="Type anything…"
-                  placeholderTextColor={colors.inputPlaceholder}
-                  multiline
-                  maxLength={500}
-                  onSubmitEditing={handleKeyboardSend}
-                  returnKeyType="send"
-                />
+            <View style={[styles.inputPill, styles.inputPillVoice]}>
+              <LiquidGlass
+                style={StyleSheet.absoluteFill}
+                intensity={30}
+                tint="light"
+                overlay="rgba(255,255,255,0.1)"
+                overlayAndroid="rgba(40,20,22,0.45)"
+                shine
+              />
+              <TextInput
+                style={[styles.input, { color: K.bone }]}
+                value={inputText}
+                onChangeText={(t) => {
+                  // Enter inserts a newline on a multiline input; treat it as
+                  // "send" and never store it, so the field doesn't briefly grow
+                  // to two lines (placeholder jumping up) before clearing.
+                  if (t.includes("\n")) {
+                    handleKeyboardSend();
+                  } else {
+                    setInputText(t);
+                  }
+                }}
+                placeholder="Type anything…"
+                placeholderTextColor="rgba(243,239,227,0.55)"
+                multiline
+                maxLength={500}
+                blurOnSubmit={false}
+                returnKeyType="send"
+                autoFocus
+              />
+              {inputText.trim() ? (
                 <TouchableOpacity
-                  style={[styles.sendCircleInline, { backgroundColor: colors.sendCircleBg }]}
+                  style={styles.inputSideButton}
                   onPress={handleKeyboardSend}
-                  disabled={!inputText.trim()}
                   activeOpacity={0.85}
+                  accessibilityLabel="Send"
                 >
-                  <SendArrowIcon color={colors.sendArrowColor} />
+                  <LiquidGlass
+                    style={StyleSheet.absoluteFill}
+                    intensity={24}
+                    tint="light"
+                    overlay="rgba(0,0,0,0)"
+                    overlayAndroid="rgba(0,0,0,0)"
+                    fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+                    shine
+                  />
+                  <SendArrowIcon color="#361416" />
                 </TouchableOpacity>
-              </View>
+              ) : (
+                // Empty input → show the same voice disc as the voice bubble;
+                // tapping it switches to voice and starts listening.
+                <TouchableOpacity
+                  style={styles.inputSideButton}
+                  onPress={() => {
+                    setInputMode("voice");
+                    startListening();
+                  }}
+                  activeOpacity={0.85}
+                  accessibilityLabel="Speak to Ester"
+                >
+                  <LiquidGlass
+                    style={StyleSheet.absoluteFill}
+                    intensity={24}
+                    tint="light"
+                    overlay="rgba(0,0,0,0)"
+                    overlayAndroid="rgba(0,0,0,0)"
+                    fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+                    shine
+                  />
+                  <VoiceWaveIcon color="#FAFDFE" />
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -1222,6 +1417,57 @@ function TypingIndicator({ bg, dotColor }: TypingIndicatorProps) {
   );
 }
 
+// RES-140 — loading dots shown in the voice-call view while Ester's reply is
+// being fetched (after the user sends, before the response starts). The three
+// dots bounce up and down one at a time. Lives bottom-left, opposite the Read
+// button.
+function CallLoadingDots() {
+  const dots = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+  ];
+  useEffect(() => {
+    const STEP = 170;
+    const loops = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * STEP),
+          Animated.timing(dot, { toValue: 1, duration: 260, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 260, useNativeDriver: true }),
+          Animated.delay((dots.length - 1 - i) * STEP),
+        ])
+      )
+    );
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View style={styles.callDots}>
+      {dots.map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            styles.callDot,
+            {
+              transform: [
+                {
+                  translateY: dot.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -9],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 interface InlineMealCardProps {
   data: Record<string, unknown>;
   palette: PaletteColors;
@@ -1342,41 +1588,23 @@ function PlusIcon({ color }: { color: string }) {
   );
 }
 
-// Speaker glyph. When `muted`, the crossed-out "X" is drawn over it (TTS off);
-// otherwise just the speaker (TTS on). Two sub-paths split from the original
-// single-path Figma export.
-const SPEAKER_PATH =
-  "M4.33008 9.59621H1.05437C0.753764 9.59621 0.502833 9.49559 0.301583 9.29434C0.100528 9.09328 0 8.84235 0 8.54155V4.81755C0 4.51674 0.100528 4.26581 0.301583 4.06475C0.502833 3.8635 0.753764 3.76288 1.05437 3.76288H4.33008L7.82104 0.271922C8.10065 -0.0076896 8.42256 -0.0716623 8.78675 0.0800044C9.15094 0.231865 9.33304 0.506713 9.33304 0.904547V12.4545C9.33304 12.8524 9.15094 13.1272 8.78675 13.2791C8.42256 13.4308 8.10065 13.3668 7.82104 13.0872L4.33008 9.59621ZM7.58304 3.00455L5.07471 5.51288H1.74971V7.84621H5.07471L7.58304 10.3545V3.00455Z";
-const MUTE_X_PATH =
-  "M16.378 7.90892L13.9595 10.3277C13.7979 10.4891 13.5948 10.5717 13.3502 10.5756C13.1058 10.5793 12.899 10.4967 12.7298 10.3277C12.5608 10.1585 12.4763 9.9536 12.4763 9.71288C12.4763 9.47216 12.5608 9.26721 12.7298 9.09805L15.1486 6.67955L12.7298 4.26105C12.5684 4.09946 12.4859 3.89637 12.4822 3.65175C12.4783 3.40734 12.5608 3.20055 12.7298 3.03138C12.899 2.86241 13.1039 2.77792 13.3446 2.77792C13.5855 2.77792 13.7905 2.86241 13.9595 3.03138L16.378 5.45017L18.7965 3.03138C18.958 2.86999 19.1611 2.78735 19.4057 2.78346C19.6504 2.77977 19.8572 2.86241 20.0261 3.03138C20.1951 3.20055 20.2796 3.40549 20.2796 3.64621C20.2796 3.88694 20.1951 4.09188 20.0261 4.26105L17.6073 6.67955L20.0261 9.09805C20.1877 9.25963 20.2703 9.46273 20.274 9.70734C20.2777 9.95175 20.1951 10.1585 20.0261 10.3277C19.8572 10.4967 19.6522 10.5812 19.4113 10.5812C19.1706 10.5812 18.9656 10.4967 18.7965 10.3277L16.378 7.90892Z";
-
-// Two concentric arcs opening rightward from the speaker — the familiar
-// "sound on" wave glyph, shown only when TTS is enabled.
-const WAVE_INNER_PATH = "M11.4 4.9A2.9 2.9 0 0 1 11.4 9.1";
-const WAVE_OUTER_PATH = "M13.4 3.1A5.1 5.1 0 0 1 13.4 10.9";
+// Speaker / volume glyph (Figma export). Shown on the "Speaker" call action.
+// When `muted`, a diagonal slash is drawn over it to read as TTS-off.
+const SPEAKER_VOLUME_PATH =
+  "M12.8333 20.4167V18.025C14.5833 17.5194 15.9931 16.5472 17.0625 15.1083C18.1319 13.6694 18.6667 12.0361 18.6667 10.2083C18.6667 8.38056 18.1319 6.74722 17.0625 5.30833C15.9931 3.86944 14.5833 2.89722 12.8333 2.39167V0C15.2444 0.544444 17.2083 1.76458 18.725 3.66042C20.2417 5.55625 21 7.73889 21 10.2083C21 12.6778 20.2417 14.8604 18.725 16.7562C17.2083 18.6521 15.2444 19.8722 12.8333 20.4167ZM0 13.7375V6.7375H4.66667L10.5 0.904167V19.5708L4.66667 13.7375H0ZM12.8333 14.9042V5.5125C13.7472 5.94028 14.4618 6.58194 14.9771 7.4375C15.4924 8.29306 15.75 9.22639 15.75 10.2375C15.75 11.2292 15.4924 12.1479 14.9771 12.9937C14.4618 13.8396 13.7472 14.4764 12.8333 14.9042ZM8.16667 6.5625L5.65833 9.07083H2.33333V11.4042H5.65833L8.16667 13.9125V6.5625Z";
 
 function MuteIcon({ color, muted = true }: { color: string; muted?: boolean }) {
   return (
-    <Svg width={21} height={14} viewBox="0 0 21 14" fill="none">
-      <Path d={SPEAKER_PATH} fill={color} />
+    <Svg width={21} height={21} viewBox="0 0 21 21" fill="none">
+      <Path d={SPEAKER_VOLUME_PATH} fill={color} />
       {muted ? (
-        <Path d={MUTE_X_PATH} fill={color} />
-      ) : (
-        <>
-          <Path
-            d={WAVE_INNER_PATH}
-            stroke={color}
-            strokeWidth={1.4}
-            strokeLinecap="round"
-          />
-          <Path
-            d={WAVE_OUTER_PATH}
-            stroke={color}
-            strokeWidth={1.4}
-            strokeLinecap="round"
-          />
-        </>
-      )}
+        <Path
+          d="M1.5 1.5 L19.5 19.5"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+        />
+      ) : null}
     </Svg>
   );
 }
@@ -1414,12 +1642,237 @@ function SendArrowIcon({ color }: { color: string }) {
   );
 }
 
+// RES-140 — circular call-action button (End / Speaker / Read) with a caption.
+function VoiceActionButton({
+  label,
+  children,
+  onPress,
+  variant,
+  active,
+  busy,
+  shine,
+  fills,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onPress: () => void;
+  variant?: "end";
+  active?: boolean;
+  busy?: boolean;
+  shine?: boolean;
+  fills?: string[];
+}) {
+  const isEnd = variant === "end";
+  return (
+    <View style={styles.actionItem}>
+      <TouchableOpacity
+        style={[styles.actionCircle, isEnd && styles.actionCircleEnd]}
+        onPress={onPress}
+        disabled={busy}
+        activeOpacity={0.85}
+        accessibilityLabel={label}
+      >
+        {isEnd ? (
+          // End keeps its solid red fill — render the glass with no blur and a
+          // transparent overlay so only the shine rim draws over the red.
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            intensity={0}
+            tint="dark"
+            overlay="rgba(0,0,0,0)"
+            overlayAndroid="rgba(0,0,0,0)"
+            shine={shine}
+          />
+        ) : (
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            intensity={24}
+            tint={fills ? "light" : "dark"}
+            overlay={
+              fills
+                ? "rgba(0,0,0,0)"
+                : active
+                ? "rgba(243,239,227,0.22)"
+                : "rgba(28,12,14,0.3)"
+            }
+            overlayAndroid={
+              fills
+                ? "rgba(0,0,0,0)"
+                : active
+                ? "rgba(243,239,227,0.3)"
+                : "rgba(28,12,14,0.5)"
+            }
+            fills={fills}
+            shine={shine}
+          />
+        )}
+        {busy ? <ActivityIndicator size="small" color={K.bone} /> : children}
+      </TouchableOpacity>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// "call_end" handset — used for the End action.
+function PhoneEndIcon({ color }: { color: string }) {
+  return (
+    <Svg width={27} height={11} viewBox="0 0 27 11" fill="none">
+      <Path
+        d="M3.03333 9.8L0.35 7.175C0.116667 6.94167 0 6.66944 0 6.35833C0 6.04722 0.116667 5.775 0.35 5.54167C2.06111 3.69444 4.03472 2.30903 6.27083 1.38542C8.50694 0.461806 10.7722 0 13.0667 0C15.3611 0 17.6215 0.461806 19.8479 1.38542C22.0743 2.30903 24.0528 3.69444 25.7833 5.54167C26.0167 5.775 26.1333 6.04722 26.1333 6.35833C26.1333 6.66944 26.0167 6.94167 25.7833 7.175L23.1 9.8C22.8861 10.0139 22.6382 10.1306 22.3563 10.15C22.0743 10.1694 21.8167 10.0917 21.5833 9.91667L18.2 7.35C18.0444 7.23333 17.9278 7.09722 17.85 6.94167C17.7722 6.78611 17.7333 6.61111 17.7333 6.41667V3.09167C16.9944 2.85833 16.2361 2.67361 15.4583 2.5375C14.6806 2.40139 13.8833 2.33333 13.0667 2.33333C12.25 2.33333 11.4528 2.40139 10.675 2.5375C9.89722 2.67361 9.13889 2.85833 8.4 3.09167V6.41667C8.4 6.61111 8.36111 6.78611 8.28333 6.94167C8.20556 7.09722 8.08889 7.23333 7.93333 7.35L4.55 9.91667C4.31667 10.0917 4.05903 10.1694 3.77708 10.15C3.49514 10.1306 3.24722 10.0139 3.03333 9.8ZM6.06667 4.025C5.50278 4.31667 4.95833 4.65208 4.43333 5.03125C3.90833 5.41042 3.36389 5.83333 2.8 6.3L3.96667 7.46667L6.06667 5.83333V4.025ZM20.0667 4.08333V5.83333L22.1667 7.46667L23.3333 6.35833C22.7694 5.85278 22.225 5.41528 21.7 5.04583C21.175 4.67639 20.6306 4.35556 20.0667 4.08333Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+// Graphic-eq / voice waveform glyph for the input bar's voice button.
+function VoiceWaveIcon({ color = "#FAFDFE" }: { color?: string }) {
+  return (
+    <Svg width={20} height={23} viewBox="0 0 20 23" fill="none">
+      <Path
+        d="M4.52083 16.6924V5.47429C4.52083 5.22637 4.60474 5.01861 4.77254 4.851C4.94035 4.68319 5.14821 4.59929 5.39613 4.59929C5.64424 4.59929 5.852 4.68319 6.01942 4.851C6.18703 5.01861 6.27083 5.22637 6.27083 5.47429V16.6924C6.27083 16.9403 6.18693 17.1481 6.01912 17.3157C5.85132 17.4835 5.64346 17.5674 5.39554 17.5674C5.14743 17.5674 4.93967 17.4835 4.77225 17.3157C4.60464 17.1481 4.52083 16.9403 4.52083 16.6924ZM9.04167 21.2917V0.875C9.04167 0.627083 9.12557 0.41932 9.29338 0.251708C9.46118 0.0839029 9.66904 0 9.91696 0C10.1651 0 10.3728 0.0839029 10.5402 0.251708C10.7079 0.41932 10.7917 0.627083 10.7917 0.875V21.2917C10.7917 21.5396 10.7078 21.7473 10.54 21.915C10.3722 22.0828 10.1643 22.1667 9.91638 22.1667C9.66826 22.1667 9.4605 22.0828 9.29308 21.915C9.12547 21.7473 9.04167 21.5396 9.04167 21.2917ZM0 12.1377V10.029C0 9.78104 0.0839029 9.57318 0.251708 9.40537C0.419514 9.23776 0.627375 9.15396 0.875292 9.15396C1.1234 9.15396 1.33117 9.23776 1.49858 9.40537C1.66619 9.57318 1.75 9.78104 1.75 10.029V12.1377C1.75 12.3856 1.6661 12.5935 1.49829 12.7613C1.33049 12.9289 1.12263 13.0127 0.874708 13.0127C0.626597 13.0127 0.418833 12.9289 0.251417 12.7613C0.0838054 12.5935 0 12.3856 0 12.1377ZM13.5625 16.6924V5.47429C13.5625 5.22637 13.6464 5.01861 13.8142 4.851C13.982 4.68319 14.1899 4.59929 14.4378 4.59929C14.6859 4.59929 14.8937 4.68319 15.0611 4.851C15.2287 5.01861 15.3125 5.22637 15.3125 5.47429V16.6924C15.3125 16.9403 15.2286 17.1481 15.0608 17.3157C14.893 17.4835 14.6851 17.5674 14.4372 17.5674C14.1891 17.5674 13.9813 17.4835 13.8139 17.3157C13.6463 17.1481 13.5625 16.9403 13.5625 16.6924ZM18.0833 12.1377V10.029C18.0833 9.78104 18.1672 9.57318 18.335 9.40537C18.5028 9.23776 18.7107 9.15396 18.9586 9.15396C19.2067 9.15396 19.4145 9.23776 19.5819 9.40537C19.7495 9.57318 19.8333 9.78104 19.8333 10.029V12.1377C19.8333 12.3856 19.7494 12.5935 19.5816 12.7613C19.4138 12.9289 19.206 13.0127 18.958 13.0127C18.7099 13.0127 18.5022 12.9289 18.3347 12.7613C18.1671 12.5935 18.0833 12.3856 18.0833 12.1377Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+// Text-lines glyph for the "Read" action button.
+function ReadLinesIcon({ color = "#FF0099" }: { color?: string }) {
+  return (
+    <Svg width={19} height={17} viewBox="0 0 19 17" fill="none">
+      <Path
+        d="M0 16.3333V14H11.6667V16.3333H0ZM0 11.6667V9.33333H18.6667V11.6667H0ZM0 7V4.66667H18.6667V7H0ZM0 2.33333V0H18.6667V2.33333H0Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+// Read-along markdown styling for the call view (light text on the gradient).
+const voiceMdStyles = {
+  body: { color: K.bone, fontSize: 17, lineHeight: 25 },
+  paragraph: { marginTop: 0, marginBottom: 6, color: K.bone },
+  strong: { fontWeight: "700" as const, color: K.white },
+  em: { fontStyle: "italic" as const, color: K.bone },
+};
+
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
   },
   container: {
     flex: 1,
+  },
+  // ---- RES-140 voice screen ------------------------------------------------
+  voiceTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    zIndex: 10,
+  },
+  timerPill: {
+    backgroundColor: "#361416",
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  timerText: {
+    fontFamily: fonts.quadrant,
+    fontSize: 16,
+    color: "#FAFDFE",
+    textAlign: "center",
+    letterSpacing: -0.16,
+  },
+  voiceBody: {
+    flex: 1,
+    position: "relative",
+  },
+  voiceLogo: {
+    flex: 1,
+    width: "100%",
+    transform: [{ translateY: -54 }, { scale: 2.2 }],
+  },
+  actionsCol: {
+    position: "absolute",
+    right: 16,
+    bottom: 8,
+    alignItems: "center",
+    gap: 18,
+  },
+  actionItem: {
+    alignItems: "center",
+    gap: 6,
+  },
+  actionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionCircleEnd: {
+    // Figma: #FF1919 @88% with "Plus darker" blend over the maroon gradient.
+    // RN can't do plus-darker, so this approximates the composited deep red.
+    backgroundColor: "#D11518",
+  },
+  actionLabel: {
+    fontFamily: fonts.catalogue,
+    fontSize: 12,
+    color: K.bone,
+  },
+  currentMsgWrap: {
+    position: "absolute",
+    left: spacing.lg,
+    right: 92,
+    bottom: 16,
+  },
+  // Loading dots — bottom-left, vertically aligned with the Read button.
+  callDots: {
+    position: "absolute",
+    left: spacing.lg,
+    bottom: 52,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    height: 16,
+    gap: 7,
+  },
+  callDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: K.bone,
+  },
+  transcriptSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "70%",
+    backgroundColor: "#361416",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 10,
+    zIndex: 20,
+    // Figma: box-shadow 0 -4px 80px 16px rgba(0,0,0,0.48)
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.48,
+    shadowRadius: 40,
+    elevation: 24,
+  },
+  sheetHandleHit: {
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  sheetGrip: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(243, 239, 227, 0.4)",
   },
   headerOverlay: {
     position: "absolute",
@@ -1560,6 +2013,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
+    // Sit above the transcript sheet (zIndex 20) so the input bubble stays
+    // visible at the bottom of the modal when it's open.
+    zIndex: 30,
   },
   voiceCtaRow: {
     flexDirection: "row",
@@ -1579,15 +2035,22 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 999,
+    overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
   },
+  tapToSpeakHit: {
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 48,
+  },
   tapToSpeakText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
     fontWeight: "400",
-    letterSpacing: -0.2,
-    textAlign: "center",
+    letterSpacing: -0.16,
+    textAlign: "left",
+    color: "rgba(243, 239, 227, 0.65)",
   },
   listeningPill: {
     borderRadius: 28,
@@ -1636,16 +2099,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  // Voice mode renders the pill directly in the column bottomBar, so cancel the
+  // flex:1 (which is meant for the keyboard row) and just stretch full-width.
+  inputPillVoice: {
+    flex: 0,
+    alignSelf: "stretch",
+  },
   inputPill: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 999,
+    overflow: "hidden",
     paddingLeft: 24,
-    paddingRight: 8,
-    paddingVertical: 8,
-    minHeight: 56,
-    maxHeight: 140,
+    paddingRight: 4,
+    paddingVertical: 4,
+    minHeight: 64,
+    maxHeight: 160,
     gap: 8,
   },
   input: {
@@ -1658,6 +2128,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  inputSideButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
   },
