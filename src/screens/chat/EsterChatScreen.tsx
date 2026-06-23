@@ -164,6 +164,13 @@ export function EsterChatScreen() {
   const revealedCountRef = useRef(0);
   const revealStateRef = useRef<{ id: string; text: string } | null>(null);
   const takeoverInFlightRef = useRef(false);
+  // Monotonic token for TTS presentations. Every flow that drives the shared
+  // audio player (greeting auto-read, reply playback, mid-stream voice takeover)
+  // claims a fresh value up front and, after each await, bails if a newer
+  // presentation — or stopSpeaking — has superseded it. Without this, a slow TTS
+  // synth (prod network latency) resolving late clobbers the player/reveal of
+  // the message that replaced it, leaving the audio silent and the reveal frozen.
+  const ttsSeqRef = useRef(0);
   // True while the mid-stream takeover is synthesizing — drives the loading
   // affordance so the brief freeze doesn't read as a hang.
   const [isPreparingVoice, setIsPreparingVoice] = useState(false);
@@ -520,6 +527,9 @@ export function EsterChatScreen() {
   // Stop playback and reveal the full text immediately (clearing the gated id
   // makes the row render its complete message). Used on mute / leave / mic.
   const stopSpeaking = () => {
+    // Invalidate any in-flight TTS synth so a request that resolves after this
+    // can't start playing back over the silence.
+    ttsSeqRef.current++;
     clearRevealTick();
     revealStateRef.current = null;
     try {
@@ -575,39 +585,54 @@ export function EsterChatScreen() {
   // first and sync the reveal to playback; with voice off, stream on a timer.
   // Either way it's best-effort — on failure the full text is shown.
   const presentEsterMessage = async (message: Message) => {
+    const seq = ++ttsSeqRef.current;
     // Mark as actively reading from the start (covers the TTS-synth gap) so the
     // call view shows the teleprompter, not the full sentence, until it's done.
     if (message.text.trim()) setActiveReadId(message.id);
     if (ttsEnabledRef.current && message.text.trim()) {
       try {
         const { audioBase64 } = await synthesizeSpeech(message.text);
-        if (ttsEnabledRef.current) {
+        // Only drive playback if we're still the latest presentation and voice
+        // is still on — otherwise a newer message (or mute) has taken over and
+        // touching the player here would clobber it.
+        if (seq === ttsSeqRef.current && ttsEnabledRef.current) {
           const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
           await FileSystem.writeAsStringAsync(uri, audioBase64, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          if (!audioPlayerRef.current) {
-            audioPlayerRef.current = createAudioPlayer({ uri });
-          } else {
-            audioPlayerRef.current.replace({ uri });
+          if (seq === ttsSeqRef.current) {
+            if (!audioPlayerRef.current) {
+              audioPlayerRef.current = createAudioPlayer({ uri });
+            } else {
+              // Pause before swapping the source. Replacing an actively-playing
+              // player mid-playback stalls it on a physical device (currentTime
+              // stuck at 0) — which froze the reveal when a reply landed while
+              // the greeting was still reading. (The simulator masks this.)
+              try {
+                audioPlayerRef.current.pause();
+              } catch {}
+              audioPlayerRef.current.replace({ uri });
+            }
+            setMessages((prev) => [...prev, message]);
+            setAwaitingReply(false);
+            revealStateRef.current = { id: message.id, text: message.text };
+            setSpeaking(message.id);
+            setReveal(0);
+            audioPlayerRef.current.play();
+            startRevealTick(message.id, message.text);
+            return;
           }
-          setMessages((prev) => [...prev, message]);
-          setAwaitingReply(false);
-          revealStateRef.current = { id: message.id, text: message.text };
-          setSpeaking(message.id);
-          setReveal(0);
-          audioPlayerRef.current.play();
-          startRevealTick(message.id, message.text);
-          return;
         }
       } catch {
         // fall through to text-only streaming
       }
     }
-    // Voice off (or synthesis failed): stream the text on a timer, no audio.
+    // Voice off, synthesis failed, or superseded mid-synth: always land the
+    // message; only start the timed reveal if we're still the latest (a newer
+    // presentation owns the reveal otherwise).
     setMessages((prev) => [...prev, message]);
     setAwaitingReply(false);
-    if (message.text.trim()) {
+    if (message.text.trim() && seq === ttsSeqRef.current) {
       revealStateRef.current = { id: message.id, text: message.text };
       setSpeaking(message.id);
       setReveal(0);
@@ -631,6 +656,7 @@ export function EsterChatScreen() {
     const active = revealStateRef.current;
     if (!active || takeoverInFlightRef.current) return;
     const { id, text } = active;
+    const seq = ++ttsSeqRef.current;
     const offset = snapToWordStart(text, revealedCountRef.current);
     const remainder = text.slice(offset).trim();
     clearRevealTick(); // freeze the timed reveal at the current word
@@ -645,8 +671,14 @@ export function EsterChatScreen() {
     setIsPreparingVoice(true);
     try {
       const { audioBase64 } = await synthesizeSpeech(remainder);
-      // Bail if the user muted again or moved on during synthesis.
-      if (!ttsEnabledRef.current || speakingMessageIdRef.current !== id) return;
+      // Bail if the user muted again, moved on, or a newer presentation
+      // superseded us during synthesis.
+      if (
+        seq !== ttsSeqRef.current ||
+        !ttsEnabledRef.current ||
+        speakingMessageIdRef.current !== id
+      )
+        return;
       const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
       await FileSystem.writeAsStringAsync(uri, audioBase64, {
         encoding: FileSystem.EncodingType.Base64,
@@ -706,6 +738,10 @@ export function EsterChatScreen() {
 
   const sendText = async (text: string) => {
     if (!text.trim() || isTyping) return;
+
+    // A new user turn cancels any in-flight / still-playing Ester audio (e.g. the
+    // greeting auto-read) so it can't clobber this reply's playback and reveal.
+    stopSpeaking();
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -827,6 +863,7 @@ export function EsterChatScreen() {
   const replayCurrentMessage = async () => {
     const msg = currentEster;
     if (!msg?.text.trim()) return;
+    const seq = ++ttsSeqRef.current;
     setActiveReadId(msg.id);
     if (!ttsEnabledRef.current) {
       setTtsEnabled(true);
@@ -837,13 +874,23 @@ export function EsterChatScreen() {
     }
     try {
       const { audioBase64 } = await synthesizeSpeech(msg.text);
+      // Bail if a newer presentation (e.g. the user sent a question) superseded
+      // this read during synth — otherwise this late read clobbers the reply's
+      // playback and freezes its reveal.
+      if (seq !== ttsSeqRef.current) return;
       const uri = `${FileSystem.cacheDirectory}ester-tts-${Date.now()}.mp3`;
       await FileSystem.writeAsStringAsync(uri, audioBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      if (seq !== ttsSeqRef.current) return;
       if (!audioPlayerRef.current) {
         audioPlayerRef.current = createAudioPlayer({ uri });
       } else {
+        // Pause before swapping the source (see presentEsterMessage) — replacing
+        // a playing player mid-playback stalls it on a physical device.
+        try {
+          audioPlayerRef.current.pause();
+        } catch {}
         audioPlayerRef.current.replace({ uri });
       }
       revealStateRef.current = { id: msg.id, text: msg.text };
