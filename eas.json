@@ -42,6 +42,10 @@
         "appleId": "coledriscoll@gmail.com",
         "appleTeamId": "CCL5FAK3ZA",
         "ascAppId": "6760977260"
+      },
+      "android": {
+        "serviceAccountKeyPath": "/Users/coledriscoll/reset-play-service-account.json",
+        "track": "internal"
       }
     }
   }
