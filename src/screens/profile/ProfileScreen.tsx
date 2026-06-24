@@ -442,9 +442,19 @@ export function ProfileScreen() {
     logEvent("profile_statDetail", { metric: d.metric });
     setDetail(d);
   };
-  const startChatFromDetail = () => {
+  const startChatFromDetail = (topic: {
+    kind:
+      | "stress"
+      | "energy"
+      | "recovery"
+      | "confidence"
+      | "strength"
+      | "weakness"
+      | "goal";
+    label?: string | null;
+  }) => {
     setDetail(null);
-    navigation.navigate("EsterChat", { context: "general" });
+    navigation.navigate("EsterChat", { context: "general", topic });
   };
   const goScanHistory = () => {
     logEvent("profile_scanHistoryCTA");

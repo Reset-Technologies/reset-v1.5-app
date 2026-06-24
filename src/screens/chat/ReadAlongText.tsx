@@ -14,6 +14,29 @@ import { fonts } from "../../constants/typography";
 
 type Chunk = { text: string; end: number };
 
+// Ester's messages use **double-asterisk** emphasis. Strip the markers for the
+// teleprompter window (per-phrase bold isn't meaningful there).
+function stripMarks(s: string): string {
+  return s.replace(/\*/g, "");
+}
+
+// Render the full idle message with **bold** spans shown as bold (matches the
+// transcript), so the raw asterisks never appear on screen.
+function renderBold(text: string): React.ReactNode[] {
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter((p) => p.length > 0)
+    .map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <Text key={i} style={styles.fullBold}>
+          {part.slice(2, -2)}
+        </Text>
+      ) : (
+        <Text key={i}>{part.replace(/\*/g, "")}</Text>
+      ),
+    );
+}
+
 // Group the message into short phrases (~2 words, breaking on punctuation) and
 // record each phrase's end character offset so we can map `revealedCount` —
 // which advances char-by-char with the audio — onto the active phrase.
@@ -51,7 +74,7 @@ export function ReadAlongText({
   const chunks = useMemo(() => buildChunks(text), [text]);
 
   if (!active || chunks.length === 0) {
-    return <Text style={styles.full}>{text}</Text>;
+    return <Text style={styles.full}>{renderBold(text)}</Text>;
   }
 
   let activeIdx = chunks.findIndex((c) => revealedCount < c.end);
@@ -65,13 +88,13 @@ export function ReadAlongText({
     <View style={styles.wrap}>
       {prev ? (
         <Text style={styles.prev} numberOfLines={1}>
-          {prev.text}
+          {stripMarks(prev.text)}
         </Text>
       ) : null}
-      {curr ? <Text style={styles.curr}>{curr.text}</Text> : null}
+      {curr ? <Text style={styles.curr}>{stripMarks(curr.text)}</Text> : null}
       {next ? (
         <Text style={styles.next} numberOfLines={2}>
-          {next.text}
+          {stripMarks(next.text)}
         </Text>
       ) : null}
     </View>
@@ -106,5 +129,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 25,
     color: K.bone,
+  },
+  fullBold: {
+    fontFamily: fonts.catalogueBold,
+    color: "#FAFDFE",
   },
 });

@@ -13,6 +13,7 @@ import {
   Linking,
   Easing,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -58,12 +59,49 @@ const TYPE_LOGO = {
   Explorer: require("../../../assets/images/type-logos/Explorer.png"),
 };
 
+type ChatTopicKind =
+  | "stress"
+  | "energy"
+  | "recovery"
+  | "confidence"
+  | "strength"
+  | "weakness"
+  | "goal";
+
+type ChatTopic = { kind: ChatTopicKind; label?: string | null };
+
 type ChatRouteParams = {
   EsterChat: {
     context?: "general" | "meal" | "score";
     meal?: Meal;
+    topic?: ChatTopic;
   };
 };
+
+// RES-145: a focused opening line when the chat is launched from a Profile
+// "Stat Detail" sheet, so Ester starts talking about that exact metric (mirrors
+// the per-meal greeting). The user's reply then gets a personalized LLM answer.
+function topicGreetingText(t: ChatTopic): string {
+  const label = t.label?.trim();
+  switch (t.kind) {
+    case "strength":
+      return `Let's talk about your biggest strength${label ? ` — ${label}` : ""}. Want to know how it tends to show up day to day, or how to lean into it more?`;
+    case "weakness":
+      return `Let's talk about your weak spot${label ? ` — ${label}` : ""}. Want to know when it usually shows up, or what helps you stay ahead of it?`;
+    case "goal":
+      return "Let's talk about your goal. Want to know why I set this one for you, or the steps we'll take to get there?";
+    case "stress":
+      return "Let's talk about your stress signal. Want to know what's driving it right now, or how to bring it down?";
+    case "energy":
+      return "Let's talk about your energy. Want to know what's shaping it, or how your meals can keep it steady?";
+    case "recovery":
+      return "Let's talk about your recovery. Want to know what it reflects, or how to strengthen it?";
+    case "confidence":
+      return "Let's talk about how well I've got your read. Want to know what grows my confidence in it, or how close we are to the full picture?";
+    default:
+      return "Let's talk about this. What would you like to know?";
+  }
+}
 
 type InputMode = "voice" | "keyboard";
 
@@ -108,6 +146,7 @@ export function EsterChatScreen() {
 
   const context = route.params?.context || "general";
   const meal = route.params?.meal;
+  const topic = route.params?.topic;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
@@ -361,6 +400,14 @@ export function EsterChatScreen() {
                   timestamp: new Date(),
                 });
               }
+              if (topic) {
+                loaded.push({
+                  id: `topic-greeting-${Date.now()}`,
+                  text: topicGreetingText(topic),
+                  sender: "ester",
+                  timestamp: new Date(),
+                });
+              }
               setMessages(loaded);
               setIsLoadingHistory(false);
               return;
@@ -380,6 +427,14 @@ export function EsterChatScreen() {
           timestamp: new Date(),
         });
       }
+      if (topic) {
+        greeting.push({
+          id: `topic-greeting-${Date.now()}`,
+          text: topicGreetingText(topic),
+          sender: "ester",
+          timestamp: new Date(),
+        });
+      }
       // Pre-mark the opening line as actively reading BEFORE the messages land,
       // so the call view never renders the full sentence (even for a frame)
       // before the teleprompter — regardless of whether these state updates get
@@ -392,7 +447,7 @@ export function EsterChatScreen() {
     }
 
     loadChatHistory();
-  }, [meal]);
+  }, [meal, topic]);
 
   const hasUserMessage = messages.some((m) => m.sender === "user");
 
@@ -985,17 +1040,28 @@ export function EsterChatScreen() {
           </View>
           )}
           {currentEster && !transcriptOpen && !awaitingReply ? (
-            <TouchableOpacity
-              style={styles.currentMsgWrap}
-              activeOpacity={0.9}
-              onPress={() => setTranscriptOpen(true)}
-            >
-              <ReadAlongText
-                text={currentEster.text}
-                revealedCount={revealedCount}
-                active={activeReadId === currentEster.id}
-              />
-            </TouchableOpacity>
+            <View style={styles.currentMsgWrap}>
+              {/* Bottom-anchored + height-capped: a long idle (full-text)
+                  message scrolls inside this box instead of growing past the
+                  top of the screen. The touchable lives inside the ScrollView
+                  so a tap still opens the transcript while a drag scrolls. */}
+              <ScrollView
+                style={styles.currentMsgScroll}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setTranscriptOpen(true)}
+                >
+                  <ReadAlongText
+                    text={currentEster.text}
+                    revealedCount={revealedCount}
+                    active={activeReadId === currentEster.id}
+                  />
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
           ) : null}
           {awaitingReply && !transcriptOpen ? <CallLoadingDots /> : null}
         </View>
@@ -1927,6 +1993,13 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: 92,
     bottom: 16,
+  },
+  // Cap the read-along box to the lower ~40% of the screen so a long idle
+  // (full-text) message scrolls inside it rather than overflowing up past the
+  // logo / top bar. maxHeight on the ScrollView itself sizes it to content up
+  // to the cap, then scrolls.
+  currentMsgScroll: {
+    maxHeight: Dimensions.get("window").height * 0.4,
   },
   // Loading dots — bottom-left, vertically aligned with the Read button.
   callDots: {

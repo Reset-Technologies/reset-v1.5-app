@@ -32,6 +32,19 @@ export type MainStackParamList = {
   EsterChat: {
     context?: "general" | "meal" | "score";
     meal?: Meal;
+    // RES-145: opens the chat with a context-specific Ester greeting about a
+    // profile metric (e.g. the user's strength/weakness/goal/signal).
+    topic?: {
+      kind:
+        | "stress"
+        | "energy"
+        | "recovery"
+        | "confidence"
+        | "strength"
+        | "weakness"
+        | "goal";
+      label?: string | null;
+    };
   };
   RecipeDetail: {
     meal: Meal;

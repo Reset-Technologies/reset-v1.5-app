@@ -47,7 +47,7 @@ interface Props {
   accent: string;
   evening: boolean;
   onClose: () => void;
-  onStartChat: () => void;
+  onStartChat: (topic: { kind: ProfileMetric; label?: string | null }) => void;
 }
 
 // Render an LLM blurb, turning **double-asterisk** spans into bold runs (the
@@ -311,16 +311,9 @@ export function StatDetailSheet({
             { backgroundColor: sheetBg, paddingBottom: insets.bottom + 24 },
           ]}
         >
-          {/* Handle + close */}
+          {/* Handle */}
           <View style={styles.handleRow}>
             <View style={[styles.handle, { backgroundColor: textStrong }]} />
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={onClose}
-              hitSlop={10}
-            >
-              <CloseIcon color={textStrong} />
-            </TouchableOpacity>
           </View>
 
           <ScrollView
@@ -379,7 +372,7 @@ export function StatDetailSheet({
 
             {/* Ester insight card */}
             <View style={styles.insightBlock}>
-              <View style={styles.eyebrowRow}>
+              <View style={[styles.eyebrowRow, styles.insightEyebrow]}>
                 <View
                   style={[styles.eyebrowDot, { backgroundColor: accent }]}
                 />
@@ -420,13 +413,28 @@ export function StatDetailSheet({
               </View>
               <TouchableOpacity
                 style={[styles.chatBtn, { backgroundColor: accent }]}
-                onPress={onStartChat}
+                onPress={() =>
+                  onStartChat({
+                    kind: data.metric,
+                    label: data.value ?? data.title,
+                  })
+                }
                 activeOpacity={0.85}
               >
                 <Text style={styles.chatBtnText}>Start a chat</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
+
+          {/* Close — direct child of the sheet (a large container) so the full
+              touch target registers; rendered last so it sits above the scroll. */}
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={onClose}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+          >
+            <CloseIcon color={textStrong} />
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -465,9 +473,10 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: "absolute",
-    right: -8,
-    top: -6,
-    padding: 8,
+    top: 8,
+    right: 12,
+    padding: 12,
+    zIndex: 10,
   },
   content: {
     paddingTop: 16,
@@ -477,7 +486,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 8,
   },
   eyebrowDot: { width: 7, height: 7, borderRadius: 4 },
   eyebrowText: {
@@ -526,6 +534,9 @@ const styles = StyleSheet.create({
     color: "#9C8E8E",
   },
   insightBlock: { width: "100%", gap: 12, alignItems: "flex-end" },
+  // Counter the block's flex-end so the eyebrow stays at the container start
+  // (only the "Start a chat" button should hug the right).
+  insightEyebrow: { alignSelf: "flex-start" },
   insightCard: {
     width: "100%",
     flexDirection: "row",
