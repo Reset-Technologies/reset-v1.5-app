@@ -14,6 +14,7 @@ import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { K, toMetabolicType, MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
+import { useAppPalette } from "../../hooks/useAppPalette";
 import {
   getScoreHistory,
   ScoreHistory,
@@ -38,13 +39,10 @@ type Tab = "scans" | "surveys";
 
 function BackIcon({ color }: { color: string }) {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+    <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
       <Path
-        d="M15 5l-7 7 7 7"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M2.496 7.9356L7.66525 13.1049C7.81392 13.2535 7.88733 13.4275 7.8855 13.6269C7.8835 13.8262 7.805 14.0034 7.65 14.1586C7.49483 14.3034 7.31917 14.3784 7.123 14.3836C6.92683 14.3888 6.75117 14.3138 6.596 14.1586L0.25575 7.81835C0.162083 7.72468 0.0960833 7.62593 0.0577499 7.5221C0.0192499 7.41827 0 7.3061 0 7.1856C0 7.0651 0.0192499 6.95293 0.0577499 6.8491C0.0960833 6.74527 0.162083 6.64652 0.25575 6.55285L6.596 0.212602C6.7345 0.0741016 6.906 0.0032683 7.1105 0.000101633C7.315 -0.00306503 7.49483 0.0677683 7.65 0.212602C7.805 0.367768 7.8825 0.545935 7.8825 0.747102C7.8825 0.948435 7.805 1.12668 7.65 1.28185L2.496 6.4356H13.873C14.0858 6.4356 14.264 6.50743 14.4075 6.6511C14.5512 6.7946 14.623 6.97277 14.623 7.1856C14.623 7.39843 14.5512 7.5766 14.4075 7.7201C14.264 7.86377 14.0858 7.9356 13.873 7.9356H2.496Z"
+        fill={color}
       />
     </Svg>
   );
@@ -74,7 +72,17 @@ export function ScanHistoryScreen() {
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const insets = useSafeAreaInsets();
   const { state } = useApp();
+  const { evening } = useAppPalette();
   const [tab, setTab] = useState<Tab>("scans");
+
+  // Day/evening theming — mirrors the StatDetailSheet tooltip tokens so the
+  // Score History body matches the rest of RES-145. The gradient header stays
+  // dark (per-type) in both modes, so only the body surfaces re-theme.
+  const screenBg = evening ? "#513436" : K.white;
+  const textStrong = evening ? K.bone : K.brown;
+  const textSubtle = evening ? "#B8A7A8" : "#7e6869";
+  const cardBorder = evening ? "#7A565A" : "#C3B9BA";
+  const rowDivider = evening ? "#7A565A" : "#D8CFC4";
   const [history, setHistory] = useState<ScoreHistory | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -107,7 +115,7 @@ export function ScanHistoryScreen() {
   const noun = tab === "scans" ? "scan" : "survey";
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: screenBg }]}>
       {/* Gradient header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <HeaderGradient type={metabolicType} />
@@ -155,8 +163,10 @@ export function ScanHistoryScreen() {
         </View>
       ) : groups.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyTitle}>No {noun}s yet</Text>
-          <Text style={styles.emptyBody}>
+          <Text style={[styles.emptyTitle, { color: textStrong }]}>
+            No {noun}s yet
+          </Text>
+          <Text style={[styles.emptyBody, { color: textSubtle }]}>
             {tab === "scans"
               ? "Your face scans will show up here once you start scanning."
               : "Your daily check-ins will show up here once you start logging."}
@@ -173,20 +183,30 @@ export function ScanHistoryScreen() {
           {groups.map((group) => (
             <View key={group.monthKey} style={styles.monthBlock}>
               <View style={styles.monthHead}>
-                <Text style={styles.monthName}>{group.month}</Text>
-                <Text style={styles.monthCount}>
+                <Text style={[styles.monthName, { color: textStrong }]}>
+                  {group.month}
+                </Text>
+                <Text style={[styles.monthCount, { color: textSubtle }]}>
                   {group.count} {noun}
                   {group.count === 1 ? "" : "s"}
                 </Text>
               </View>
-              <View style={styles.card}>
+              <View style={[styles.card, { borderColor: cardBorder }]}>
                 {group.entries.map((entry, i) => (
                   <View key={entry.date}>
-                    {i > 0 ? <View style={styles.divider} /> : null}
+                    {i > 0 ? (
+                      <View
+                        style={[styles.divider, { backgroundColor: rowDivider }]}
+                      />
+                    ) : null}
                     <View style={styles.row}>
-                      <Text style={styles.rowDate}>{entry.label}</Text>
+                      <Text style={[styles.rowDate, { color: textStrong }]}>
+                        {entry.label}
+                      </Text>
                       <View style={styles.scorePill}>
-                        <Text style={styles.scoreText}>{entry.score}</Text>
+                        <Text style={[styles.scoreText, { color: textStrong }]}>
+                          {entry.score}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -201,12 +221,10 @@ export function ScanHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: K.white },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 24,
-    paddingBottom: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingBottom: 32,
     overflow: "hidden",
   },
   headerBar: {
@@ -253,12 +271,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontFamily: fonts.catalogue,
     fontSize: 20,
-    color: K.brown,
   },
   emptyBody: {
     fontFamily: fonts.dmSans,
     fontSize: 14,
-    color: "#7e6869",
     textAlign: "center",
     lineHeight: 20,
   },
@@ -268,21 +284,22 @@ const styles = StyleSheet.create({
   monthName: {
     fontFamily: fonts.catalogue,
     fontSize: 18,
-    color: K.brown,
     letterSpacing: -0.18,
   },
   monthCount: {
     fontFamily: fonts.dmSans,
     fontSize: 14,
-    color: "#9C8E8E",
   },
   card: {
-    backgroundColor: K.bone,
-    borderRadius: 24,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 24,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 4,
   },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "#D8CFC4" },
+  divider: { height: StyleSheet.hairlineWidth },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -292,20 +309,16 @@ const styles = StyleSheet.create({
   rowDate: {
     fontFamily: fonts.dmSans,
     fontSize: 15,
-    color: K.brown,
   },
   scorePill: {
     minWidth: 40,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: "rgba(54,20,22,0.06)",
     alignItems: "center",
     justifyContent: "center",
   },
   scoreText: {
-    fontFamily: fonts.catalogue,
-    fontSize: 16,
-    color: K.brown,
+    fontFamily: fonts.quadrant,
+    fontSize: 24,
+    textAlign: "center",
+    letterSpacing: -0.24,
   },
 });

@@ -313,22 +313,9 @@ export function ProfileScreen() {
   const latestScan = biometricsFresh ? profile?.layer3.latestScan : null;
 
   // --- Signals (stress / energy / recovery) -------------------------------
-  const stressTagsSorted = [...(profile?.layer2?.stressTags ?? [])].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-  );
-  const stressLevelFromTags = (tags: string[] | undefined) => {
-    if (!tags || tags.length === 0) return null;
-    const onlyNone = tags.every((t) => t.toLowerCase() === "none");
-    return onlyNone ? "low" : "high";
-  };
-  const currentStressLevel = stressLevelFromTags(stressTagsSorted[0]?.tags);
-  const priorStressLevel = stressLevelFromTags(stressTagsSorted[1]?.tags);
-  const stressWord =
-    currentStressLevel === "low"
-      ? "Stable"
-      : currentStressLevel === "high"
-        ? "Elevated"
-        : cap(String(typeConfig.signals.stress));
+  // Stress is scan-first: the word, number, trend, and graph all derive from
+  // the scan stressIndex (see `stressWord` below). The check-in stress survey
+  // is intentionally NOT used for this headline.
 
   const energyLogSorted = [...(profile?.layer2?.energyLog ?? [])].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -377,6 +364,19 @@ export function ProfileScreen() {
     .slice(-7);
   const latestStressIdx = stressSeries.length ? stressSeries[stressSeries.length - 1] : null;
 
+  // Scan-derived stress word (mirrors Recovery's threshold pattern). Higher
+  // stressIndex = more stress; thresholds sit on the same ~20–80 plausible
+  // range used for `stressLevel`. Falls back to the type's default copy when
+  // there's no scan yet.
+  const stressWord =
+    latestStressIdx != null
+      ? latestStressIdx >= 60
+        ? "Elevated"
+        : latestStressIdx >= 40
+          ? "Moderate"
+          : "Stable"
+      : cap(String(typeConfig.signals.stress));
+
   // Normalized 0–1 value level per signal — drives the single-data-point line
   // slope (up = high, down = low, flat = middle). Ranges are the plausible
   // span for each metric (stress/recovery indices, energy rank 1–4).
@@ -387,10 +387,12 @@ export function ProfileScreen() {
   const energyLevel = norm01(energyRank(energyLogSorted[0]?.energy ?? null), 1, 4);
 
   // Trends
-  const STRESS_RANK = { low: 0, high: 1 } as const;
+  // Stress trend tracks the same stressIndex series the graph plots (latest
+  // scan vs the one before), so the arrow always matches the line's end slope.
+  // Higher stressIndex = more stress, so "up" = more stressed.
   const stressTrendDir = dirFromNumbers(
-    currentStressLevel ? STRESS_RANK[currentStressLevel] : null,
-    priorStressLevel ? STRESS_RANK[priorStressLevel] : null,
+    latestStressIdx,
+    stressSeries.length >= 2 ? stressSeries[stressSeries.length - 2] : null,
   );
   const recoveryTrendDir = dirFromNumbers(recoveryCurrent, recoveryPrior);
   const energyTrendDir = dirFromNumbers(
@@ -402,6 +404,15 @@ export function ProfileScreen() {
   const daysToFull = profile?.confidence
     ? Math.max(5, Math.min(120, 100 - confidencePct))
     : 0;
+
+  // Confidence only ever climbs (it accrues from scans + check-ins, never
+  // drops), so the 24h trend is just "did anything come in today?" —
+  // `biometricsFresh` is exactly a scan-or-check-in-within-24h signal. Hence
+  // the trend is only ever "up" or "same".
+  const confidenceTrendDir: TrendDirection = biometricsFresh ? "up" : "same";
+  const confidenceTrendText = biometricsFresh
+    ? "Up over the last 24 hours"
+    : "Steady over the last 24 hours";
 
   const authFullName = [
     state.auth.authUser?.firstName,
@@ -818,6 +829,8 @@ export function ProfileScreen() {
                       title: "Confidence Score",
                       value: `${confidencePct}%`,
                       pct: confidencePct,
+                      trend: confidenceTrendDir,
+                      trendText: confidenceTrendText,
                     })
                   }
                   activeOpacity={0.85}
@@ -841,6 +854,7 @@ export function ProfileScreen() {
         data={detail}
         accent={primary}
         evening={palette.evening}
+        typeLogo={TYPE_LOGO[metabolicType]}
         onClose={() => setDetail(null)}
         onStartChat={startChatFromDetail}
       />

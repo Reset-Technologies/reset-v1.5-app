@@ -195,14 +195,7 @@ export function MainNavigator() {
         name="ScanInsights"
         component={ScanInsightsScreen}
       />
-      <Stack.Screen
-        name="ScanHistory"
-        component={ScanHistoryScreen}
-        options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
-        }}
-      />
+      <Stack.Screen name="ScanHistory" component={ScanHistoryScreen} />
     </Stack.Navigator>
   );
 }

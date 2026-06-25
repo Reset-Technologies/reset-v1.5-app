@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
   Image,
+  ImageSourcePropType,
   ScrollView,
   ActivityIndicator,
 } from "react-native";
@@ -17,8 +18,9 @@ import {
   getProfileInsight,
   ProfileMetric,
 } from "../../services/profile";
+import { TrendIcon } from "../../components/TrendIcon";
+import { ConfidencePie } from "../../components/ConfidencePie";
 
-const ESTER_AVATAR = require("../../../assets/images/ester-avatar.png");
 
 export type StatDetailVariant = "signal" | "confidence" | "simple";
 
@@ -46,6 +48,8 @@ interface Props {
   data: StatDetailData | null;
   accent: string;
   evening: boolean;
+  // The user's metabolic-type logo, shown on the Ester insight card.
+  typeLogo: ImageSourcePropType;
   onClose: () => void;
   onStartChat: (topic: { kind: ProfileMetric; label?: string | null }) => void;
 }
@@ -81,38 +85,6 @@ function CloseIcon({ color }: { color: string }) {
         stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
-function TrendIcon({
-  dir,
-  color,
-}: {
-  dir: "up" | "down" | "same" | null;
-  color: string;
-}) {
-  if (dir === "same" || dir == null) {
-    return (
-      <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-        <Path d="M3 8h10" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-      </Svg>
-    );
-  }
-  // Up = arrow rising to the right; down = falling to the right.
-  const d =
-    dir === "up"
-      ? "M3 11l4-4 3 3 3-5M13 5h-3M13 5v3"
-      : "M3 5l4 4 3-3 3 5M13 11h-3M13 11v-3";
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path
-        d={d}
-        stroke={color}
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </Svg>
   );
@@ -244,6 +216,7 @@ export function StatDetailSheet({
   data,
   accent,
   evening,
+  typeLogo,
   onClose,
   onStartChat,
 }: Props) {
@@ -290,6 +263,10 @@ export function StatDetailSheet({
   const showNumber = data.variant === "signal" && data.number != null;
   const showValueBig =
     data.variant === "signal" && data.number == null && !!data.valueBig;
+  // Stress is the only metric here where a downward trend is the good one; all
+  // others (energy, recovery, confidence) improve as they rise. Drives the
+  // valence-aware trend icon color.
+  const betterDirection = data.metric === "stress" ? "down" : "up";
 
   return (
     <Modal
@@ -330,7 +307,11 @@ export function StatDetailSheet({
             <Text style={[styles.title, { color: textStrong }]}>{data.title}</Text>
             {data.trendText ? (
               <View style={styles.trendRow}>
-                <TrendIcon dir={data.trend ?? null} color={textSubtle} />
+                <TrendIcon
+                  direction={data.trend ?? null}
+                  betterDirection={betterDirection}
+                  size={18}
+                />
                 <Text style={[styles.trendText, { color: textSubtle }]}>
                   {data.trendText}
                 </Text>
@@ -354,10 +335,15 @@ export function StatDetailSheet({
               </Text>
             ) : null}
             {data.variant === "confidence" && data.pct != null ? (
-              <View style={styles.statRow}>
+              <View style={styles.confidenceStatRow}>
                 <Text style={[styles.statNumber, { color: textStrong }]}>
                   {Math.round(data.pct)}%
                 </Text>
+                <ConfidencePie
+                  fraction={data.pct / 100}
+                  color={textStrong}
+                  size={24}
+                />
               </View>
             ) : null}
 
@@ -386,7 +372,11 @@ export function StatDetailSheet({
                   { borderColor: divider, backgroundColor: cardBg },
                 ]}
               >
-                <Image source={ESTER_AVATAR} style={styles.esterAvatar} />
+                <Image
+                  source={typeLogo}
+                  style={styles.esterAvatar}
+                  resizeMode="contain"
+                />
                 <View style={styles.insightTextWrap}>
                   {loading ? (
                     <View style={styles.skeletonWrap}>
@@ -508,6 +498,14 @@ const styles = StyleSheet.create({
   trendText: { fontFamily: fonts.catalogue, fontSize: 14, letterSpacing: -0.14 },
   statRow: {
     flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+  },
+  confidenceStatRow: {
+    flexDirection: "row",
+    // Baseline-align so the pie's bottom edge lands on the percentage's
+    // baseline (its visible bottom — "45%" has no descenders) rather than the
+    // font box bottom, which sits lower.
     alignItems: "baseline",
     gap: 8,
   },

@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
@@ -23,6 +23,7 @@ import { getCachedDailyPlan, type DailyPlan } from "../../services/meals";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { getCheckInHistory, type CheckInEntry } from "../../services/checkIn";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
+import { TrendIcon } from "../../components/TrendIcon";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
@@ -136,37 +137,6 @@ function effectiveStressCount(tags: string[] | null | undefined): number {
   return tags.length;
 }
 
-// Trend indicator icons sourced from Figma node 950:20753-20776 (Icon/Trend).
-// Up: ochre triangle. Down: muted blue triangle (same path, rotated 180°).
-// Same: bone-toned pill. K palette already matches Figma fills exactly.
-const TREND_TRIANGLE =
-  "M9.35204 4.89235C10.1843 3.8104 11.8157 3.8104 12.648 4.89235L19.4256 13.7032C20.4773 15.0705 19.5026 17.05 17.7776 17.05H4.2224C2.49741 17.05 1.5227 15.0705 2.57444 13.7032L9.35204 4.89235Z";
-
-function TrendIcon({ direction }: { direction: "up" | "down" | "same" }) {
-  if (direction === "same") {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 22 22" fill="none">
-        <Rect
-          x={1.55957}
-          y={8.31641}
-          width={17.6725}
-          height={5.19779}
-          rx={2.07912}
-          fill={K.faded}
-        />
-      </Svg>
-    );
-  }
-  return (
-    <Svg width={22} height={22} viewBox="0 0 22 22" fill="none">
-      <Path
-        d={TREND_TRIANGLE}
-        fill={direction === "up" ? K.ochre : K.blue}
-        transform={direction === "down" ? "rotate(180 11 11)" : undefined}
-      />
-    </Svg>
-  );
-}
 
 export function ScanInsightsScreen() {
   const navigation =
@@ -548,7 +518,8 @@ interface MetricCardProps {
   current: number | null;
   previous: number | null;
   unit?: string;
-  // For semantic coloring later if we want it; unused in v1 (gray neutral).
+  // Drives valence-aware trend coloring: the trend triangle is ochre when the
+  // change moves in this direction (a good change), blue otherwise.
   betterDirection?: "up" | "down";
   showPlus?: boolean;
 }
@@ -589,6 +560,7 @@ function MetricCard({
   previous,
   unit,
   showPlus,
+  betterDirection,
 }: MetricCardProps) {
   const { nestedBg, textColor, subtleText } = useAppPalette();
   const delta = trendPercent(current, previous);
@@ -611,6 +583,7 @@ function MetricCard({
             <>
               <TrendIcon
                 direction={delta > 0 ? "up" : delta < 0 ? "down" : "same"}
+                betterDirection={betterDirection}
               />
               <Text style={[styles.metricTrendText, { color: textColor }]}>
                 {delta === 0 ? "0%" : `${Math.abs(delta)}%`}

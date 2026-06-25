@@ -10,3 +10,6 @@ export { TabBar } from "./TabBar";
 export { CheckIn } from "./CheckIn";
 export { NudgeSlot, NudgeContent } from "./NudgeSlot";
 export type { NudgeType } from "./NudgeSlot";
+export { TrendIcon } from "./TrendIcon";
+export type { TrendDirection } from "./TrendIcon";
+export { ConfidencePie } from "./ConfidencePie";
