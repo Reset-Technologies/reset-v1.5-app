@@ -880,25 +880,6 @@ export function EsterChatScreen() {
     navigation.goBack();
   };
 
-  const handleNewChat = async () => {
-    if (isListening) cancelListening();
-    stopSpeaking();
-    setChatSessionId(undefined);
-    // Re-arm the one-shot greeting auto-read for the new conversation.
-    greetingReadRef.current = false;
-    // Pre-mark the greeting as actively reading BEFORE it lands (stopSpeaking
-    // just cleared it) so the teleprompter shows from the first frame instead
-    // of flashing the full sentence. Only when it'll be read aloud.
-    if (ttsEnabledRef.current) {
-      setReveal(0);
-      setActiveReadId(defaultGreeting.id);
-    }
-    setMessages([defaultGreeting]);
-    setInputText("");
-    setInputResetKey((k) => k + 1);
-    await AsyncStorage.setItem(PENDING_NEW_CHAT_KEY, "true");
-  };
-
   const formatTime = (date: Date) =>
     date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -989,19 +970,13 @@ export function EsterChatScreen() {
           },
         ]}
       >
-        {/* Top: leave · new chat */}
+        {/* Top: leave */}
         <View style={[styles.voiceTopBar, { paddingTop: insets.top + 6 }]}>
           <TouchableOpacity
             onPress={handleClose}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <CloseIcon color="#361416" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleNewChat}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <PlusIcon color="#361416" />
           </TouchableOpacity>
         </View>
 
@@ -1720,19 +1695,6 @@ function CloseIcon({ color }: { color: string }) {
     <Svg width={20} height={20} viewBox="0 0 20 20">
       <Path
         d="M4 4 L16 16 M16 4 L4 16"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
-function PlusIcon({ color }: { color: string }) {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 20 20">
-      <Path
-        d="M10 3 V17 M3 10 H17"
         stroke={color}
         strokeWidth={1.8}
         strokeLinecap="round"

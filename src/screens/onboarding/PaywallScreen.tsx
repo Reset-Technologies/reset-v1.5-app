@@ -33,16 +33,42 @@ const SCREEN_H = Dimensions.get("window").height;
 // (e.g. Galaxy S24, ~780dp) the 24px gaps squeeze the table's flex slot until
 // the table overflows it — overlapping the title above and the plan cards
 // below. Tightening the gaps on short screens gives the slot enough room for
-// the table to fit; tall screens (iPhones) keep the roomy 24px design spacing.
+// the table to fit; tall screens keep the roomy design spacing.
+//
+// The slope is anchored so the value at iPhone-16-Pro height (~852dp) and above
+// is unchanged from the prior tuning (≈19 → max 24) — only screens SHORTER than
+// an iPhone get pulled tighter. This keeps big-screen rendering identical while
+// making room for the 8-row table (RES-156) on the S24.
 const BODY_GAP = Math.round(
-  Math.max(12, Math.min(24, 12 + (SCREEN_H - 780) * (12 / 120))),
+  Math.max(8, Math.min(24, 8 + (SCREEN_H - 780) * (11 / 72))),
 );
 
-// Vertical padding inside each comparison-table cell, scaled to screen height.
-// On short screens the 7-row table needs to be more compact to fit above the
-// plan cards without overlapping; tall screens keep the roomy 8px design.
+// Vertical padding inside each comparison-table cell (the row spacing), scaled
+// to screen height. Short screens stay a touch tighter so the 8-row table fits
+// above the plan cards; tall screens keep the roomy 8px design. Anchored so the
+// value at ~852dp+ is unchanged (≈7 → max 8) — only shorter-than-iPhone screens
+// tighten, and only down to 4 now (the labels are single-line, so there's room).
 const CELL_PAD_V = Math.round(
-  Math.max(4, Math.min(8, 4 + (SCREEN_H - 780) * (4 / 100))),
+  Math.max(6, Math.min(8, 6 + (SCREEN_H - 780) / 72)),
+);
+
+// The table is centered in its flex slot, but the "Pro/Free" tabs sit at the
+// top of that block, so the data rows land below the geometric center — the
+// gap above the table reads larger than the gap below. On short screens (tight
+// gaps) this is visible, so nudge the table up by reducing the slot's bottom
+// half (paddingBottom on a center-justified slot shifts content up by half its
+// value). Zero at iPhone-16-Pro height (~852dp) and above, so big screens are
+// untouched.
+const TABLE_UP_BIAS = Math.round(
+  Math.max(0, Math.min(24, 24 - (SCREEN_H - 780) * (24 / 72))),
+);
+
+// Top inset above the logo + "reset pro". The 60px design value is sized for
+// the iPhone notch; the S24's status bar is smaller, so the title block sits
+// needlessly low and eats vertical room. Scale it down on short screens (down
+// to 36) while keeping the full 60 at iPhone-16-Pro height (~852dp) and above.
+const TOP_PAD = Math.round(
+  Math.max(36, Math.min(60, 36 + (SCREEN_H - 780) * (24 / 72))),
 );
 
 const MAROON_ALT = "#513436"; // page-surface-(alt)
@@ -56,16 +82,20 @@ const GHOST_W = "rgba(250,253,254,0.24)";
 const RESET_LOGO = require("../../../assets/images/reset-logo.png");
 
 const FEATURES: { label: string; pro: boolean; free: boolean }[] = [
-  { label: "1st scan free", pro: true, free: true },
-  { label: "Reveal your type", pro: true, free: true },
-  { label: "Daily scans & insights", pro: true, free: false },
-  { label: "Ongoing Reset score", pro: true, free: false },
-  { label: "Access to deep reads", pro: true, free: false },
-  { label: "Personalized meal suggestions", pro: true, free: false },
-  { label: "Ongoing Ester pattern tracking", pro: true, free: false },
+  { label: "Daily meals built for your type", pro: true, free: false },
+  { label: "Swap any meal, anytime", pro: true, free: false },
+  { label: "Ester learns your patterns", pro: true, free: false },
+  { label: "Ask Ester anything", pro: true, free: false },
+  { label: "The full read on your type", pro: true, free: false },
+  { label: "Your Reset score, daily", pro: true, free: false },
+  { label: "Fresh scan every day", pro: true, free: false },
+  { label: "New insights as you change", pro: true, free: false },
 ];
 
 const COL_W = 52;
+// Base size for the comparison-table labels; they shrink uniformly from here
+// only if the widest label would wrap (see ComparisonTable).
+const BASE_LABEL_FONT = 16;
 
 // Shown before the RevenueCat offering loads, or when the dashboard isn't set
 // up yet (no offering available). Once live packages load, the real localized
@@ -195,8 +225,57 @@ function CloseIcon({ color = WHITE, size = 16 }: { color?: string; size?: number
 
 function ComparisonTable() {
   const lastIdx = FEATURES.length - 1;
+
+  // Uniform "shrink to fit one line" for the label column. Per-row
+  // adjustsFontSizeToFit gave each row its own size (inconsistent) and
+  // over-shrank on Android (text left open space to the right). Instead:
+  // measure every label's natural single-line width, then pick ONE font size —
+  // the largest (<= base) at which the *widest* label still fits the column —
+  // and apply it to all rows. Wide screens (iPhone) keep the base size.
+  const [labelFont, setLabelFont] = React.useState(BASE_LABEL_FONT);
+  const availRef = React.useRef(0);
+  const natRef = React.useRef<Record<string, number>>({});
+  const recompute = React.useCallback(() => {
+    const avail = availRef.current;
+    const widths = Object.values(natRef.current);
+    if (!avail || widths.length < FEATURES.length) return;
+    const maxNat = Math.max(...widths);
+    const fit =
+      maxNat > avail
+        ? Math.floor(BASE_LABEL_FONT * (avail / maxNat) * 10) / 10
+        : BASE_LABEL_FONT;
+    setLabelFont((prev) => (Math.abs(prev - fit) > 0.05 ? fit : prev));
+  }, []);
+
   return (
     <View style={styles.tableWrap}>
+      {/* Off-screen measuring pass — each label at base font in a wide,
+          non-clipping container; onTextLayout reports the true rendered width
+          of the single line (unaffected by container sizing). */}
+      <View style={styles.labelMeasure} pointerEvents="none">
+        {FEATURES.map((f) => (
+          <Text
+            key={f.label}
+            style={[styles.cellLabelText, { fontSize: BASE_LABEL_FONT }]}
+            numberOfLines={1}
+            onTextLayout={(e) => {
+              const w = e.nativeEvent.lines[0]?.width ?? 0;
+              if (w) {
+                natRef.current[f.label] = w;
+                recompute();
+              }
+            }}
+          >
+            {f.label}
+          </Text>
+        ))}
+      </View>
+
+      {/* One continuous translucent fill behind the ENTIRE Pro column — spans
+          the tab AND the rows as a single layer. Splitting it (separate tab
+          fill + rows fill) makes Android seam at the sub-pixel boundary right
+          under the "Pro" pill; iOS antialiases it. One backing view is immune. */}
+      <View style={styles.proColBg} pointerEvents="none" />
       {/* Column headers stick up like tabs above the table. */}
       <View style={styles.tabsRow}>
         <View style={[styles.tab, styles.tabPro]}>
@@ -211,7 +290,8 @@ function ComparisonTable() {
         <View style={styles.tabSpacer} />
       </View>
 
-      {FEATURES.map((row, i) => {
+      <View style={styles.rowsWrap}>
+        {FEATURES.map((row, i) => {
         const isFirst = i === 0;
         const isLast = i === lastIdx;
         return (
@@ -238,12 +318,31 @@ function ComparisonTable() {
                 isFirst && styles.cellLabelFirst,
                 isLast && styles.cellLabelLast,
               ]}
+              onLayout={
+                isFirst
+                  ? (e) => {
+                      // content width = layout width minus 12+12 padding, the
+                      // ~1px L/R borders, and a 2px safety margin so the line
+                      // never sits exactly at the edge (which would truncate).
+                      availRef.current = e.nativeEvent.layout.width - 27;
+                      recompute();
+                    }
+                  : undefined
+              }
             >
-              <Text style={styles.cellLabelText}>{row.label}</Text>
+              {/* Every row uses the same computed labelFont, so they stay on one
+                  line at a single, consistent, as-large-as-fits size. */}
+              <Text
+                style={[styles.cellLabelText, { fontSize: labelFont }]}
+                numberOfLines={1}
+              >
+                {row.label}
+              </Text>
             </View>
           </View>
         );
-      })}
+        })}
+      </View>
     </View>
   );
 }
@@ -478,7 +577,9 @@ export function PaywallScreen({ navigation }: Props) {
 
       <View style={styles.body}>
         <View style={styles.title}>
-          <ResetWordmark width={96} height={32} />
+          <View style={styles.wordmarkBaseline}>
+            <ResetWordmark width={96} height={32} />
+          </View>
           <Text style={styles.titlePro}>pro</Text>
         </View>
 
@@ -551,7 +652,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: MAROON_ALT,
-    paddingTop: 60,
+    paddingTop: TOP_PAD,
     paddingBottom: 40,
     paddingHorizontal: 24,
   },
@@ -590,17 +691,19 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  // Title "reset pro" — alignItems:center vertically centers each child in
-  // the row. The wordmark (32 tall) centered in a 40-tall row puts its
-  // glyphs ~6px below the row top; DM Sans at fontSize 40 (cap-height
-  // ~28) puts the pro caps ~6px below the row top too. Net: visual
-  // alignment between "reset" and "pro" caps. flex-end made pro 6px
-  // higher than reset because pro's container is taller and got pinned to
-  // the row bottom while reset was pushed down.
+  // Title "reset pro" — baseline-aligned so "reset" and "pro" share a baseline
+  // like normal text. The wordmark SVG (viewBox 0 0 96 32, glyph baseline at
+  // y≈27) carries ~5px of empty space below its baseline, so it's wrapped with
+  // a -5 marginBottom (wordmarkBaseline) to bring its baseline-equivalent edge
+  // onto the text baseline. Center-aligning instead left "pro" high on iOS /
+  // low on Android because the glyph sits differently in its line box per OS.
   title: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     gap: 10,
+  },
+  wordmarkBaseline: {
+    marginBottom: -5,
   },
   titlePro: {
     fontFamily: fonts.dmSans,
@@ -618,6 +721,10 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     color: WHITE,
     letterSpacing: -0.4,
+    // Baseline alignment is geometrically correct, but next to the heavier
+    // "reset" wordmark "pro" optically reads low — lift it a few px. Visual
+    // only (transform), so it doesn't disturb the row layout. Same on both OS.
+    transform: [{ translateY: -5 }],
   },
 
   // Wrapper around the comparison table — flex:1 lets it absorb spare
@@ -628,6 +735,9 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
+    // Short-screen-only upward nudge so the table reads evenly spaced between
+    // the title and the plan cards (see TABLE_UP_BIAS). 0 on iPhone+.
+    paddingBottom: TABLE_UP_BIAS,
   },
 
   // Comparison table
@@ -648,8 +758,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
   },
+  // No fill here — the continuous proColBg paints the tab's gray (see proColBg).
+  // Keeps only the top + left outline borders.
   tabPro: {
-    backgroundColor: GHOST_W,
     borderLeftWidth: 0.5,
     borderTopWidth: 0.5,
     borderColor: DIVIDER,
@@ -678,6 +789,28 @@ const styles = StyleSheet.create({
   },
   tabSpacer: { flex: 1 },
 
+  // Holds the 8 data rows; position:relative anchor for the continuous Pro
+  // column fill that sits behind them.
+  rowsWrap: {
+    width: "100%",
+    position: "relative",
+  },
+  // Continuous translucent Pro-column fill (replaces per-cell + per-tab GHOST_W
+  // to kill Android sub-pixel seams). Lives in tableWrap so it spans the full
+  // column height — the rounded-top tab AND every row — as ONE layer. Rounded
+  // top corners (the tab) + bottom-left; bottom-right is square (meets table).
+  proColBg: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: COL_W,
+    backgroundColor: GHOST_W,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+  },
+
   tableRow: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -686,17 +819,21 @@ const styles = StyleSheet.create({
   // Pro column cells — ghost bg, left border only (no top border → no
   // horizontal row separators). Top border is implicit from the Pro tab
   // above; bottom border closes the table on the last row.
+  // Pro column cells — transparent now; the translucent fill is drawn once by
+  // proColBg behind the rows (see rowsWrap) to avoid Android per-cell seams.
   cellPro: {
     width: COL_W,
-    backgroundColor: GHOST_W,
     borderLeftWidth: 0.5,
     borderColor: DIVIDER,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: CELL_PAD_V,
   },
+  // Pro column's bottom fill is drawn by the continuous proColBg (rounded gray
+  // box). No bottom *border* here (it drew a redundant hairline across the
+  // fill), but keep the corner radius so the left border curves to match the
+  // rounded corner instead of running straight past it.
   cellProLast: {
-    borderBottomWidth: 0.5,
     borderBottomLeftRadius: 8,
   },
 
@@ -736,9 +873,19 @@ const styles = StyleSheet.create({
   },
   cellLabelText: {
     fontFamily: fonts.dmSans,
-    fontSize: 16,
+    fontSize: BASE_LABEL_FONT,
     color: WHITE,
     letterSpacing: -0.16,
+  },
+  // Off-screen container for the label width-measuring pass (see
+  // ComparisonTable). Absolute so it never affects layout; invisible.
+  labelMeasure: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 1000,
+    alignItems: "flex-start",
+    opacity: 0,
   },
 
   // Plan cards
