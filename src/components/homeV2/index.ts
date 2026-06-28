@@ -1,6 +1,7 @@
 export { RecipesCarousel } from "./RecipesCarousel";
 export { MealTabsSection } from "./MealTabsSection";
 export { MealPlanPromoCard } from "./MealPlanPromoCard";
+export { SavedMealsCard } from "./SavedMealsCard";
 export { Mascot } from "./Mascot";
 export { HomeHeader } from "./HomeHeader";
 export { CheckInCard } from "./CheckInCard";

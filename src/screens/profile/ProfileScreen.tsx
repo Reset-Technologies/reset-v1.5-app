@@ -1076,8 +1076,8 @@ function MiniGraph({
         <Circle cx={last.x} cy={last.y} r={3} fill={accent} />
       </Svg>
       {today != null ? (
-        <View style={styles.graphTooltip}>
-          <Text style={styles.graphTooltipText}>Today: {Math.round(today)}</Text>
+        <View style={[styles.graphTooltip, { backgroundColor: pillBg }]}>
+          <Text style={[styles.graphTooltipText, { color: pillTextColor }]}>Today: {Math.round(today)}</Text>
         </View>
       ) : null}
     </View>

@@ -146,8 +146,7 @@ export function MainNavigator() {
         name="SavedMeals"
         component={SavedMealsScreen}
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

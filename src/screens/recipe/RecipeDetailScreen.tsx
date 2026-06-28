@@ -23,6 +23,7 @@ import { K, toMetabolicType, type MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import type { Meal } from "../../components";
+import { BookmarkIcon } from "../../components/BookmarkIcon";
 import {
   getMealDetail,
   getMealIngredients,
@@ -773,14 +774,7 @@ export function RecipeDetailScreen() {
                 isFavorited ? "Remove from favorites" : "Save to favorites"
               }
             >
-              <Text
-                style={[
-                  styles.headerActionGlyph,
-                  isFavorited && styles.headerActionGlyphActive,
-                ]}
-              >
-                {isFavorited ? "♥" : "♡"}
-              </Text>
+              <BookmarkIcon filled={isFavorited} color={K.brown} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1278,9 +1272,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: K.brown,
     fontFamily: fonts.dmSans,
-  },
-  headerActionGlyphActive: {
-    color: "#E25C5C",
   },
   // Loading
   loadingOverlay: {

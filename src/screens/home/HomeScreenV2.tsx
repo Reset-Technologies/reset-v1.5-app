@@ -44,6 +44,7 @@ import {
   ScoreCard,
   ConfidenceCard,
   GreetingBlock,
+  SavedMealsCard,
 } from "../../components/homeV2";
 import type { Meal } from "../../components";
 
@@ -276,6 +277,8 @@ export function HomeScreenV2() {
           onFavoriteToggle={handleFavoriteToggle}
           onDeepRead={handleDeepRead}
         />
+
+        <SavedMealsCard onPress={() => navigation.navigate("SavedMeals")} />
 
         {!checkedInToday ? (
           <CheckInCard onPress={handleStartCheckIn} />

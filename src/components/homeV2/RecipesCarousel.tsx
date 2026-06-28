@@ -7,9 +7,9 @@ import {
   Image,
   ScrollView,
 } from "react-native";
-import { K } from "../../constants/colors";
 import { spacing, radius, typography } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
+import { BookmarkIcon } from "../BookmarkIcon";
 import type { Meal } from "../MealCard";
 
 interface RecipeCarouselCardProps {
@@ -51,9 +51,7 @@ function RecipeCarouselCard({
           hitSlop={8}
           onPress={onFavoriteToggle}
         >
-          <Text style={styles.favoriteIcon}>
-            {isFavorited ? "\u2665" : "\u2661"}
-          </Text>
+          <BookmarkIcon filled={isFavorited} halo />
         </TouchableOpacity>
       </View>
 
@@ -169,18 +167,10 @@ const styles = StyleSheet.create({
   },
   favorite: {
     position: "absolute",
-    top: 4,
-    right: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    top: spacing.sm,
+    right: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
-  },
-  favoriteIcon: {
-    fontSize: 16,
-    color: K.ochre,
   },
   title: {
     ...typography.bodyMedium,

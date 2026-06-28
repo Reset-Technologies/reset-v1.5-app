@@ -4,11 +4,17 @@ import Svg, { Path } from "react-native-svg";
 import { fonts, spacing } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 
-interface CheckInCardProps {
-  onPress: () => void;
+interface SavedMealsCardProps {
+  onPress?: () => void;
 }
 
-export function CheckInCard({ onPress }: CheckInCardProps) {
+// "Saved Meals" banner shown on the home screen below the meal recommendations
+// (RES-161, Figma node 3543-5397). Tapping it navigates to the saved-meals
+// view. Mirrors the sibling CheckInCard's banner styling + day/evening theming
+// (nestedBg card, subtleText label/arrow) so the home feed stays consistent.
+// The empty space above the label matches the design's banner, whose
+// (here-hidden) action row reserves the top space.
+export function SavedMealsCard({ onPress }: SavedMealsCardProps) {
   const { nestedBg, subtleText } = useAppPalette();
   return (
     <TouchableOpacity
@@ -16,9 +22,9 @@ export function CheckInCard({ onPress }: CheckInCardProps) {
       onPress={onPress}
       activeOpacity={0.9}
     >
-      <Text style={[styles.label, { color: subtleText }]}>Today's Entry</Text>
-      <View style={styles.promptRow}>
-        <Text style={[styles.prompt, { color: subtleText }]}>What went well today?</Text>
+      <View style={styles.topSpacer} />
+      <View style={styles.row}>
+        <Text style={[styles.title, { color: subtleText }]}>Saved Meals</Text>
         <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
           <Path
             d="M5 12h14M13 5l7 7-7 7"
@@ -36,27 +42,24 @@ export function CheckInCard({ onPress }: CheckInCardProps) {
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
+    marginVertical: spacing.md,
     padding: spacing.md,
     borderRadius: 4,
     gap: spacing.xl,
   },
-  label: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    letterSpacing: -0.12,
+  // Mirrors the banner's (hidden) action row, which reserves the top space.
+  topSpacer: {
+    height: spacing.xl,
   },
-  promptRow: {
+  row: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  prompt: {
-    flex: 1,
+  title: {
     fontFamily: fonts.dmSans,
     fontSize: 32,
-    lineHeight: 36,
+    lineHeight: 32,
     letterSpacing: -0.32,
   },
 });

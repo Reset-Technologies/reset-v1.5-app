@@ -16,6 +16,7 @@ import {
 import { K, MetabolicType } from "../constants/colors";
 import { useToast } from "../context/ToastContext";
 import { typography, spacing, radius } from "../constants/typography";
+import { BookmarkIcon } from "./BookmarkIcon";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH - 48; // Account for padding
@@ -147,7 +148,7 @@ export function MealCard({ meal, metabolicType, isFavorited = false, isEaten = f
               onFavoriteToggle(next);
             }}
           >
-            <Text style={styles.favoriteIcon}>{favorited ? "\u2665" : "\u2661"}</Text>
+            <BookmarkIcon filled={favorited} halo />
           </TouchableOpacity>
         )}
       </View>
@@ -417,16 +418,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: spacing.sm,
     left: spacing.sm,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.85)",
     justifyContent: "center",
     alignItems: "center",
-  },
-  favoriteIcon: {
-    fontSize: 18,
-    color: K.ochre,
   },
   whySection: {
     backgroundColor: K.bone,
