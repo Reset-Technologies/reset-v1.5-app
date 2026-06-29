@@ -42,7 +42,7 @@ export const SURVEY_STEPS: SurveyStep[] = [
     kind: "message",
     lines: [
       "Hello, I'm Ester!",
-      "Your personal nutritionist. Thanks for completing the scan!",
+      "Your Reset guide. Thanks for completing the scan!",
       "I have just a few more questions, so I can give you the most accurate type.",
     ],
     progress: 0.06,
