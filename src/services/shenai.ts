@@ -7,6 +7,7 @@ import {
   getMeasurementProgressPercentage,
   getFaceState as sdkGetFaceState,
   getHeartRate4s,
+  getCurrentViolatedMeasurementEnvironmentCondition,
   setOperatingMode,
   setCameraMode,
   OperatingMode,
@@ -18,6 +19,7 @@ import {
   Gender,
   FaceState as SdkFaceState,
   MeasurementState as SdkMeasurementState,
+  MeasurementEnvironmentCondition as SdkEnvCondition,
   type MeasurementResults,
   type HealthRisks,
 } from "react-native-shenai-sdk";
@@ -75,6 +77,21 @@ export type MeasurementState =
   | "RUNNING"
   | "FINISHED"
   | "FAILED";
+
+// RES-159: real-time scan-quality problems ShenAI detects while the camera is
+// live. Named for the *problem* (the SDK enum is named for the desired state,
+// e.g. SUFFICIENT_LIGHT_LEVEL — a violation of it means the light is too low).
+// Surfacing these lets us guide the user mid-scan instead of failing after a
+// timeout.
+export type EnvCondition =
+  | "FACE_POSITION"
+  | "FOREHEAD_COVERED"
+  | "GLASSES_DETECTED"
+  | "LOW_LIGHT"
+  | "UNEVEN_LIGHTING"
+  | "BACKLIGHT"
+  | "FACE_UNSTABLE"
+  | "DEVICE_UNSTABLE";
 
 function r1(v: number | null | undefined): number | null {
   return v != null ? Math.round(v) : null;
@@ -277,6 +294,23 @@ export async function getMeasureProgress(): Promise<number> {
   return getMeasurementProgressPercentage();
 }
 
-export async function getViolatedCondition(): Promise<number | null> {
-  return null;
+const ENV_CONDITION_MAP: Record<number, EnvCondition> = {
+  [SdkEnvCondition.FACE_POSITION]: "FACE_POSITION",
+  [SdkEnvCondition.FOREHEAD_VISIBLE]: "FOREHEAD_COVERED",
+  [SdkEnvCondition.GLASSES_NOT_DETECTED]: "GLASSES_DETECTED",
+  [SdkEnvCondition.SUFFICIENT_LIGHT_LEVEL]: "LOW_LIGHT",
+  [SdkEnvCondition.EVEN_LIGHTING]: "UNEVEN_LIGHTING",
+  [SdkEnvCondition.NO_BACKLIGHT]: "BACKLIGHT",
+  [SdkEnvCondition.FACE_STABLE]: "FACE_UNSTABLE",
+  [SdkEnvCondition.DEVICE_STABLE]: "DEVICE_UNSTABLE",
+};
+
+// RES-159: the highest-priority condition ShenAI is currently flagging, or null
+// when the scan environment is good. ShenAI monitors these against its default
+// blocking (FacePosition) + warning (forehead, lighting, backlight, stability)
+// sets, so no extra init config is needed to read them.
+export async function getViolatedCondition(): Promise<EnvCondition | null> {
+  const code = await getCurrentViolatedMeasurementEnvironmentCondition();
+  if (code == null) return null;
+  return ENV_CONDITION_MAP[code] ?? null;
 }

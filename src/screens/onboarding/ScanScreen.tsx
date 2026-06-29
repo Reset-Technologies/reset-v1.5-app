@@ -29,6 +29,7 @@ import {
   getViolatedCondition,
   type ScanResults,
   type FaceState,
+  type EnvCondition,
 } from "../../services/shenai";
 import { logEvent } from "../../services/braze";
 
@@ -107,6 +108,19 @@ const FAILURE_MESSAGES: Record<FailureInfo["type"], string> = {
   low_signal_quality: "The reading wasn't strong enough. One more try?",
 };
 
+// RES-159: live, actionable guidance for each scan-quality problem ShenAI
+// surfaces mid-scan. FACE_POSITION is handled by the directional faceState
+// guidance (close/far/centered), so it's intentionally omitted here.
+const CONDITION_HINTS: Record<Exclude<EnvCondition, "FACE_POSITION">, string> = {
+  FOREHEAD_COVERED: "Clear your forehead — move hair or a hat aside.",
+  GLASSES_DETECTED: "Take your glasses off for a clearer read.",
+  LOW_LIGHT: "Move somewhere brighter.",
+  UNEVEN_LIGHTING: "Even out the light — avoid shadows on one side of your face.",
+  BACKLIGHT: "Face the light — keep bright windows behind your phone, not you.",
+  FACE_UNSTABLE: "Hold still — keep your head steady.",
+  DEVICE_UNSTABLE: "Keep your phone steady.",
+};
+
 function deriveBiometrics(results: ScanResults) {
   // Prefer the real SDK HealthRisks output. Fall back to the legacy local
   // derivations only when the SDK didn't return them (e.g., HealthRisks
@@ -165,6 +179,7 @@ export function ScanScreen({ navigation, route }: Props) {
   const [heartRate, setHeartRate] = useState(0);
   const [showMarkers, setShowMarkers] = useState(false);
   const [faceState, setFaceState] = useState<FaceState>("NOT_VISIBLE");
+  const [condition, setCondition] = useState<EnvCondition | null>(null);
   const [failure, setFailure] = useState<FailureInfo | null>(null);
   const [liveMarkers, setLiveMarkers] = useState({
     stress: 0,
@@ -270,6 +285,9 @@ export function ScanScreen({ navigation, route }: Props) {
       try {
         const face = await getFaceStateValue();
         setFaceState(face);
+        // RES-159: surface lighting/backlight problems while the user is still
+        // lining up, so they can fix them before the scan even starts.
+        setCondition(await getViolatedCondition());
 
         if (face === "OK") {
           const ready = await isReady();
@@ -365,6 +383,11 @@ export function ScanScreen({ navigation, route }: Props) {
         // Poll face state for loss detection
         const face = await getFaceStateValue();
         setFaceState(face);
+
+        // RES-159: surface real-time scan-quality problems (lighting, backlight,
+        // head/device movement) so the user can correct them mid-scan instead
+        // of waiting for the signal to degrade into a failure.
+        setCondition(await getViolatedCondition());
 
         if (face !== "OK") {
           if (!faceLostSinceRef.current) {
@@ -477,6 +500,7 @@ export function ScanScreen({ navigation, route }: Props) {
     setShowMarkers(false);
     setHeartRate(0);
     setFaceState("NOT_VISIBLE");
+    setCondition(null);
     faceLostSinceRef.current = null;
     progressAnim.setValue(0);
     markerFadeAnim.setValue(0);
@@ -578,10 +602,35 @@ export function ScanScreen({ navigation, route }: Props) {
     }
   };
 
+  // RES-159: the most pressing live correction the user should make right now,
+  // or null when the scan environment is good. Environment problems (lighting,
+  // backlight, movement) take priority over face positioning since they're the
+  // silent reasons a scan degrades; FACE_POSITION defers to the directional
+  // faceState guidance below.
+  const getLiveGuidance = (): string | null => {
+    if (condition && condition !== "FACE_POSITION") {
+      return CONDITION_HINTS[condition];
+    }
+    if (faceState !== "OK") return getFaceGuidanceText();
+    return null;
+  };
+
+  const hasLiveGuidance =
+    (screenState === "positioning" || screenState === "measuring") &&
+    !failure &&
+    getLiveGuidance() !== null;
+
   const getEsterMessage = (): string => {
     if (failure) return failure.message;
     if (screenState === "initializing") return "Setting up the scan...";
-    if (screenState === "positioning") return getFaceGuidanceText();
+    if (screenState === "positioning") {
+      return getLiveGuidance() ?? getFaceGuidanceText();
+    }
+    // Measuring: surface a live correction if there's a problem, otherwise the
+    // ambient phase narration. Other states (complete) just show the narration.
+    if (screenState === "measuring") {
+      return getLiveGuidance() ?? currentPhase.ester;
+    }
     return currentPhase.ester;
   };
 
@@ -625,8 +674,12 @@ export function ScanScreen({ navigation, route }: Props) {
 
       {/* Our controls below the SDK */}
       <View style={styles.controlsBar}>
-        <View style={styles.esterBox}>
-          <Text style={styles.esterText}>{getEsterMessage()}</Text>
+        <View style={[styles.esterBox, hasLiveGuidance && styles.esterBoxHint]}>
+          <Text
+            style={[styles.esterText, hasLiveGuidance && styles.esterTextHint]}
+          >
+            {getEsterMessage()}
+          </Text>
         </View>
 
         {/* TEMP / DEV-ONLY immediate skip — see devSkipScan. Remove before ship. */}
@@ -741,11 +794,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
   },
+  // RES-159: live correction hints read as an actionable amber callout, not the
+  // ambient italic narration.
+  esterBoxHint: {
+    backgroundColor: K.mustard + "26",
+    borderWidth: 1,
+    borderColor: K.mustard + "66",
+  },
   esterText: {
     fontSize: 13,
     color: "rgba(255,255,255,0.85)",
     lineHeight: 20,
     fontStyle: "italic",
+  },
+  esterTextHint: {
+    color: K.mustard,
+    fontStyle: "normal",
+    fontWeight: "600",
   },
   // TEMP / DEV-ONLY skip button styling.
   devSkipButton: {

@@ -124,7 +124,7 @@ function EsterIntroCard({ onArrowPress }: { onArrowPress: () => void }) {
           <Animated.View style={{ opacity: contentOpacity, gap: 4 }}>
             <Text style={styles.esterIntroBold}>Hi, I&apos;m Ester!</Text>
             <Text style={styles.esterIntroBody}>
-              Your personal nutritionist. Before I make recommendations, I&apos;d love to learn a little about you.
+              Your Reset guide. Before I make recommendations, I&apos;d love to learn a little about you.
             </Text>
           </Animated.View>
         )}
