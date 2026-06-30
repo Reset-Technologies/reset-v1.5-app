@@ -66,7 +66,12 @@ interface BiometricData {
   stressIndex: number;
   heartRate: number;
   wellness: number;
+  // RES-147: vascularAge is still captured + fed into the Reset Score; it's
+  // just no longer surfaced in the UI. hrvSdnn + breathingRate are now shown
+  // in its place.
   vascularAge: number;
+  hrvSdnn: number | null;
+  breathingRate: number | null;
   raw?: ScanResultsRaw;
 }
 

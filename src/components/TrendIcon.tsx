@@ -15,7 +15,7 @@ import { K } from "../constants/colors";
  *    down = blue. This is the original v1 behavior — color encodes direction.
  *  - Valence-aware (when `betterDirection` is passed): ochre when the change
  *    moves in the better direction (a good change), blue otherwise — regardless
- *    of which way the triangle points. e.g. for Stress Index / Vascular Age
+ *    of which way the triangle points. e.g. for Stress Index / Breathing Rate
  *    (`betterDirection="down"`) a downward move is good, so it renders ochre.
  */
 

@@ -114,10 +114,10 @@ export function CameraPermScreen({ navigation }: Props) {
             </View>
           </View>
           <View style={styles.feature}>
-            <Text style={styles.featureIcon}>🫀</Text>
+            <Text style={styles.featureIcon}>🌬️</Text>
             <View>
-              <Text style={styles.featureTitle}>Vascular Age</Text>
-              <Text style={styles.featureDesc}>Circulation signals</Text>
+              <Text style={styles.featureTitle}>Breathing Rate</Text>
+              <Text style={styles.featureDesc}>Breathing patterns</Text>
             </View>
           </View>
         </View>

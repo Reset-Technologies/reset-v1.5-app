@@ -40,7 +40,10 @@ type ScanRecord = {
   scannedAt?: string;
   stressIndex?: number | null;
   hrvSdnn?: number | null;
+  breathingRate?: number | null;
   ageEstimate?: number | null;
+  // RES-147: vascularAge is still persisted on historical scan records (and used
+  // by the Reset Score), it's just no longer surfaced here.
   vascularAge?: number | null;
   heartRate?: number | null;
   wellness?: number | null;
@@ -63,14 +66,10 @@ function pickHrv(scan: ScanRecord | null): number | null {
   return typeof v === "number" ? Math.round(v) : null;
 }
 
-function pickVascularAge(scan: ScanRecord | null): number | null {
+function pickBreathing(scan: ScanRecord | null): number | null {
   if (!scan) return null;
-  // Prefer the derived offset stored locally, fall back to raw ageEstimate
-  // minus a 30-year baseline (matches deriveBiometrics in ScanScreen).
-  if (typeof scan.vascularAge === "number") return Math.round(scan.vascularAge);
-  if (typeof scan.ageEstimate === "number")
-    return Math.max(0, Math.round(scan.ageEstimate - 30));
-  return null;
+  const v = scan.breathingRate;
+  return typeof v === "number" ? Math.round(v) : null;
 }
 
 function trendPercent(current: number | null, previous: number | null): number | null {
@@ -205,7 +204,7 @@ export function ScanInsightsScreen() {
     ? {
         stressIndex: state.biometrics.stressIndex,
         hrvSdnn: state.biometrics.raw?.hrvSdnn ?? null,
-        vascularAge: state.biometrics.vascularAge,
+        breathingRate: state.biometrics.raw?.breathingRate ?? null,
         heartRate: state.biometrics.heartRate,
         wellness: state.biometrics.wellness,
       }
@@ -219,9 +218,9 @@ export function ScanInsightsScreen() {
     current: pickHrv(currentSource),
     previous: pickHrv(previous),
   };
-  const vasc: MetricValue = {
-    current: pickVascularAge(currentSource),
-    previous: pickVascularAge(previous),
+  const breathing: MetricValue = {
+    current: pickBreathing(currentSource),
+    previous: pickBreathing(previous),
   };
 
   // Mode: "survey" if the user's most-recent action is a check-in (rather than
@@ -470,12 +469,11 @@ export function ScanInsightsScreen() {
               </View>
               <View style={styles.metricsRow}>
                 <MetricCard
-                  label="Vascular Age"
-                  unit="yrs"
-                  current={vasc.current}
-                  previous={vasc.previous}
+                  label="Breathing Rate"
+                  unit="/min"
+                  current={breathing.current}
+                  previous={breathing.previous}
                   betterDirection="down"
-                  showPlus
                 />
                 <View style={styles.metricSpacer} />
               </View>

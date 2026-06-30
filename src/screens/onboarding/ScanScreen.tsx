@@ -72,7 +72,7 @@ const SCAN_PHASES = [
   {
     id: "mapping",
     label: "Mapping markers",
-    ester: "Stress index... vascular age... wellness score...",
+    ester: "Stress index... heart rate variability... wellness score...",
   },
 ];
 
@@ -157,6 +157,8 @@ function deriveBiometrics(results: ScanResults) {
     heartRate: results.heartRate,
     wellness,
     vascularAge: vascularAgeOffset,
+    hrvSdnn: results.hrvSdnn ?? null,
+    breathingRate: results.breathingRate ?? null,
     raw: results,
   };
 }
@@ -545,10 +547,14 @@ export function ScanScreen({ navigation, route }: Props) {
       heartRate: 72,
       wellness: 78,
       vascularAge: 4,
+      hrvSdnn: 45,
+      breathingRate: 14,
       raw: {
         heartRate: 72,
         wellnessScore: 78,
         stressIndex: 65,
+        hrvSdnn: 45,
+        breathingRate: 14,
         signalQuality: 1,
       } as ScanResults,
     });

@@ -66,9 +66,9 @@ const SLIDES: Slide[] = [
     title: "Scan your face",
     subtitle: "Thirty seconds. Thirty biometric markers.",
     image: require("../../../assets/images/onboarding/education-scan.png"),
-    imageAspectRatio: 1033 / 986,
+    imageAspectRatio: 1062 / 1230,
     imageWidthPct: 1,
-    imageTopOffset: 90,
+    imageTopOffset: 0,
   },
   {
     index: "03",

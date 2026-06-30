@@ -34,10 +34,11 @@ export type SurveyStep =
   | { kind: "analyzing"; text: string; progress: number; durationMs: number };
 
 export const SURVEY_STEPS: SurveyStep[] = [
-  // Post-scan intro video is ~5.4s. The screen advances when the video
-  // actually finishes (playToEnd); durationMs is only a fallback cap, so it
-  // must sit comfortably above the video length to avoid cutting it off.
-  { kind: "logo", durationMs: 7000 },
+  // Post-scan intro video is ~8.9s (the full-length Burner reveal clip). The
+  // screen advances when the video actually finishes (playToEnd); durationMs is
+  // only a fallback cap, so it must sit comfortably above the video length to
+  // avoid cutting it off.
+  { kind: "logo", durationMs: 9500 },
   {
     kind: "message",
     lines: [
@@ -102,9 +103,9 @@ export const SURVEY_STEPS: SurveyStep[] = [
     kind: "analyzing",
     text: "Analyzing your responses",
     progress: 0.96,
-    // Same video as the post-scan intro (~5.4s). Advances on playToEnd;
+    // Same video as the post-scan intro (~8.9s). Advances on playToEnd;
     // durationMs is only the fallback cap (see the "logo" step above).
-    durationMs: 7000,
+    durationMs: 9500,
   },
 ];
 

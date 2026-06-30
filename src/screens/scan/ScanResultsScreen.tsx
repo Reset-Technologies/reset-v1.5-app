@@ -106,22 +106,32 @@ export function ScanResultsScreen({ navigation }: Props) {
             delay={0}
           />
           <BiometricRow
-            icon="🫀"
-            label="Vascular Age"
-            value={`+${biometrics.vascularAge} yrs`}
-            delay={150}
-          />
-          <BiometricRow
             icon="💓"
             label="Heart Rate"
             value={`${biometrics.heartRate} BPM`}
-            delay={300}
+            delay={150}
           />
+          {biometrics.hrvSdnn != null && (
+            <BiometricRow
+              icon="💗"
+              label="Heart Rate Variability"
+              value={`${Math.round(biometrics.hrvSdnn)} ms`}
+              delay={300}
+            />
+          )}
+          {biometrics.breathingRate != null && (
+            <BiometricRow
+              icon="🌬️"
+              label="Breathing Rate"
+              value={`${Math.round(biometrics.breathingRate)} /min`}
+              delay={450}
+            />
+          )}
           <BiometricRow
             icon="✨"
             label="Wellness"
             value={`${biometrics.wellness}/100`}
-            delay={450}
+            delay={600}
           />
         </View>
       </View>
