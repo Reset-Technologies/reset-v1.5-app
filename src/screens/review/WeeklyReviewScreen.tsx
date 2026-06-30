@@ -48,10 +48,6 @@ function ScoreSummary({ summary }: { summary: WeeklyReviewData["summary"] }) {
           <Text style={styles.statNumber}>{summary.checkInCount}</Text>
           <Text style={styles.statLabel}>Check-ins</Text>
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>{summary.confidencePercent}%</Text>
-          <Text style={styles.statLabel}>Confidence</Text>
-        </View>
         {summary.scoreEnd != null && (
           <View style={styles.stat}>
             <View style={styles.scoreRow}>

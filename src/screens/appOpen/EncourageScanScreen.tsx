@@ -136,10 +136,7 @@ export function EncourageScanScreen() {
         <View style={styles.confidenceCard}>
           <View style={styles.confidenceLeft}>
             <Text style={styles.confidenceLabel}>Confidence:</Text>
-            <View style={styles.confidenceValueRow}>
-              <Text style={styles.confidenceValue}>{confidencePct}%</Text>
-              <ConfidencePie fraction={confidencePct / 100} color={K.brown} />
-            </View>
+            <ConfidencePie fraction={confidencePct / 100} color={K.brown} />
           </View>
           <View style={styles.confidenceRight}>
             <Text style={styles.confidenceHint}>

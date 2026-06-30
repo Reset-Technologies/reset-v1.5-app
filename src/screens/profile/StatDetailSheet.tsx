@@ -334,11 +334,9 @@ export function StatDetailSheet({
                 {data.valueBig}
               </Text>
             ) : null}
+            {/* RES-157: pie only (no %); empty slice = days left to 100%. */}
             {data.variant === "confidence" && data.pct != null ? (
               <View style={styles.confidenceStatRow}>
-                <Text style={[styles.statNumber, { color: textStrong }]}>
-                  {Math.round(data.pct)}%
-                </Text>
                 <ConfidencePie
                   fraction={data.pct / 100}
                   color={textStrong}

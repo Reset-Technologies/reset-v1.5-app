@@ -806,9 +806,6 @@ export function ProfileScreen() {
             >
               <View style={styles.confidenceTopRow}>
                 <View style={styles.confidencePctRow}>
-                  <Text style={[styles.confidencePct, { color: K.brown }]}>
-                    {confidencePct}%
-                  </Text>
                   <ConfidencePie fraction={confidencePct / 100} color={K.brown} />
                 </View>
                 <Text style={[styles.confidenceCopy, { color: K.brown }]}>
@@ -827,7 +824,6 @@ export function ProfileScreen() {
                       variant: "confidence",
                       eyebrow: "About your confidence",
                       title: "Confidence Score",
-                      value: `${confidencePct}%`,
                       pct: confidencePct,
                       trend: confidenceTrendDir,
                       trendText: confidenceTrendText,

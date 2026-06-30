@@ -153,10 +153,6 @@ export function ScoreRevealScreen() {
         </View>
 
         <View style={styles.confidenceCard}>
-          <View style={styles.confidenceLeft}>
-            <Text style={styles.confidenceLabel}>Confidence:</Text>
-            <Text style={styles.confidenceValue}>{confidencePct}%</Text>
-          </View>
           <View style={styles.confidenceRight}>
             <Text style={styles.confidenceHint}>
               We're still learning your signals so continue to scan each day.

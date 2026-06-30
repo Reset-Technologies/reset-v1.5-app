@@ -191,30 +191,6 @@ export function AppOpenGreetingScreen() {
                 <Text style={[styles.scoreLabel, { color: subtleText }]}>
                   {typeLabel}
                 </Text>
-                <View style={styles.confidenceRow}>
-                  <Text style={[styles.confidenceLabel, { color: subtleText }]}>
-                    Confidence
-                  </Text>
-                  <View
-                    style={[
-                      styles.confidenceTrack,
-                      { backgroundColor: evening ? K.brown : K.border },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.confidenceFill,
-                        {
-                          width: `${Math.max(4, Math.round(confidence ?? 0))}%`,
-                          backgroundColor: K.ochre,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={[styles.confidenceValue, { color: textColor }]}>
-                    {Math.round(confidence ?? 0)}%
-                  </Text>
-                </View>
                 {daysToFullConfidence > 0 ? (
                   <Text
                     style={[styles.confidenceHint, { color: subtleText }]}

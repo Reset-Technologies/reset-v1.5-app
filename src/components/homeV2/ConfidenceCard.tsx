@@ -48,19 +48,18 @@ function ConfidencePie({ fraction, color }: { fraction: number; color: string })
   );
 }
 
-export function ConfidenceCard({ confidence, daysToFull }: ConfidenceCardProps) {
+export function ConfidenceCard({ daysToFull }: ConfidenceCardProps) {
   const { nestedBg, textColor, subtleText, evening } = useAppPalette();
-  const pct = confidence !== null ? Math.max(0, Math.min(100, Math.round(confidence))) : 0;
+  // RES-157: no numeric %. The pie fills as the user nears 100% confidence —
+  // its empty slice is how many days remain.
+  const fraction = Math.max(0, Math.min(1, (100 - daysToFull) / 100));
   const accent = evening ? "#B8D0D6" : K.brown;
 
   return (
     <View style={[styles.card, { backgroundColor: nestedBg }]}>
       <View style={styles.left}>
         <Text style={[styles.label, { color: textColor }]}>Confidence:</Text>
-        <View style={styles.valueRow}>
-          <Text style={[styles.value, { color: textColor }]}>{pct}%</Text>
-          <ConfidencePie fraction={pct / 100} color={accent} />
-        </View>
+        <ConfidencePie fraction={fraction} color={accent} />
       </View>
       <View style={styles.right}>
         <Text style={[styles.hint, { color: textColor }]}>
@@ -88,21 +87,12 @@ const styles = StyleSheet.create({
   },
   left: {
     gap: 8,
+    alignItems: "center",
   },
   label: {
     fontFamily: fonts.dmSans,
     fontSize: 12,
     letterSpacing: -0.12,
-  },
-  valueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  value: {
-    fontFamily: fonts.dmSansBold,
-    fontSize: 16,
-    letterSpacing: -0.16,
   },
   right: {
     flex: 1,

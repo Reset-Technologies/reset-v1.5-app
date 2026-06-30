@@ -303,8 +303,6 @@ function MiddleCard({
             <ScoreRing score={score} animate={false} width={ringWidth} />
           </View>
           <View style={styles.confidenceRow}>
-            <Text style={styles.confidenceLabel}>Confidence:</Text>
-            <Text style={styles.confidenceValue}>{confidence}%</Text>
             {daysToFull > 0 ? (
               <Text style={styles.confidenceHint}>
                 Estimated {daysToFull} days til near 100% confidence
