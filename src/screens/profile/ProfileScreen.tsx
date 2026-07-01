@@ -18,6 +18,7 @@ import { fonts, spacing, radius } from "../../constants/typography";
 import { TYPE_CONFIGS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
 import { getProfile, UserProfile } from "../../services/profile";
+import { getCheckInHistory, type CheckInEntry } from "../../services/checkIn";
 import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent, setCustomAttribute } from "../../services/braze";
@@ -232,10 +233,26 @@ function buildTimeline(
     .map(({ weekday, dateShort, note }) => ({ weekday, dateShort, note }));
 }
 
+// True when `iso` (a UTC scan timestamp) falls on the same calendar day as
+// `now` in the device's local timezone — i.e. the user's timezone. getFullYear/
+// getMonth/getDate read local components, so a scan stored in UTC is bucketed
+// into the user's local day, not the UTC day.
+function isSameLocalDay(iso: string | null | undefined, now: Date): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { state, resetState } = useApp();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [checkInHistory, setCheckInHistory] = useState<CheckInEntry[]>([]);
   const insets = useSafeAreaInsets();
   const palette = useAppPalette();
   // Neutral surface tokens for the body content (the type-gradient header is
@@ -276,6 +293,10 @@ export function ProfileScreen() {
 
   const loadProfile = useCallback(() => {
     getProfile().then(setProfile).catch(() => null);
+    // Check-in history carries a `createdAt` timestamp (the profile's energyLog
+    // only has a UTC date), so we can bucket "checked in today" into the user's
+    // local day just like scans.
+    getCheckInHistory(5).then(setCheckInHistory).catch(() => null);
   }, []);
 
   useEffect(() => {
@@ -301,10 +322,25 @@ export function ProfileScreen() {
   const timeline =
     profile && profile.layer2.energyLog.length > 0 ? buildTimeline(profile) : [];
 
+  const now = new Date();
   const lastScanAt = profile?.layer3?.latestScan?.scannedAt ?? null;
+  // Has the user already scanned today (in their local timezone)? Once they
+  // have, the momentum CTA nudges a daily check-in instead of another scan.
+  const hasScannedToday = isSameLocalDay(lastScanAt, now);
   const lastCheckInDate = profile?.layer2?.energyLog?.length
     ? profile.layer2.energyLog[0].date
     : null;
+
+  // Has the user already checked in today (their local day)? The backend keys
+  // check-ins by UTC date, so we use each entry's `createdAt` timestamp and
+  // bucket it into the user's local day — same approach as the scan check.
+  const hasCheckedInToday = checkInHistory.some((c) =>
+    isSameLocalDay(c.createdAt, now),
+  );
+
+  // Nothing left to nudge once today's scan AND check-in are both in — hide
+  // the momentum bubble entirely.
+  const showMomentumCta = !(hasScannedToday && hasCheckedInToday);
   const { isFresh: biometricsFresh } = useBiometricFreshness(
     lastScanAt,
     lastCheckInDate,
@@ -444,6 +480,13 @@ export function ProfileScreen() {
     hasScan
       ? navigation.navigate("Scan", { mode: "rescan" })
       : navigation.navigate("Scan", { mode: "rescan" });
+
+  // Once the user has a scan on file, the momentum CTA nudges a daily check-in
+  // instead of another scan (matches the home-screen check-in entry point).
+  const goCheckIn = () => {
+    logEvent("profile_checkInCTA");
+    (navigation as any).navigate("AppOpenFlow", { screen: "SurveyV2" });
+  };
 
   // RES-145: Stat Detail tooltip sheet. Each profile section's arrow opens it
   // with the right variant + the value/trend the card is showing, so Ester's
@@ -760,26 +803,32 @@ export function ProfileScreen() {
                 </View>
               </View>
 
-              {/* Scan CTA */}
-              <TouchableOpacity
-                style={[
-                  styles.scanCta,
-                  { backgroundColor: TYPE_GRADIENT_STOPS[metabolicType].anchor },
-                ]}
-                onPress={goScan}
-                activeOpacity={0.9}
-              >
-                <TypeGradientFill type={metabolicType} idKey="scan" />
-                <Text style={styles.scanCtaText}>
-                  Keep up the momentum.{"  "}
-                  <Text style={styles.scanCtaTextBold}>
-                    {hasScan ? "Start today's scan." : "Start your first scan."}
+              {/* Momentum CTA — hidden once today's scan AND check-in are done */}
+              {showMomentumCta && (
+                <TouchableOpacity
+                  style={[
+                    styles.scanCta,
+                    { backgroundColor: TYPE_GRADIENT_STOPS[metabolicType].anchor },
+                  ]}
+                  onPress={hasScannedToday ? goCheckIn : goScan}
+                  activeOpacity={0.9}
+                >
+                  <TypeGradientFill type={metabolicType} idKey="scan" />
+                  <Text style={styles.scanCtaText}>
+                    Keep up the momentum.{"  "}
+                    <Text style={styles.scanCtaTextBold}>
+                      {hasScannedToday
+                        ? "Start today's check-in."
+                        : hasScan
+                          ? "Start today's scan."
+                          : "Start your first scan."}
+                    </Text>
                   </Text>
-                </Text>
-                <View style={styles.scanCtaArrow}>
-                  <ArrowForwardIcon />
-                </View>
-              </TouchableOpacity>
+                  <View style={styles.scanCtaArrow}>
+                    <ArrowForwardIcon />
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* See previous scans */}
               <TouchableOpacity
@@ -788,7 +837,7 @@ export function ProfileScreen() {
                 activeOpacity={0.8}
               >
                 <Text style={[styles.previousScansText, { color: surfaces.textStrong }]}>
-                  Or see previous scans
+                  See previous scans and surveys
                 </Text>
               </TouchableOpacity>
           </View>
