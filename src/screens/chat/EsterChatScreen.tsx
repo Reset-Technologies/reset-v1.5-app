@@ -14,6 +14,7 @@ import {
   Easing,
   ActivityIndicator,
   Dimensions,
+  PanResponder,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -889,6 +890,66 @@ export function EsterChatScreen() {
   const isSpeaking = speakingMessageId !== null;
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
+  // Drag-to-dismiss for the transcript sheet. The sheet rides a translateY that
+  // follows a downward drag on its grip; past a threshold (or a fast flick) it
+  // animates fully off-screen and closes, otherwise it springs back. A plain
+  // tap on the grip still closes (matching the prior behavior).
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  // The floating Speaker over the modal fades out as soon as the sheet is
+  // dragged down (and while it animates closed), so it's only visible while the
+  // sheet is at rest / open.
+  const sheetOverlayOpacity = sheetTranslateY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  // Reset to fully-open BEFORE mount so the sheet never paints at a stale
+  // dragged/off-screen offset. Done imperatively at the open call sites.
+  const openTranscriptSheet = () => {
+    // Drop the keyboard first — otherwise the container's keyboard padding keeps
+    // the layout squeezed and the sheet opens behind/around the keyboard.
+    Keyboard.dismiss();
+    sheetTranslateY.setValue(0);
+    setTranscriptOpen(true);
+  };
+  const closeTranscriptSheet = () => {
+    // Full screen height guarantees the sheet clears the view even when it's
+    // grown near-full-screen (keyboard up); it unmounts on finish either way.
+    const target = Dimensions.get("window").height;
+    Animated.timing(sheetTranslateY, {
+      toValue: target,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setTranscriptOpen(false);
+      // Leave translateY at `target` (sheet is now unmounted/off-screen); the
+      // next open resets it to 0. Resetting here would snap the still-mounted
+      // sheet back to the open position for one frame — the close "flash".
+    });
+  };
+  const transcriptPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) =>
+        g.dy > 4 && g.dy > Math.abs(g.dx),
+      onPanResponderMove: (_e, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_e, g) => {
+        const isTap = Math.abs(g.dy) < 5 && Math.abs(g.dx) < 5;
+        if (isTap || g.dy > 60 || g.vy > 0.35) {
+          closeTranscriptSheet();
+        } else {
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
   // The most recent Ester message — surfaced as read-along text in the call
   // view. While it's actively being read, only the revealed prefix shows.
   const currentEster = useMemo(() => {
@@ -952,6 +1013,154 @@ export function EsterChatScreen() {
     }
   }, [isLoadingHistory, currentEster, messages]);
 
+  // The composer (voice pill / keyboard field). Rendered in the bottom bar on
+  // the call view, and re-used inside the transcript sheet when it's open so
+  // it docks to the sheet's bottom above the keyboard (rather than floating
+  // over the transcript text).
+  const inputBar = (
+    <>
+      {inputMode === "voice" && (
+        <View style={[styles.inputPill, styles.inputPillVoice]}>
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            intensity={30}
+            tint="light"
+            overlay="rgba(255,255,255,0.1)"
+            overlayAndroid="rgba(40,20,22,0.9)"
+            shine
+          />
+          {/* Voice mode reuses the same frosted pill as text mode. The text
+              area shows the live draft (any text we started from + the
+              spoken words), or a "Listening…" placeholder until words land;
+              the right disc is the circle+square stop glyph. When not
+              listening (rare fallback) the placeholder reads "Type
+              anything…" and tapping it drops back to text mode. */}
+          <TouchableOpacity
+            style={styles.tapToSpeakHit}
+            onPress={isListening ? undefined : () => setInputMode("keyboard")}
+            activeOpacity={isListening ? 1 : 0.7}
+            disabled={isListening}
+          >
+            <Text
+              style={[
+                styles.inputPlaceholderText,
+                composeVoiceDraft() ? { color: K.bone } : null,
+              ]}
+              numberOfLines={3}
+            >
+              {composeVoiceDraft() ||
+                (isListening ? "Listening…" : "Type anything…")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.inputSideButton}
+            onPress={isListening ? commitVoiceDraft : startListening}
+            activeOpacity={0.85}
+            accessibilityLabel={isListening ? "Stop recording" : "Speak to Ester"}
+          >
+            <LiquidGlass
+              style={StyleSheet.absoluteFill}
+              intensity={24}
+              tint="light"
+              overlay="rgba(0,0,0,0)"
+              overlayAndroid="rgba(0,0,0,0)"
+              fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+              shine
+            />
+            <StopRecordingIcon size={38} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {inputMode === "keyboard" && (
+        <View style={[styles.inputPill, styles.inputPillVoice]}>
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            intensity={30}
+            tint="light"
+            overlay="rgba(255,255,255,0.1)"
+            overlayAndroid="rgba(40,20,22,0.9)"
+            shine
+          />
+          {/* Custom placeholder. A multiline iOS TextInput top-aligns its
+              native placeholder, and on clear the field's measured height
+              lags ~1s before collapsing to one line — so the native
+              placeholder renders high then drops ("jumps") on send. Ours is
+              centered against the pill, independent of the field height, so
+              it never moves. */}
+          {!inputText ? (
+            <View style={styles.inputPlaceholder} pointerEvents="none">
+              <Text style={styles.inputPlaceholderText}>Type anything…</Text>
+            </View>
+          ) : null}
+          <TextInput
+            key={`kbinput-${inputResetKey}`}
+            style={[styles.input, { color: K.bone }]}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleKeyboardSend}
+            // Multiline + scrollEnabled={false} grows the field to fit the
+            // text so a long message wraps and stays fully visible. The key
+            // (bumped on send) remounts the field on clear so it collapses to
+            // one line instantly instead of riding iOS's stale tall content
+            // size. submitBehavior="submit" makes Return fire onSubmitEditing
+            // WITHOUT inserting a newline (keeps the keyboard up).
+            multiline
+            scrollEnabled={false}
+            submitBehavior="submit"
+            maxLength={500}
+            returnKeyType="send"
+            // No autoFocus: text mode is the default, so auto-focusing would
+            // pop the keyboard on entry and cover the call visuals. The field
+            // focuses when the user taps it.
+          />
+          {/* Voice (5-lines) is ALWAYS available — tap to dictate; speech
+              appends to whatever's already in the field. The send arrow
+              appears beside it once there's text to send. */}
+          <TouchableOpacity
+            style={styles.inputSideButton}
+            onPress={startListening}
+            activeOpacity={0.85}
+            accessibilityLabel="Speak to Ester"
+          >
+            <LiquidGlass
+              style={StyleSheet.absoluteFill}
+              intensity={24}
+              tint="light"
+              overlay="rgba(0,0,0,0)"
+              overlayAndroid="rgba(0,0,0,0)"
+              fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
+              shine
+            />
+            <VoiceWaveIcon color="#FAFDFE" />
+          </TouchableOpacity>
+          {inputText.trim() ? (
+            <TouchableOpacity
+              style={styles.inputSideButton}
+              onPress={handleKeyboardSend}
+              activeOpacity={0.85}
+              accessibilityLabel="Send"
+            >
+              {/* Transparent dark glass to match the Read action button, so
+                  send reads as secondary next to the bright frosted voice
+                  button. Arrow is #FF0099 (like Read's glyph) to stay
+                  visible on the dark disc. */}
+              <LiquidGlass
+                style={StyleSheet.absoluteFill}
+                intensity={24}
+                tint="dark"
+                overlay="rgba(28,12,14,0.18)"
+                overlayAndroid="rgba(28,12,14,0.35)"
+                shine
+              />
+              <SendArrowIcon color="#FF0099" size={20} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+    </>
+  );
+
   return (
     <View style={styles.outerContainer}>
       <EsterBackground type={metabolicType} />
@@ -987,10 +1196,9 @@ export function EsterChatScreen() {
             playing={isSpeaking}
             style={styles.voiceLogo}
           />
-          {/* Action column. When the transcript sheet is open it sits behind the
-              sheet, so we hide it here and re-float Speaker above the sheet
-              (see actionsColOverlay below). */}
-          {!transcriptOpen && (
+          {/* Action column (Speaker + Read). Kept mounted so it's revealed
+              behind the transcript sheet as it's dragged down, rather than
+              popping in when the sheet closes (mirrors the read-along text). */}
           <View style={styles.actionsCol}>
             <VoiceActionButton
               label="Speaker"
@@ -1008,14 +1216,24 @@ export function EsterChatScreen() {
             <VoiceActionButton
               label="Read"
               shine
-              onPress={() => setTranscriptOpen((v) => !v)}
+              onPress={openTranscriptSheet}
             >
-              <ReadLinesIcon color="#FF0099" />
+              <ReadLinesIcon color="#FAFDFE" />
             </VoiceActionButton>
           </View>
-          )}
-          {currentEster && !transcriptOpen && !awaitingReply ? (
-            <View style={styles.currentMsgWrap}>
+          {/* Kept mounted while the sheet is open so it sits BEHIND it (sheet has
+              a higher zIndex + covers the bottom 70%). This reveals the read-along
+              text as the sheet is dragged away and avoids a remount flash/delay
+              when it closes. */}
+          {currentEster && !awaitingReply ? (
+            <View
+              style={[
+                styles.currentMsgWrap,
+                // While actively reading, sit at the original height; once the
+                // read-along finishes ("still" text), drop close to the input.
+                { bottom: activeReadId === currentEster.id ? 32 : 0 },
+              ]}
+            >
               {/* Bottom-anchored + height-capped: a long idle (full-text)
                   message scrolls inside this box instead of growing past the
                   top of the screen. The touchable lives inside the ScrollView
@@ -1027,7 +1245,7 @@ export function EsterChatScreen() {
               >
                 <TouchableOpacity
                   activeOpacity={0.9}
-                  onPress={() => setTranscriptOpen(true)}
+                  onPress={openTranscriptSheet}
                 >
                   <ReadAlongText
                     text={currentEster.text}
@@ -1043,14 +1261,33 @@ export function EsterChatScreen() {
 
         {/* Transcript pull-up sheet — the full conversation history */}
         {transcriptOpen && (
-        <View style={styles.transcriptSheet}>
-          <TouchableOpacity
-            style={styles.sheetHandleHit}
-            onPress={() => setTranscriptOpen(false)}
-            hitSlop={{ top: 12, bottom: 12, left: 40, right: 40 }}
-          >
+        <Animated.View
+          style={[
+            styles.transcriptSheet,
+            {
+              // Stretch between `top` and `bottom`. The sheet is absolutely
+              // positioned, so its bottom is anchored to the screen (not lifted
+              // by the container's keyboard padding) — set it explicitly to sit
+              // just above the keyboard when open, or above the safe area when
+              // not. `top` grows the sheet near full-screen with the keyboard up
+              // so the transcript + docked composer both fit; otherwise ~70%.
+              top:
+                keyboardHeight > 0
+                  ? insets.top + 8
+                  : Dimensions.get("window").height * 0.3,
+              // Mirror the container's keyboard padding (incl. the Android
+              // edge-to-edge buffer) so the docked composer clears the keyboard.
+              bottom:
+                keyboardHeight > 0
+                  ? keyboardHeight + (Platform.OS === "android" ? 12 : 0)
+                  : insets.bottom,
+              transform: [{ translateY: sheetTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.sheetHandleHit} {...transcriptPan.panHandlers}>
             <View style={styles.sheetGrip} />
-          </TouchableOpacity>
+          </View>
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
             <Image source={esterAvatar} style={styles.loadingAvatar} resizeMode="contain" />
@@ -1061,6 +1298,8 @@ export function EsterChatScreen() {
             style={styles.messagesContainer}
             contentContainerStyle={[
               styles.messagesContent,
+              // Clear the persistent composer chrome floating over the sheet's
+              // bottom, so the last message isn't hidden behind it.
               { paddingTop: 12, paddingBottom: 96 + insets.bottom },
             ]}
             onContentSizeChange={() =>
@@ -1142,15 +1381,17 @@ export function EsterChatScreen() {
             )}
           </ScrollView>
         )}
-        </View>
+        </Animated.View>
         )}
 
-        {/* With the transcript sheet up (70% tall), the action column would be
-            buried behind it — so float Speaker just above the sheet's top edge,
-            still right-aligned. Anchored to bottom:"70%" so it tracks the sheet
-            height on every device. Read is dropped (the sheet's open). */}
-        {transcriptOpen && (
-          <View style={styles.actionsColOverlay}>
+        {/* Floating Speaker above the open modal (right side, just above the
+            sheet's top edge). Only while the sheet is up and the keyboard is
+            down; it fades out as the user drags the sheet down. The main-screen
+            Speaker in the action column is separate and stays. */}
+        {transcriptOpen && keyboardHeight === 0 && (
+          <Animated.View
+            style={[styles.speakerOverlay, { opacity: sheetOverlayOpacity }]}
+          >
             <VoiceActionButton
               label="Speaker"
               shine
@@ -1161,151 +1402,13 @@ export function EsterChatScreen() {
             >
               <MuteIcon color="#361416" muted={!ttsEnabled} />
             </VoiceActionButton>
-          </View>
+          </Animated.View>
         )}
 
-        {/* Bottom input area — voice CTA | listening pill | keyboard input */}
-        <View style={styles.bottomBar}>
-          {inputMode === "voice" && (
-            <View style={[styles.inputPill, styles.inputPillVoice]}>
-              <LiquidGlass
-                style={StyleSheet.absoluteFill}
-                intensity={30}
-                tint="light"
-                overlay="rgba(255,255,255,0.1)"
-                overlayAndroid="rgba(40,20,22,0.45)"
-                shine
-              />
-              {/* Voice mode reuses the same frosted pill as text mode. The text
-                  area shows the live draft (any text we started from + the
-                  spoken words), or a "Listening…" placeholder until words land;
-                  the right disc is the circle+square stop glyph. When not
-                  listening (rare fallback) the placeholder reads "Type
-                  anything…" and tapping it drops back to text mode. */}
-              <TouchableOpacity
-                style={styles.tapToSpeakHit}
-                onPress={isListening ? undefined : () => setInputMode("keyboard")}
-                activeOpacity={isListening ? 1 : 0.7}
-                disabled={isListening}
-              >
-                <Text
-                  style={[
-                    styles.inputPlaceholderText,
-                    composeVoiceDraft() ? { color: K.bone } : null,
-                  ]}
-                  numberOfLines={3}
-                >
-                  {composeVoiceDraft() ||
-                    (isListening ? "Listening…" : "Type anything…")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.inputSideButton}
-                onPress={isListening ? commitVoiceDraft : startListening}
-                activeOpacity={0.85}
-                accessibilityLabel={isListening ? "Stop recording" : "Speak to Ester"}
-              >
-                <LiquidGlass
-                  style={StyleSheet.absoluteFill}
-                  intensity={24}
-                  tint="light"
-                  overlay="rgba(0,0,0,0)"
-                  overlayAndroid="rgba(0,0,0,0)"
-                  fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
-                  shine
-                />
-                <StopRecordingIcon size={38} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {inputMode === "keyboard" && (
-            <View style={[styles.inputPill, styles.inputPillVoice]}>
-              <LiquidGlass
-                style={StyleSheet.absoluteFill}
-                intensity={30}
-                tint="light"
-                overlay="rgba(255,255,255,0.1)"
-                overlayAndroid="rgba(40,20,22,0.45)"
-                shine
-              />
-              {/* Custom placeholder. A multiline iOS TextInput top-aligns its
-                  native placeholder, and on clear the field's measured height
-                  lags ~1s before collapsing to one line — so the native
-                  placeholder renders high then drops ("jumps") on send. Ours is
-                  centered against the pill, independent of the field height, so
-                  it never moves. */}
-              {!inputText ? (
-                <View style={styles.inputPlaceholder} pointerEvents="none">
-                  <Text style={styles.inputPlaceholderText}>Type anything…</Text>
-                </View>
-              ) : null}
-              <TextInput
-                key={`kbinput-${inputResetKey}`}
-                style={[styles.input, { color: K.bone }]}
-                value={inputText}
-                onChangeText={setInputText}
-                onSubmitEditing={handleKeyboardSend}
-                // Multiline + scrollEnabled={false} grows the field to fit the
-                // text so a long message wraps and stays fully visible. The key
-                // (bumped on send) remounts the field on clear so it collapses to
-                // one line instantly instead of riding iOS's stale tall content
-                // size. submitBehavior="submit" makes Return fire onSubmitEditing
-                // WITHOUT inserting a newline (keeps the keyboard up).
-                multiline
-                scrollEnabled={false}
-                submitBehavior="submit"
-                maxLength={500}
-                returnKeyType="send"
-                // No autoFocus: text mode is the default, so auto-focusing would
-                // pop the keyboard on entry and cover the call visuals. The field
-                // focuses when the user taps it.
-              />
-              {/* Voice (5-lines) is ALWAYS available — tap to dictate; speech
-                  appends to whatever's already in the field. The send arrow
-                  appears beside it once there's text to send. */}
-              <TouchableOpacity
-                style={styles.inputSideButton}
-                onPress={startListening}
-                activeOpacity={0.85}
-                accessibilityLabel="Speak to Ester"
-              >
-                <LiquidGlass
-                  style={StyleSheet.absoluteFill}
-                  intensity={24}
-                  tint="light"
-                  overlay="rgba(0,0,0,0)"
-                  overlayAndroid="rgba(0,0,0,0)"
-                  fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
-                  shine
-                />
-                <VoiceWaveIcon color="#FAFDFE" />
-              </TouchableOpacity>
-              {inputText.trim() ? (
-                <TouchableOpacity
-                  style={styles.inputSideButton}
-                  onPress={handleKeyboardSend}
-                  activeOpacity={0.85}
-                  accessibilityLabel="Send"
-                >
-                  {/* Transparent dark glass to match the Read action button, so
-                      send reads as secondary next to the bright frosted voice
-                      button. Arrow is #FF0099 (like Read's glyph) to stay
-                      visible on the dark disc. */}
-                  <LiquidGlass
-                    style={StyleSheet.absoluteFill}
-                    intensity={24}
-                    tint="dark"
-                    overlay="rgba(28,12,14,0.18)"
-                    overlayAndroid="rgba(28,12,14,0.35)"
-                    shine
-                  />
-                  <SendArrowIcon color="#FF0099" size={20} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          )}
-        </View>
+        {/* Persistent composer chrome: always mounted above the sheet (zIndex 30),
+            so it stays put while the transcript slides up/down behind it — no pop
+            on close — and stays usable (tap to type) while the sheet is open. */}
+        <View style={styles.bottomBar}>{inputBar}</View>
       </View>
     </View>
   );
@@ -1916,16 +2019,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 18,
   },
-  // Floated above the transcript sheet (height 70%) so End + Speaker stay
-  // reachable while the modal is up. bottom:"70%" aligns to the sheet's top edge;
-  // the translateY lifts it a touch so it rests just above, not flush.
-  actionsColOverlay: {
+  // Floating Speaker above the open sheet: right-aligned, sitting just above the
+  // sheet's top edge (sheet top is ~30% from top → bottom:"70%"), nudged up a
+  // touch so it rests above rather than flush.
+  speakerOverlay: {
     position: "absolute",
     right: 16,
     bottom: "70%",
-    transform: [{ translateY: -6 }],
+    // Lift enough that the label (which sits below the button) clears the
+    // sheet's top edge with a small gap.
+    transform: [{ translateY: -28 }],
     alignItems: "center",
-    gap: 10,
     zIndex: 30,
   },
   actionItem: {
@@ -1954,14 +2058,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing.lg,
     right: 92,
-    bottom: 16,
+    bottom: 0,
   },
   // Cap the read-along box to the lower ~40% of the screen so a long idle
   // (full-text) message scrolls inside it rather than overflowing up past the
   // logo / top bar. maxHeight on the ScrollView itself sizes it to content up
   // to the cap, then scrolls.
   currentMsgScroll: {
-    maxHeight: Dimensions.get("window").height * 0.4,
+    // Let a long finished (idle) message grow taller — up toward the logo —
+    // with its bottom staying just above the input bubble; it scrolls past this.
+    maxHeight: Dimensions.get("window").height * 0.5,
   },
   // Loading dots — bottom-left, vertically aligned with the Read button.
   callDots: {
@@ -1983,8 +2089,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
-    height: "70%",
+    // top + bottom are set inline (keyboard-aware) to size the sheet and keep
+    // its docked composer above the keyboard / safe area.
+    flexDirection: "column",
     backgroundColor: "#361416",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -1999,7 +2106,9 @@ const styles = StyleSheet.create({
   },
   sheetHandleHit: {
     alignItems: "center",
-    paddingVertical: 6,
+    // Roomy vertical hit area so the sheet is easy to grab and pull down.
+    paddingTop: 10,
+    paddingBottom: 22,
   },
   sheetGrip: {
     width: 36,
@@ -2146,9 +2255,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
-    // Sit above the transcript sheet (zIndex 20) so the input bubble stays
-    // visible at the bottom of the modal when it's open.
+    // Above the transcript sheet (zIndex 20) so the composer stays visible and
+    // usable while the sheet is open, and the sheet slides behind it. On Android
+    // touch order follows elevation (not zIndex), and the sheet has elevation 24
+    // — so without a higher elevation here the sheet swallows taps meant for the
+    // TextInput (couldn't place/drag the cursor).
     zIndex: 30,
+    elevation: 30,
   },
   voiceCtaRow: {
     flexDirection: "row",

@@ -60,10 +60,16 @@ export function EsterLogoVideo({
         settleTimer.current = null;
       }
     };
+    // start/stopAnimating reject if the WebP view was already recycled (the
+    // resetKey remount swaps it out) — swallow that so it doesn't surface as an
+    // uncaught-promise error banner. The remount handles the visual reset.
+    const ignoreRejection = (p: any) => {
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    };
     if (playing) {
       clearTimer();
       startedAtRef.current = Date.now();
-      ref.current?.startAnimating?.();
+      ignoreRejection(ref.current?.startAnimating?.());
     } else {
       clearTimer();
       const dur = TYPE_DURATION_MS[type] || 0;
@@ -73,11 +79,11 @@ export function EsterLogoVideo({
         const elapsed = Date.now() - startedAtRef.current;
         const remainingMs = dur - (elapsed % dur);
         settleTimer.current = setTimeout(() => {
-          ref.current?.stopAnimating?.();
+          ignoreRejection(ref.current?.stopAnimating?.());
           setResetKey((k) => k + 1);
         }, remainingMs + 60);
       } else {
-        ref.current?.stopAnimating?.();
+        ignoreRejection(ref.current?.stopAnimating?.());
         setResetKey((k) => k + 1);
       }
     }
