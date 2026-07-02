@@ -21,7 +21,7 @@ interface EsterBubbleProps {
  * - greeting: Large bubble for Home screen, prominent avatar
  * - inline: Small bubble after check-in or quick responses
  * - observation: Card style for nudge slot, observational messages
- * - nudge: Card with action prompt, used for prompts like Yap Session
+ * - nudge: Card with action prompt, used for prompts like scan reminders
  */
 export function EsterBubble({
   message,

@@ -16,7 +16,6 @@ import {
 import type { Meal } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { useFeedbackPrompt } from "../../hooks/useFeedbackPrompt";
-import { useYapNudge } from "../../hooks/useYapNudge";
 import * as BrazeService from "../../services/braze";
 import { useScanNudge } from "../../hooks/useScanNudge";
 import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
@@ -162,13 +161,7 @@ export function HomeScreen() {
   const [favoritedMeals, setFavoritedMeals] = useState<Set<string>>(new Set());
   const [observationNudge, setObservationNudge] = useState<ReturnType<typeof NudgeContent.observation> | null>(null);
 
-  // Yap session nudge (priority over observations)
-  const handleStartYap = useCallback((yapSessionId: string) => {
-    navigation.navigate("YapCall", { yapSessionId });
-  }, [navigation]);
-  const { nudge: yapNudge } = useYapNudge(handleStartYap);
-
-  // Scan nudge (between yap and observation)
+  // Scan nudge
   const handleStartScan = useCallback(() => {
     navigation.navigate("Scan", { mode: "rescan", returnTo: "ScoreReveal" });
   }, [navigation]);
@@ -184,8 +177,8 @@ export function HomeScreen() {
   const { isFresh: biometricsFresh, ageLabel } = useBiometricFreshness(lastScanAt, lastCheckInDate);
   const showStaleBanner = !biometricsFresh && (profile?.layer3?.scanCount ?? 0) > 0;
 
-  // Priority: yap > scan > observation
-  const nudge = yapNudge || scanNudge || observationNudge;
+  // Priority: scan > observation
+  const nudge = scanNudge || observationNudge;
   const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
   const [tomorrowPlan, setTomorrowPlan] = useState<DailyPlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
@@ -334,12 +327,7 @@ export function HomeScreen() {
   };
 
   const handleNudgeDismiss = () => {
-    // If the active nudge is a yap nudge, use its dismiss handler
-    if (yapNudge?._onDismiss) {
-      yapNudge._onDismiss();
-    } else {
-      setObservationNudge(null);
-    }
+    setObservationNudge(null);
   };
 
   const handleMealChatPress = (meal: Meal) => {

@@ -9,7 +9,6 @@ import { ProfileScreen } from "../screens/profile";
 import { EsterChatScreen } from "../screens/chat";
 import { RecipeDetailScreen } from "../screens/recipe";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
-import { YapCallScreen } from "../screens/yap/YapCallScreen";
 import { ScanScreen } from "../screens/onboarding/ScanScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
@@ -53,9 +52,6 @@ export type MainStackParamList = {
   SavedMeals: undefined;
   WeeklyReview: undefined;
   Settings: undefined;
-  YapCall: {
-    yapSessionId: string;
-  };
   Scan: {
     mode: "rescan";
     returnTo?: "ScanResults" | "ScoreReveal";
@@ -162,14 +158,6 @@ export function MainNavigator() {
         component={SettingsScreen}
         options={{
           presentation: "modal",
-          animation: "slide_from_bottom",
-        }}
-      />
-      <Stack.Screen
-        name="YapCall"
-        component={YapCallScreen}
-        options={{
-          presentation: "fullScreenModal",
           animation: "slide_from_bottom",
         }}
       />

@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         "Reset uses speech recognition to transcribe what you say to Ester.",
       NSPhotoLibraryUsageDescription:
         "Reset may request photo access if you choose to share or upload images.",
-      UIBackgroundModes: ["voip", "audio", "remote-notification"],
+      UIBackgroundModes: ["remote-notification"],
     },
   },
   android: {

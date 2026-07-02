@@ -4,7 +4,7 @@ import { K } from "../constants/colors";
 import { typography, spacing, radius } from "../constants/typography";
 import { Avatar } from "./Avatar";
 
-export type NudgeType = "yap" | "scan" | "observation" | "milestone" | "generic";
+export type NudgeType = "scan" | "observation" | "milestone" | "generic";
 
 export interface NudgeContentData {
   type: NudgeType;
@@ -22,17 +22,12 @@ interface NudgeSlotProps {
   onDismiss?: () => void;
 }
 
-// Priority order: yap > scan > observation > milestone > generic
+// Priority order: scan > observation > milestone > generic
 const TYPE_CONFIG: Record<NudgeType, {
   icon: string;
   backgroundColor: string;
   avatarState: "neutral" | "observing" | "celebrating";
 }> = {
-  yap: {
-    icon: "💬",
-    backgroundColor: K.ochre,
-    avatarState: "neutral",
-  },
   scan: {
     icon: "📸",
     backgroundColor: K.blue,
@@ -98,16 +93,6 @@ export function NudgeSlot({ content, onDismiss }: NudgeSlotProps) {
 
 // Pre-built nudge content generators
 export const NudgeContent = {
-  yapSession: (onPress: () => void, customMessage?: string): NudgeContentData => ({
-    type: "yap",
-    title: "Got a minute?",
-    message: customMessage || "Tell me how today's meals worked for you. Quick chat — 60 seconds max.",
-    action: {
-      label: "Start Yap Session",
-      onPress,
-    },
-  }),
-
   scanPrompt: (onPress: () => void): NudgeContentData => ({
     type: "scan",
     title: "Time for a scan",
