@@ -50,6 +50,9 @@ interface Props {
   evening: boolean;
   // The user's metabolic-type logo, shown on the Ester insight card.
   typeLogo: ImageSourcePropType;
+  // Hide the "Start a chat" CTA (and its lead-in line). Set in onboarding,
+  // where Ester chat isn't reachable from the stack. Profile keeps it.
+  hideChat?: boolean;
   onClose: () => void;
   onStartChat: (topic: { kind: ProfileMetric; label?: string | null }) => void;
 }
@@ -217,6 +220,7 @@ export function StatDetailSheet({
   accent,
   evening,
   typeLogo,
+  hideChat = false,
   onClose,
   onStartChat,
 }: Props) {
@@ -390,27 +394,31 @@ export function StatDetailSheet({
                       <Text style={styles.insightText}>
                         {renderBold(insight ?? "", textSubtle, textStrong)}
                       </Text>
-                      <Text
-                        style={[styles.insightFollow, { color: textSubtle }]}
-                      >
-                        Want to talk more about this?
-                      </Text>
+                      {!hideChat ? (
+                        <Text
+                          style={[styles.insightFollow, { color: textSubtle }]}
+                        >
+                          Want to talk more about this?
+                        </Text>
+                      ) : null}
                     </>
                   )}
                 </View>
               </View>
-              <TouchableOpacity
-                style={[styles.chatBtn, { backgroundColor: accent }]}
-                onPress={() =>
-                  onStartChat({
-                    kind: data.metric,
-                    label: data.value ?? data.title,
-                  })
-                }
-                activeOpacity={0.85}
-              >
-                <Text style={styles.chatBtnText}>Start a chat</Text>
-              </TouchableOpacity>
+              {!hideChat ? (
+                <TouchableOpacity
+                  style={[styles.chatBtn, { backgroundColor: accent }]}
+                  onPress={() =>
+                    onStartChat({
+                      kind: data.metric,
+                      label: data.value ?? data.title,
+                    })
+                  }
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.chatBtnText}>Start a chat</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </ScrollView>
 
@@ -547,7 +555,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
-  esterAvatar: { width: 44, height: 44, borderRadius: 22 },
+  esterAvatar: { width: 44, height: 44 },
   insightTextWrap: { flex: 1, justifyContent: "center", paddingTop: 2 },
   insightText: {
     fontFamily: fonts.catalogue,
