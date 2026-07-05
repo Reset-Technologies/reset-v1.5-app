@@ -36,7 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.betterwell.reset.dev",
     permissions: ["RECORD_AUDIO"],
     adaptiveIcon: {
-      backgroundColor: "#F3EFE3",
+      backgroundColor: "#F1EDE1",
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
       monochromeImage: "./assets/android-icon-monochrome.png",
@@ -89,9 +89,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "./plugins/withRegisterPush",
-    // Wires Twilio Voice's VoiceApplicationProxy into the Android Application
-    // lifecycle — without it the app crashes on launch (null JSEventEmitter).
-    "./plugins/withTwilioVoiceAndroid",
     // Enables modular headers for GoogleUtilities/RecaptchaInterop so the Swift pod
     // AppCheckCore can be integrated as a static library (broke after adding
     // expo-image's SDWebImage stack). See plugins/withModularHeaders.js.
