@@ -29,6 +29,9 @@ import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
 import { playRevealHaptics } from "../../utils/revealHaptics";
+import { TypeSummaryCard } from "./TypeSummaryCard";
+import { StatDetailSheet, StatDetailData } from "../profile/StatDetailSheet";
+import { TYPE_PRIMARY } from "../../constants/metabolicProfile";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
 
@@ -103,14 +106,14 @@ const STARTING_READ_PARAGRAPH =
 // effect comes from the staggered offsets + the inset "Bubble" shadow.
 const CARD_SIDE_MARGIN = 12;
 const CARD_W = SCREEN_W - CARD_SIDE_MARGIN * 2;
-const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W];
+const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
 
-const TOTAL_CARDS = 4;
+const TOTAL_CARDS = 5;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
 // fetch fails outright (timeout, auth error, etc.). The normal "no scan"
@@ -131,13 +134,15 @@ const SWIPE_DISMISS_VX = -0.6;
 // Mirrors Figma 1940:17991 — cards fly in from upper-right with positive
 // rotation, with the back card landing first and the front card last.
 const ENTRY_POSE = [
-  // idx 0 (front): biggest fling
+  // idx 0 (front / type reveal): biggest fling
   { dx: SCREEN_W * 0.75, dy: -SCREEN_H * 0.55, rot: 16 },
-  // idx 1
+  // idx 1 (type summary — RES-146)
+  { dx: SCREEN_W * 0.68, dy: -SCREEN_H * 0.5, rot: 14 },
+  // idx 2 (reset score)
   { dx: SCREEN_W * 0.6, dy: -SCREEN_H * 0.45, rot: 13 },
-  // idx 2 (insight)
+  // idx 3 (insight)
   { dx: SCREEN_W * 0.42, dy: -SCREEN_H * 0.3, rot: 9 },
-  // idx 3 (back): subtle settle
+  // idx 4 (back / meal teaser): subtle settle
   { dx: SCREEN_W * 0.28, dy: -SCREEN_H * 0.2, rot: 6 },
 ];
 
@@ -464,6 +469,15 @@ export function TypeRevealScreen({ navigation }: Props) {
       ? (rawType as MetabolicType)
       : "Explorer";
 
+  // RES-146: the type-summary card (idx 1) mirrors the Profile screen; its
+  // card arrows open the shared StatDetailSheet at the screen level.
+  const userName = state.user.name?.trim() || "You";
+  const [detail, setDetail] = useState<StatDetailData | null>(null);
+  const openDetail = (d: StatDetailData) => {
+    logEvent("onboarding_type_summary_statDetail", { metric: d.metric });
+    setDetail(d);
+  };
+
   // Pull the same Reset Score the Home screen will show, so the number on
   // the middle card matches Home exactly (rather than the raw SDK wellness).
   // Backend lazily computes/persists if the fire-and-forget recompute kicked
@@ -543,7 +557,7 @@ export function TypeRevealScreen({ navigation }: Props) {
     // either one before snapping to the real text.
     Animated.stagger(
       140,
-      [3, 2, 1, 0].map((i) =>
+      [4, 3, 2, 1, 0].map((i) =>
         Animated.spring(slideIn[i], {
           toValue: 1,
           useNativeDriver: true,
@@ -617,7 +631,7 @@ export function TypeRevealScreen({ navigation }: Props) {
     [pan]
   );
 
-  const renderCard = (idx: 0 | 1 | 2 | 3) => {
+  const renderCard = (idx: 0 | 1 | 2 | 3 | 4) => {
     const isActive = idx === activeIdx;
     const isDismissed = idx < activeIdx;
     const pose = ENTRY_POSE[idx];
@@ -692,6 +706,17 @@ export function TypeRevealScreen({ navigation }: Props) {
       );
     } else if (idx === 1) {
       content = (
+        <TypeSummaryCard
+          type={metabolicType}
+          userName={userName}
+          goalSlug={state.user.goal ?? null}
+          width={CARD_WIDTHS[1]}
+          height={cardH}
+          onOpenDetail={openDetail}
+        />
+      );
+    } else if (idx === 2) {
+      content = (
         <MiddleCard
           type={metabolicType}
           score={score}
@@ -699,7 +724,7 @@ export function TypeRevealScreen({ navigation }: Props) {
           daysToFull={daysToFull}
         />
       );
-    } else if (idx === 2) {
+    } else if (idx === 3) {
       content = (
         <InsightCard
           type={metabolicType}
@@ -778,12 +803,26 @@ export function TypeRevealScreen({ navigation }: Props) {
           state with just the spinner until both resolve. */}
       {loaded && (
         <>
+          {renderCard(4)}
           {renderCard(3)}
           {renderCard(2)}
           {renderCard(1)}
           {renderCard(0)}
         </>
       )}
+
+      {/* Stat-detail tooltip for the summary card's arrows — rendered at the
+          screen level so it isn't clipped/rotated by the card stack. */}
+      <StatDetailSheet
+        visible={detail != null}
+        data={detail}
+        accent={TYPE_PRIMARY[metabolicType]}
+        evening={false}
+        typeLogo={TYPE_LOGO[metabolicType]}
+        hideChat
+        onClose={() => setDetail(null)}
+        onStartChat={() => setDetail(null)}
+      />
     </View>
   );
 }
