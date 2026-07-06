@@ -10,14 +10,12 @@ import {
   Image,
   Share,
   ActivityIndicator,
-  Platform,
   ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { BlurView } from "expo-blur";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
-import { MetabolicType } from "../../constants/colors";
+import { MetabolicType, TC } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 // RES-121: metabolicType is now sourced from `state.user.metabolicType`
 // (set by CreateAccountScreen after the backend's TypingService runs on
@@ -28,6 +26,7 @@ import { ScoreRing } from "../../components/survey/ScoreRing";
 import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
+import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
 import { playRevealHaptics } from "../../utils/revealHaptics";
 import { TypeSummaryCard } from "./TypeSummaryCard";
 import { StatDetailSheet, StatDetailData } from "../profile/StatDetailSheet";
@@ -153,44 +152,68 @@ const EXIT_DX = -SCREEN_W * 1.2;
 const EXIT_DY = -SCREEN_H * 0.55;
 const EXIT_ROT = -16;
 
+// RES-149: "#rrggbb" -> normalized [r,g,b] for the Skia invisible-ink uniform.
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
 // ── Cards ──────────────────────────────────────────────────────────────
 function FrontCard({
   type,
   startingRead,
   revealed,
+  dismissed,
   onReveal,
   onShareResults,
 }: {
   type: MetabolicType;
   startingRead: boolean;
   revealed: boolean;
+  dismissed: boolean;
   onReveal: () => void;
   onShareResults: () => void;
 }) {
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const revealedOpacity = useRef(new Animated.Value(0)).current;
+  // RES-149: measured bone-card size so the Skia invisible-ink overlay can cover
+  // it exactly. Null until first layout — a plain opaque bone fill stands in for
+  // that one frame so the type never leaks before the shimmer mounts.
+  const [inkSize, setInkSize] = useState<{ w: number; h: number } | null>(null);
+  // RES-149: the invisible ink is tinted with this metabolic type's accent so it
+  // reads as a solid coloured "scratch surface" that dissolves to reveal content.
+  const inkAccent = TC[type].bg;
+  const inkColor = useMemo(() => hexToRgb(inkAccent), [inkAccent]);
   useEffect(() => {
     Animated.parallel([
+      // The "Tap to reveal" button fades out fast on tap; the ink itself does
+      // the reveal via its dissolve (see InvisibleInkOverlay).
       Animated.timing(overlayOpacity, {
         toValue: revealed ? 0 : 1,
-        duration: 280,
+        duration: 240,
         useNativeDriver: true,
       }),
+      // Share button + swipe caption fade in over the back half of the (slower)
+      // ink dissolve so they land just as the card finishes revealing.
       Animated.timing(revealedOpacity, {
         toValue: revealed ? 1 : 0,
-        duration: 280,
+        duration: revealed ? 1100 : 200,
+        delay: revealed ? REVEAL_DURATION_MS * 0.55 : 0,
         useNativeDriver: true,
       }),
     ]).start();
   }, [revealed]);
 
-  // RES-138: on reveal, run the building haptic ramp in sync with the reveal
-  // animation. Cancel any pending pulses on unmount / re-reveal.
+  // RES-149: on reveal, run the building haptic ramp locked to the pixel
+  // dissolve (shares REVEAL_DURATION_MS) so the crescendo lands as the card
+  // finishes revealing, then a gentle throb holds until the user swipes to the
+  // next card. Cancel on swipe (dismissed), unmount, or re-reveal — the front
+  // card stays mounted after dismiss, so `dismissed` is what stops the throb.
   useEffect(() => {
-    if (!revealed) return;
-    const cancel = playRevealHaptics();
+    if (!revealed || dismissed) return;
+    const cancel = playRevealHaptics(REVEAL_DURATION_MS);
     return cancel;
-  }, [revealed]);
+  }, [revealed, dismissed]);
 
   return (
     <View style={[styles.card, { width: CARD_WIDTHS[0], backgroundColor: CARD_BG_FRONT }]}>
@@ -198,7 +221,17 @@ function FrontCard({
         <View style={styles.innerStack}>
           <Text style={styles.headerText}>Here is your type!</Text>
 
-          <View style={styles.typeBoneCard}>
+          <View
+            style={styles.typeBoneCard}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setInkSize((prev) =>
+                prev && prev.w === width && prev.h === height
+                  ? prev
+                  : { w: width, h: height },
+              );
+            }}
+          >
             <View style={styles.typeLogoWrap}>
               <TypeRevealHero
                 type={type}
@@ -216,22 +249,31 @@ function FrontCard({
               {startingRead ? STARTING_READ_PARAGRAPH : TYPE_PARAGRAPH[type]}
             </Text>
 
-            {/* Blur overlay with Tap to reveal — fades out once tapped. */}
-            <Animated.View
+            {/* RES-149: invisible-ink pixel reveal. An opaque bone Skia field
+                with a live copper/white shimmer hides the type, then dissolves
+                into drifting pixels on tap. A plain bone fill covers the single
+                frame before the card is measured so nothing leaks. The "Tap to
+                reveal" button fades out fast; the ink does the reveal itself. */}
+            <View
               pointerEvents={revealed ? "none" : "auto"}
-              style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}
+              style={StyleSheet.absoluteFill}
             >
-              {Platform.OS === "ios" ? (
-                <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
+              {inkSize ? (
+                <InvisibleInkOverlay
+                  width={inkSize.w}
+                  height={inkSize.h}
+                  revealed={revealed}
+                  inkColor={inkColor}
+                />
               ) : (
-                // expo-blur's Android blur (dimezisBlurView) renders unevenly
-                // against this rounded, layered card — leaving a lighter
-                // un-blurred ring. A uniform frosted-bone panel hides the type
-                // cleanly and edge-to-edge instead.
-                <View style={[StyleSheet.absoluteFill, styles.androidFrost]} />
+                <View
+                  style={[StyleSheet.absoluteFill, { backgroundColor: inkAccent }]}
+                />
               )}
-              <View style={styles.blurDim} />
-              <View style={styles.revealCenter}>
+              <Animated.View
+                pointerEvents={revealed ? "none" : "auto"}
+                style={[styles.revealCenter, { opacity: overlayOpacity }]}
+              >
                 <TouchableOpacity
                   onPress={onReveal}
                   activeOpacity={0.85}
@@ -239,8 +281,8 @@ function FrontCard({
                 >
                   <Text style={styles.revealBtnText}>Tap to reveal</Text>
                 </TouchableOpacity>
-              </View>
-            </Animated.View>
+              </Animated.View>
+            </View>
           </View>
 
           <Animated.View
@@ -690,6 +732,7 @@ export function TypeRevealScreen({ navigation }: Props) {
           type={metabolicType}
           startingRead={!!state.user.startingRead}
           revealed={revealed}
+          dismissed={activeIdx > 0}
           onReveal={() => {
             logEvent("onboarding_type_reveal_tap");
             setRevealed(true);
@@ -944,12 +987,9 @@ const styles = StyleSheet.create({
     gap: 24,
     overflow: "hidden",
   },
-  // Android frosted-glass stand-in for BlurView (which blurs unevenly here).
-  // Near-opaque bone fully hides the type until "Tap to reveal"; the maroon
-  // blurDim layer on top adds the same tint iOS gets from its real blur.
-  androidFrost: {
-    backgroundColor: "rgba(243,239,227,0.985)",
-  },
+  // RES-149: opaque bone stand-in shown for the single frame before the bone
+  // card is measured and the Skia invisible-ink overlay mounts — matches the
+  // ink's bone base so the swap is seamless and the type never leaks.
   typeLogoWrap: {
     alignItems: "center",
     justifyContent: "center",
@@ -989,10 +1029,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: SUBTLE,
     letterSpacing: -0.14,
-  },
-  blurDim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(54,20,22,0.24)",
   },
   revealCenter: {
     ...StyleSheet.absoluteFillObject,
