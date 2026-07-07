@@ -118,8 +118,11 @@ const TOTAL_CARDS = 5;
 // fetch fails outright (timeout, auth error, etc.). The normal "no scan"
 // case doesn't apply here because TypeReveal is only reached after a
 // successful scan + account creation.
-const INSIGHT_FALLBACK =
-  "Your scan picked up where you are right now — and today's meals are picked to meet you there.";
+// Two-beat fallbacks for the split takeaway card (used if the fetch fails).
+const INSIGHT_NOTICED_FALLBACK =
+  "Your scan gives me a first read on where your body is today.";
+const INSIGHT_MEAL_FALLBACK =
+  "Today's meals are chosen to meet you there and keep your energy steady.";
 
 // All cards share the page-surface white per Figma — the visible peek
 // between stacked cards comes from the inset "Bubble" shadow, not a
@@ -366,45 +369,50 @@ function MiddleCard({
 
 function InsightCard({
   type,
-  insightText,
+  noticed,
+  mealBecause,
   bodyMaxHeight,
 }: {
   type: MetabolicType;
-  insightText: string;
+  noticed: string;
+  mealBecause: string;
   bodyMaxHeight: number;
 }) {
   const logo = TYPE_LOGO[type];
+  // The scan takeaway, broken into two beats: "what we noticed" (the scan/
+  // check-in observation) then "your meal because of that" (the generic meal
+  // direction). Each beat is its own eyebrow + bubble. Each bubble scrolls
+  // internally (overflow hidden + capped height) so a long beat never runs its
+  // outline off the card edge; the horizontal card-swipe still wins gesture
+  // negotiation because the parent PanResponder only claims on |dx| > |dy|.
+  const beats: Array<{ label: string; body: string }> = [
+    { label: "What we noticed", body: noticed },
+    { label: "Your meal because of that", body: mealBecause },
+  ];
   return (
     <View style={[styles.card, styles.insightCard, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.insightCardContent}>
         <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
         <Text style={styles.midGreeting}>
-          Here's my biggest takeaway from your scan.
+          Here's what I'm thinking about your scan.
         </Text>
-        <View style={styles.insightWrap}>
-          <View style={[styles.eyebrowRow, styles.insightEyebrowRow]}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrowText}>Today's Insight</Text>
+        {beats.map((beat) => (
+          <View key={beat.label} style={styles.insightWrap}>
+            <View style={[styles.eyebrowRow, styles.insightEyebrowRow]}>
+              <View style={styles.eyebrowDot} />
+              <Text style={styles.eyebrowText}>{beat.label}</Text>
+            </View>
+            <View style={styles.insightBubble}>
+              <ScrollView
+                style={{ maxHeight: bodyMaxHeight }}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                <Text style={styles.insightBody}>{beat.body}</Text>
+              </ScrollView>
+            </View>
           </View>
-          {/* RES-138: only the insight body scrolls, and it scrolls INSIDE the
-              bubble — so a long LLM blurb never runs the bubble outline off the
-              card edge. The logo / header / eyebrow stay fixed and the whole
-              block stays vertically centered. maxHeight lets the bubble grow to
-              fit short insights (compact, the Figma look) and cap + scroll
-              internally for long ones. The bubble's `overflow: hidden` keeps
-              the scrolled text clipped inside the rounded outline. The
-              horizontal card-swipe still wins gesture negotiation because the
-              parent PanResponder only claims on |dx| > |dy| moves. */}
-          <View style={styles.insightBubble}>
-            <ScrollView
-              style={{ maxHeight: bodyMaxHeight }}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              <Text style={styles.insightBody}>{insightText}</Text>
-            </ScrollView>
-          </View>
-        </View>
+        ))}
       </View>
     </View>
   );
@@ -528,7 +536,10 @@ export function TypeRevealScreen({ navigation }: Props) {
   // call dominates total latency, so kicking it off alongside the score
   // keeps the loading window tight.
   const [resetScore, setResetScore] = useState<ResetScore | null>(null);
-  const [insightText, setInsightText] = useState<string | null>(null);
+  // Two-beat scan takeaway (split format): "what we noticed" + "your meal
+  // because of that". Pre-paywall the meal half is generic (no dish named).
+  const [insightNoticed, setInsightNoticed] = useState<string | null>(null);
+  const [insightMeal, setInsightMeal] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -536,16 +547,18 @@ export function TypeRevealScreen({ navigation }: Props) {
     (async () => {
       const [scoreRes, insightRes] = await Promise.allSettled([
         getResetScore(),
-        // No meal slots yet — the endpoint adapts the prompt to skip meal
-        // references when slots are absent.
-        getScanInsightsMessage(undefined),
+        // No meal slots pre-paywall; request the SPLIT format so the takeaway
+        // renders as two beats ("what we noticed" + "your meal because of that")
+        // instead of one wall of text. The long prose stays post-paywall.
+        getScanInsightsMessage(undefined, "split"),
       ]);
       if (cancelled) return;
       if (scoreRes.status === "fulfilled") {
         setResetScore(scoreRes.value.score ?? null);
       }
       if (insightRes.status === "fulfilled") {
-        setInsightText(insightRes.value.text);
+        setInsightNoticed(insightRes.value.noticed ?? null);
+        setInsightMeal(insightRes.value.mealBecause ?? null);
       }
       setLoaded(true);
     })();
@@ -771,12 +784,13 @@ export function TypeRevealScreen({ navigation }: Props) {
       content = (
         <InsightCard
           type={metabolicType}
-          insightText={insightText ?? INSIGHT_FALLBACK}
-          // Cap the bubble's scroll area to whatever room is left after the
-          // fixed logo/header/eyebrow + paddings, so it scrolls internally
-          // before the bubble can reach the card's bottom edge. Derived from
-          // the (responsive) card height so it adapts on Android's shorter card.
-          bodyMaxHeight={Math.max(140, cardH - 288)}
+          noticed={insightNoticed ?? INSIGHT_NOTICED_FALLBACK}
+          mealBecause={insightMeal ?? INSIGHT_MEAL_FALLBACK}
+          // Cap EACH bubble's scroll area to a share of the room left after the
+          // fixed logo/header/eyebrows + paddings, so a long beat scrolls
+          // internally before the card can overflow. Derived from the
+          // (responsive) card height so it adapts on Android's shorter card.
+          bodyMaxHeight={Math.max(80, Math.floor((cardH - 340) / 2))}
         />
       );
     } else {

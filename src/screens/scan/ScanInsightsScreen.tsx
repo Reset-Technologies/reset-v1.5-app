@@ -27,6 +27,11 @@ import { TrendIcon } from "../../components/TrendIcon";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
+// Two-beat fallbacks for the "Messages from Ester" bubbles.
+const FALLBACK_NOTICED =
+  "Your scan gives me a read on where your body is today.";
+const FALLBACK_MEAL_BECAUSE =
+  "Today's meals are picked to meet you there and keep your energy steady.";
 
 const TYPE_LOGO = {
   Burner: require("../../../assets/images/type-logos/Burner.png"),
@@ -150,7 +155,10 @@ export function ScanInsightsScreen() {
     toMetabolicType(state.user.metabolicType) ?? "Explorer";
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [checkIns, setCheckIns] = useState<CheckInEntry[]>([]);
-  const [blurb, setBlurb] = useState<string | null>(null);
+  // Two "Messages from Ester" bubbles (split format): "what we noticed" + "your meal
+  // because of that". Post-paywall the meal beat names the actual meals.
+  const [noticed, setNoticed] = useState<string | null>(null);
+  const [mealBecause, setMealBecause] = useState<string | null>(null);
   const [blurbLoading, setBlurbLoading] = useState(true);
 
   useEffect(() => {
@@ -179,10 +187,18 @@ export function ScanInsightsScreen() {
           }
         : undefined;
       try {
-        const res = await getScanInsightsMessage(mealSlots);
-        if (!cancelled) setBlurb(res.text || FALLBACK_BLURB);
+        // Split format: meal slots present here (post-paywall), so the meal beat
+        // names the actual meals rather than staying generic.
+        const res = await getScanInsightsMessage(mealSlots, "split");
+        if (!cancelled) {
+          setNoticed(res.noticed ?? FALLBACK_NOTICED);
+          setMealBecause(res.mealBecause ?? FALLBACK_MEAL_BECAUSE);
+        }
       } catch {
-        if (!cancelled) setBlurb(FALLBACK_BLURB);
+        if (!cancelled) {
+          setNoticed(FALLBACK_NOTICED);
+          setMealBecause(FALLBACK_MEAL_BECAUSE);
+        }
       } finally {
         if (!cancelled) setBlurbLoading(false);
       }
@@ -338,40 +354,78 @@ export function ScanInsightsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Ester message */}
+        {/* Messages from Ester — two separate chat bubbles: what we noticed,
+            then your meal because of that. */}
         <View style={styles.esterBlock}>
           <View style={styles.esterEyebrowRow}>
             <View style={styles.esterEyebrowDot} />
             <Text style={[styles.esterEyebrowText, { color: textColor }]}>
-              Message from Ester
+              Messages from Ester
             </Text>
           </View>
-          <View style={[styles.esterCard, { backgroundColor: nestedBg }]}>
-            <Image
-              source={TYPE_LOGO[metabolicType]}
-              style={styles.esterAvatar}
-              resizeMode="contain"
-            />
-            <View style={styles.esterTextWrap}>
-              {!hasAnyData ? (
+
+          {!hasAnyData ? (
+            <View style={[styles.esterCard, { backgroundColor: nestedBg }]}>
+              <Image
+                source={TYPE_LOGO[metabolicType]}
+                style={styles.esterAvatar}
+                resizeMode="contain"
+              />
+              <View style={styles.esterTextWrap}>
                 <Text style={[styles.esterText, { color: textColor }]}>
                   Once you scan or check in, this is where I'll break down what
                   your signals are saying.
                 </Text>
-              ) : blurbLoading ? (
+              </View>
+            </View>
+          ) : blurbLoading ? (
+            <View style={[styles.esterCard, { backgroundColor: nestedBg }]}>
+              <Image
+                source={TYPE_LOGO[metabolicType]}
+                style={styles.esterAvatar}
+                resizeMode="contain"
+              />
+              <View style={styles.esterTextWrap}>
                 <View style={styles.esterLoadingRow}>
                   <ActivityIndicator size="small" color={textColor} />
                   <Text style={[styles.esterLoadingText, { color: subtleText }]}>
                     Thinking through your scan…
                   </Text>
                 </View>
-              ) : (
-                <Text style={[styles.esterText, { color: textColor }]}>
-                  {blurb ?? FALLBACK_BLURB}
-                </Text>
-              )}
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={styles.esterBubbleStack}>
+              {[
+                { label: "What we noticed", body: noticed ?? FALLBACK_NOTICED },
+                {
+                  label: "Your meal because of that",
+                  body: mealBecause ?? FALLBACK_MEAL_BECAUSE,
+                },
+              ].map((beat) => (
+                <View
+                  key={beat.label}
+                  style={[styles.esterCard, { backgroundColor: nestedBg }]}
+                >
+                  <Image
+                    source={TYPE_LOGO[metabolicType]}
+                    style={styles.esterAvatar}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.esterTextWrap}>
+                    <Text
+                      style={[styles.esterBeatLabel, { color: subtleText }]}
+                    >
+                      {beat.label}
+                    </Text>
+                    <Text style={[styles.esterText, { color: textColor }]}>
+                      {beat.body}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {!hasAnyData ? (
@@ -693,6 +747,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     letterSpacing: -0.16,
     color: K.brown,
+  },
+  esterBubbleStack: {
+    gap: 8,
+  },
+  esterBeatLabel: {
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    textTransform: "uppercase",
+    opacity: 0.8,
   },
   esterLoadingRow: {
     flexDirection: "row",
