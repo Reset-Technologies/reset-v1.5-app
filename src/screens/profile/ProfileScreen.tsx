@@ -31,6 +31,7 @@ import {
   TYPE_DISPLAY,
   PROFILE_COPY,
   GOAL_COPY,
+  GOAL_LABEL,
 } from "../../constants/metabolicProfile";
 
 
@@ -479,7 +480,10 @@ export function ProfileScreen() {
                   metric: "goal",
                   variant: "simple",
                   eyebrow: "About your goal",
-                  title: "Your goal",
+                  // Show the user's actual goal as the title; fall back to the
+                  // generic label if no goal is stored.
+                  title:
+                    GOAL_LABEL[profile?.layer1?.goal ?? ""] ?? "Your goal",
                   value: profile?.layer1?.goal ?? null,
                 })
               }

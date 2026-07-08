@@ -103,6 +103,16 @@ export const GOAL_COPY: Record<string, string> = {
     "Tune into your body — I'll help you see how different foods really move your energy and recovery.",
 };
 
+// Concise, title-case display label for the user's stored goal — used as the
+// "Your goal" sheet title. The onboarding labels are too long for a heading
+// (e.g. understand_food_impact's full sentence), so these are the short forms.
+export const GOAL_LABEL: Record<string, string> = {
+  weight_loss: "Weight loss",
+  training: "Training",
+  maintain_weight: "Maintain weight",
+  understand_food_impact: "Understanding food",
+};
+
 // "a" vs "an" for the "As a/an {Type}" headline.
 export function article(word: string): string {
   return /^[aeiou]/i.test(word) ? "an" : "a";
