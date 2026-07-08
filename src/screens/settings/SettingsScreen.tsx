@@ -19,6 +19,7 @@ import { useApp } from "../../context/AppContext";
 import { logout } from "../../services/auth";
 import * as BrazeService from "../../services/braze";
 import { resetAppOpenFlowGate } from "../../utils/appOpenFlowGate";
+import { shouldShowExperiments } from "../../../modules/build-env";
 
 const NOTIFICATION_PREFS_KEY = "notification_preferences";
 
@@ -362,7 +363,9 @@ export function SettingsScreen() {
           </View>
         </View>
 
-        {/* Experimental */}
+        {/* Experimental — visible only in local dev + TestFlight builds;
+            hidden on the shipping App Store build (see modules/build-env). */}
+        {shouldShowExperiments() && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>EXPERIMENTAL</Text>
           <View style={styles.card}>
@@ -460,6 +463,7 @@ export function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         {/* Account Actions */}
         <View style={styles.section}>

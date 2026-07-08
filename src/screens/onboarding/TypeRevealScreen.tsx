@@ -167,6 +167,7 @@ function FrontCard({
   startingRead,
   revealed,
   dismissed,
+  swipeReady,
   onReveal,
   onShareResults,
 }: {
@@ -174,11 +175,16 @@ function FrontCard({
   startingRead: boolean;
   revealed: boolean;
   dismissed: boolean;
+  swipeReady: boolean;
   onReveal: () => void;
   onShareResults: () => void;
 }) {
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const revealedOpacity = useRef(new Animated.Value(0)).current;
+  // RES-149: the "Swipe left to continue" caption is tied to swipeReady (the
+  // reveal has fully finished) rather than revealedOpacity, so it appears at
+  // the exact moment swiping unlocks — never inviting a swipe that's blocked.
+  const swipeCaptionOpacity = useRef(new Animated.Value(0)).current;
   // RES-149: measured bone-card size so the Skia invisible-ink overlay can cover
   // it exactly. Null until first layout — a plain opaque bone fill stands in for
   // that one frame so the type never leaks before the shimmer mounts.
@@ -206,6 +212,14 @@ function FrontCard({
       }),
     ]).start();
   }, [revealed]);
+
+  useEffect(() => {
+    Animated.timing(swipeCaptionOpacity, {
+      toValue: swipeReady ? 1 : 0,
+      duration: swipeReady ? 500 : 200,
+      useNativeDriver: true,
+    }).start();
+  }, [swipeReady]);
 
   // RES-149: on reveal, run the building haptic ramp locked to the pixel
   // dissolve (shares REVEAL_DURATION_MS) so the crescendo lands as the card
@@ -308,7 +322,7 @@ function FrontCard({
           </Animated.View>
         </View>
 
-        <Animated.Text style={[styles.swipeCaption, { opacity: revealedOpacity }]}>
+        <Animated.Text style={[styles.swipeCaption, { opacity: swipeCaptionOpacity }]}>
           Swipe left to continue
         </Animated.Text>
       </View>
@@ -584,7 +598,27 @@ export function TypeRevealScreen({ navigation }: Props) {
   }, []);
 
   const [revealed, setRevealed] = useState(false);
+  // RES-149: true once the pixel dissolve has fully finished. The first card's
+  // swipe stays locked until then, so the user can't skip past their type — they
+  // must tap "Tap to reveal" and watch the whole animation before continuing.
+  const [revealComplete, setRevealComplete] = useState(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (revealTimer.current) clearTimeout(revealTimer.current);
+    },
+    [],
+  );
   const [activeIdx, setActiveIdx] = useState(0);
+
+  // Whether the active card may be swiped away. Every card after the first is
+  // always swipeable; the first (reveal) card only unlocks once the dissolve
+  // finishes. Read through a ref so the memoized panResponder never closes over
+  // a stale value.
+  const canSwipeRef = useRef(false);
+  useEffect(() => {
+    canSwipeRef.current = activeIdx > 0 || revealComplete;
+  }, [activeIdx, revealComplete]);
 
   // Per-card entry progress: 0 = pre-entry pose (offset + rotation), 1 = settled.
   const slideIn = useMemo(
@@ -663,7 +697,9 @@ export function TypeRevealScreen({ navigation }: Props) {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) =>
-          Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+          canSwipeRef.current &&
+          Math.abs(g.dx) > 6 &&
+          Math.abs(g.dx) > Math.abs(g.dy),
         onPanResponderMove: (_, g) => {
           if (g.dx <= 0) {
             // Subtle upward lift while dragging left so the gesture
@@ -746,9 +782,17 @@ export function TypeRevealScreen({ navigation }: Props) {
           startingRead={!!state.user.startingRead}
           revealed={revealed}
           dismissed={activeIdx > 0}
+          swipeReady={revealComplete}
           onReveal={() => {
             logEvent("onboarding_type_reveal_tap");
             setRevealed(true);
+            // Unlock the swipe only after the dissolve has fully played out, so
+            // the user watches the whole reveal before they can continue.
+            if (revealTimer.current) clearTimeout(revealTimer.current);
+            revealTimer.current = setTimeout(
+              () => setRevealComplete(true),
+              REVEAL_DURATION_MS,
+            );
           }}
           onShareResults={async () => {
             logEvent("onboarding_type_reveal_share");

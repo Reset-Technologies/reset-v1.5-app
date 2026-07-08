@@ -1,0 +1,6 @@
+{
+  "name": "build-env",
+  "version": "1.0.0",
+  "description": "Native build-environment facts (TestFlight vs App Store detection)",
+  "main": "index.ts"
+}
