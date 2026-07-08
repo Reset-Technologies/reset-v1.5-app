@@ -52,6 +52,7 @@ type ScanRecord = {
   vascularAge?: number | null;
   heartRate?: number | null;
   wellness?: number | null;
+  bmi?: number | null;
 } & Record<string, unknown>;
 
 interface MetricValue {
@@ -75,6 +76,13 @@ function pickBreathing(scan: ScanRecord | null): number | null {
   if (!scan) return null;
   const v = scan.breathingRate;
   return typeof v === "number" ? Math.round(v) : null;
+}
+
+function pickBmi(scan: ScanRecord | null): number | null {
+  if (!scan) return null;
+  const v = scan.bmi;
+  // BMI is shown to one decimal (e.g. 24.3) rather than rounded to an int.
+  return typeof v === "number" ? Math.round(v * 10) / 10 : null;
 }
 
 function trendPercent(current: number | null, previous: number | null): number | null {
@@ -223,6 +231,7 @@ export function ScanInsightsScreen() {
         breathingRate: state.biometrics.raw?.breathingRate ?? null,
         heartRate: state.biometrics.heartRate,
         wellness: state.biometrics.wellness,
+        bmi: state.biometrics.raw?.bmi ?? null,
       }
     : latestFromHistory;
 
@@ -237,6 +246,10 @@ export function ScanInsightsScreen() {
   const breathing: MetricValue = {
     current: pickBreathing(currentSource),
     previous: pickBreathing(previous),
+  };
+  const bmi: MetricValue = {
+    current: pickBmi(currentSource),
+    previous: pickBmi(previous),
   };
 
   // Mode: "survey" if the user's most-recent action is a check-in (rather than
@@ -529,7 +542,13 @@ export function ScanInsightsScreen() {
                   previous={breathing.previous}
                   betterDirection="down"
                 />
-                <View style={styles.metricSpacer} />
+                {/* BMI has no universally "better" direction, so no
+                    betterDirection — the trend triangle stays non-valence. */}
+                <MetricCard
+                  label="BMI"
+                  current={bmi.current}
+                  previous={bmi.previous}
+                />
               </View>
             </View>
           </View>

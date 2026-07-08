@@ -60,6 +60,9 @@ interface ScanResultsRaw {
   cardiacWorkload: number | null;
   ageEstimate: number | null;
   signalQuality: number;
+  bmi: number | null;
+  weightKg: number | null;
+  heightCm: number | null;
 }
 
 interface BiometricData {
