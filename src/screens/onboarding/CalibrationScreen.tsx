@@ -9,9 +9,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
@@ -42,8 +42,21 @@ function Field({
   );
 }
 
-export function CalibrationScreen({ navigation }: Props) {
-  const { setCalibration } = useApp();
+export function CalibrationScreen({ navigation, route }: Props) {
+  const { state, setCalibration } = useApp();
+  const insets = useSafeAreaInsets();
+  // "rescan" is entered before every re-scan to capture a fresh weight; height +
+  // age are stable, so we hide them and reuse the stored calibration. Falls back
+  // to the full form if there's no stored calibration to borrow from.
+  const isRescan = route.params?.mode === "rescan";
+  const stored = state.user.calibration;
+  const hasStoredBody = !!(
+    stored?.heightCm &&
+    stored?.age &&
+    stored?.biologicalSex
+  );
+  const weightOnly = isRescan && hasStoredBody; // hide Height + Age + Gender
+
   const [feet, setFeet] = useState("");
   const [inches, setInches] = useState("");
   const [weightLb, setWeightLb] = useState("");
@@ -57,8 +70,8 @@ export function CalibrationScreen({ navigation }: Props) {
   const ageRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    logEvent("onboarding_calibration");
-  }, []);
+    logEvent(isRescan ? "rescan_weight" : "onboarding_calibration");
+  }, [isRescan]);
 
   const ft = parseInt(feet, 10);
   const inch = parseInt(inches, 10);
@@ -68,18 +81,54 @@ export function CalibrationScreen({ navigation }: Props) {
   const heightValid = ft >= 3 && ft <= 8 && inch >= 0 && inch <= 11;
   const weightValid = lb >= 50 && lb <= 600;
   const ageValid = yrs >= 13 && yrs <= 100;
-  const isValid = heightValid && weightValid && ageValid && sex !== null;
+  const isValid = weightOnly
+    ? weightValid
+    : heightValid && weightValid && ageValid && sex !== null;
 
   const handleContinue = () => {
-    if (!isValid || !sex) return;
-    logEvent("onboarding_calibration_continueCTA");
-    setCalibration({
-      heightCm: Math.round((ft * 12 + inch) * CM_PER_INCH),
-      weightKg: Math.round(lb * KG_PER_LB),
-      age: yrs,
-      biologicalSex: sex,
-    });
-    navigation.navigate("Scan");
+    if (!isValid) return;
+    logEvent(
+      isRescan ? "rescan_weight_continueCTA" : "onboarding_calibration_continueCTA",
+    );
+    if (weightOnly && stored) {
+      // Weight-only re-scan: only weight is fresh; reuse the stable stored
+      // height, age, and gender.
+      setCalibration({
+        heightCm: stored.heightCm,
+        weightKg: Math.round(lb * KG_PER_LB),
+        age: stored.age,
+        biologicalSex: stored.biologicalSex,
+      });
+    } else {
+      if (!sex) return;
+      setCalibration({
+        heightCm: Math.round((ft * 12 + inch) * CM_PER_INCH),
+        weightKg: Math.round(lb * KG_PER_LB),
+        age: yrs,
+        biologicalSex: sex,
+      });
+    }
+    if (isRescan) {
+      // The Scan screen pushed us on top of itself; pop back to it and it
+      // proceeds with the fresh calibration. (No Home flash — Scan is already
+      // presented underneath, so nothing dismisses to reveal Home.)
+      navigation.goBack();
+    } else {
+      navigation.navigate("Scan");
+    }
+  };
+
+  // Rescan-only header actions. Back-arrow returns to wherever the scan was
+  // launched from (dismissing this sheet AND the Scan screen beneath it); the X
+  // goes straight home. Onboarding gets neither (it's a required linear step).
+  const handleBack = () => {
+    navigation.pop(2);
+  };
+  const handleClose = () => {
+    // Dismiss the whole scan stack (weight sheet + Scan) back to the root tabs,
+    // same slide-down as the back arrow — navigate("Tabs") re-presents as a
+    // card, which reads as a half-height sheet pulling up.
+    navigation.popToTop();
   };
 
   return (
@@ -96,6 +145,37 @@ export function CalibrationScreen({ navigation }: Props) {
         </Svg>
       </View>
 
+      {weightOnly && (
+        <View
+          style={[styles.rescanHeader, { top: insets.top + 6 }]}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.headerBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Back"
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M19 12H5M11 19l-7-7 7-7"
+                stroke={BONE}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={styles.headerBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Close"
+          >
+            <Text style={styles.headerCloseGlyph}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -107,49 +187,54 @@ export function CalibrationScreen({ navigation }: Props) {
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.header}>
-              <Text style={styles.headline}>A few quick details</Text>
+              <Text style={styles.headline}>
+                {weightOnly ? "Update your weight" : "A few quick details"}
+              </Text>
               <Text style={styles.subhead}>
-                This calibrates your scan so the reading is accurate to your
-                body.
+                {weightOnly
+                  ? "So today's scan reflects your current weight."
+                  : "This calibrates your scan so the reading is accurate to your body."}
               </Text>
             </View>
 
             <View style={styles.fields}>
-              <Field label="Height">
-                <View style={styles.heightRow}>
-                  <View style={styles.unitInput}>
-                    <TextInput
-                      style={styles.input}
-                      value={feet}
-                      onChangeText={(t) => {
-                        setFeet(t);
-                        if (t.length === 1) inchesRef.current?.focus();
-                      }}
-                      placeholder="5"
-                      placeholderTextColor={MUTED}
-                      keyboardType="number-pad"
-                      maxLength={1}
-                    />
-                    <Text style={styles.unitLabel}>ft</Text>
+              {!weightOnly && (
+                <Field label="Height">
+                  <View style={styles.heightRow}>
+                    <View style={styles.unitInput}>
+                      <TextInput
+                        style={styles.input}
+                        value={feet}
+                        onChangeText={(t) => {
+                          setFeet(t);
+                          if (t.length === 1) inchesRef.current?.focus();
+                        }}
+                        placeholder="5"
+                        placeholderTextColor={MUTED}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                      />
+                      <Text style={styles.unitLabel}>ft</Text>
+                    </View>
+                    <View style={styles.unitInput}>
+                      <TextInput
+                        ref={inchesRef}
+                        style={styles.input}
+                        value={inches}
+                        onChangeText={(t) => {
+                          setInches(t);
+                          if (t.length === 2) weightRef.current?.focus();
+                        }}
+                        placeholder="9"
+                        placeholderTextColor={MUTED}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                      />
+                      <Text style={styles.unitLabel}>in</Text>
+                    </View>
                   </View>
-                  <View style={styles.unitInput}>
-                    <TextInput
-                      ref={inchesRef}
-                      style={styles.input}
-                      value={inches}
-                      onChangeText={(t) => {
-                        setInches(t);
-                        if (t.length === 2) weightRef.current?.focus();
-                      }}
-                      placeholder="9"
-                      placeholderTextColor={MUTED}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                    />
-                    <Text style={styles.unitLabel}>in</Text>
-                  </View>
-                </View>
-              </Field>
+                </Field>
+              )}
 
               <Field label="Weight">
                 <View style={styles.unitInput}>
@@ -170,46 +255,50 @@ export function CalibrationScreen({ navigation }: Props) {
                 </View>
               </Field>
 
-              <Field label="Age">
-                <View style={styles.unitInput}>
-                  <TextInput
-                    ref={ageRef}
-                    style={styles.input}
-                    value={age}
-                    onChangeText={setAge}
-                    placeholder="32"
-                    placeholderTextColor={MUTED}
-                    keyboardType="number-pad"
-                    maxLength={3}
-                  />
-                  <Text style={styles.unitLabel}>years</Text>
-                </View>
-              </Field>
+              {!weightOnly && (
+                <Field label="Age">
+                  <View style={styles.unitInput}>
+                    <TextInput
+                      ref={ageRef}
+                      style={styles.input}
+                      value={age}
+                      onChangeText={setAge}
+                      placeholder="32"
+                      placeholderTextColor={MUTED}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                    />
+                    <Text style={styles.unitLabel}>years</Text>
+                  </View>
+                </Field>
+              )}
 
-              <Field label="Gender">
-                <View style={styles.sexRow}>
-                  {(["female", "male"] as const).map((option) => (
-                    <TouchableOpacity
-                      key={option}
-                      style={[
-                        styles.sexOption,
-                        sex === option && styles.sexOptionActive,
-                      ]}
-                      onPress={() => setSex(option)}
-                      activeOpacity={0.85}
-                    >
-                      <Text
+              {!weightOnly && (
+                <Field label="Gender">
+                  <View style={styles.sexRow}>
+                    {(["female", "male"] as const).map((option) => (
+                      <TouchableOpacity
+                        key={option}
                         style={[
-                          styles.sexOptionText,
-                          sex === option && styles.sexOptionTextActive,
+                          styles.sexOption,
+                          sex === option && styles.sexOptionActive,
                         ]}
+                        onPress={() => setSex(option)}
+                        activeOpacity={0.85}
                       >
-                        {option === "female" ? "Female" : "Male"}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </Field>
+                        <Text
+                          style={[
+                            styles.sexOptionText,
+                            sex === option && styles.sexOptionTextActive,
+                          ]}
+                        >
+                          {option === "female" ? "Female" : "Male"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </Field>
+              )}
             </View>
 
             <TouchableOpacity
@@ -230,6 +319,28 @@ export function CalibrationScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: MAROON },
   safe: { flex: 1 },
+  rescanHeader: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  headerBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCloseGlyph: {
+    fontFamily: fonts.dmSans,
+    fontSize: 22,
+    lineHeight: 24,
+    color: BONE,
+  },
   keyboardView: { flex: 1 },
   content: {
     flexGrow: 1,

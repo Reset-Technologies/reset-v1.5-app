@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera } from "expo-camera";
 import { ShenaiSdkView } from "react-native-shenai-sdk";
@@ -175,6 +176,34 @@ export function ScanScreen({ navigation, route }: Props) {
   const { state, setBiometrics } = useApp();
   const calibration = state.user.calibration;
   const insets = useSafeAreaInsets();
+
+  // Weight gate: before every RE-scan, collect a fresh weight (reusing stored
+  // height/age) so BMI reflects the current weight. We present the weight screen
+  // OVER this one — Scan is already presented, so nothing dismisses to reveal
+  // Home (avoids a flash). Onboarding collects weight up front, and if there's
+  // no stored body to borrow height/age from, we skip the gate.
+  const hasStoredBody = !!(
+    calibration?.heightCm &&
+    calibration?.age &&
+    calibration?.biologicalSex
+  );
+  const needsWeightGate = mode === "rescan" && hasStoredBody;
+  const [weightGateDone, setWeightGateDone] = useState(!needsWeightGate);
+  const weightGateRequestedRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (weightGateDone) return;
+      if (!weightGateRequestedRef.current) {
+        // First focus — go collect the weight on top of this screen.
+        weightGateRequestedRef.current = true;
+        navigation.navigate("Calibration", { mode: "rescan" });
+      } else {
+        // Returned from the weight screen — proceed with the fresh calibration.
+        setWeightGateDone(true);
+      }
+    }, [weightGateDone, navigation]),
+  );
   const [sdkReady, setSdkReady] = useState(false);
   const [screenState, setScreenState] = useState<ScreenState>("initializing");
   const [phase, setPhase] = useState(0);
@@ -225,8 +254,27 @@ export function ScanScreen({ navigation, route }: Props) {
     logEvent(SCAN_PHASE_EVENTS[0], { source: scanSource });
   }, []);
 
-  // Initialize SDK on mount
+  // Where to go once a scan finishes — the next screen for whatever flow the
+  // dev/user is in. Shared by the real completion and the DEV skip so both land
+  // in the same place: onboarding → Survey; app-open rescan → ScoreReveal;
+  // other rescan → ScanResults.
+  const navigateAfterScan = useCallback(() => {
+    if (mode === "rescan") {
+      if (returnTo === "ScoreReveal") {
+        navigation.navigate("AppOpenFlow", { screen: "ScoreReveal" });
+      } else {
+        navigation.replace("ScanResults");
+      }
+    } else {
+      navigation.replace("Survey", { step: 0 });
+    }
+  }, [mode, returnTo, navigation]);
+
+  // Initialize SDK on mount — but not until the weight gate (if any) is done,
+  // so ShenAI initializes with the fresh calibration and the camera doesn't
+  // spin up behind the weight screen.
   useEffect(() => {
+    if (!weightGateDone) return;
     let cancelled = false;
 
     async function init() {
@@ -269,7 +317,7 @@ export function ScanScreen({ navigation, route }: Props) {
       cancelled = true;
       shutdownShenAI();
     };
-  }, []);
+  }, [weightGateDone]);
 
   // Positioning phase: poll face state and auto-start when ready
   useEffect(() => {
@@ -474,17 +522,8 @@ export function ScanScreen({ navigation, route }: Props) {
           } catch {
             // Non-blocking: scan still saved locally
           }
-          if (returnTo === "ScoreReveal") {
-            // AppOpen flow: jump back into the in-progress check-in so the
-            // user sees their updated score, not the standalone rescan modal.
-            navigation.navigate("AppOpenFlow", { screen: "ScoreReveal" });
-          } else {
-            navigation.replace("ScanResults");
-          }
-        } else {
-          // Onboarding: straight into the chat-style survey questions.
-          navigation.replace("Survey", { step: 0 });
         }
+        navigateAfterScan();
       }, 1500);
     } catch (err) {
       console.error("[ShenAI] finishMeasurement error:", err);
@@ -542,6 +581,16 @@ export function ScanScreen({ navigation, route }: Props) {
     } catch {
       // SDK may not have initialized on the sim — safe to ignore.
     }
+    // DEV mock scan. bmi is included so the BMI tile shows a value.
+    const mockResults = {
+      heartRate: 72,
+      wellnessScore: 78,
+      stressIndex: 65,
+      hrvSdnn: 45,
+      breathingRate: 14,
+      signalQuality: 1,
+      bmi: 23.4,
+    } as ScanResults;
     setBiometrics({
       stressIndex: 65,
       heartRate: 72,
@@ -549,21 +598,20 @@ export function ScanScreen({ navigation, route }: Props) {
       vascularAge: 4,
       hrvSdnn: 45,
       breathingRate: 14,
-      raw: {
-        heartRate: 72,
-        wellnessScore: 78,
-        stressIndex: 65,
-        hrvSdnn: 45,
-        breathingRate: 14,
-        signalQuality: 1,
-      } as ScanResults,
+      raw: mockResults,
     });
+    // DEV: mirror a real scan completion — submit for re-scans so the insights
+    // screen sees a FRESH scan (not the earlier check-in), then land on the next
+    // screen for whatever flow we're in.
     if (mode === "rescan") {
-      navigation.goBack();
-    } else {
-      navigation.replace("Survey", { step: 0 });
+      try {
+        await submitScanResults(mockResults);
+      } catch {
+        // Non-blocking: still saved locally.
+      }
     }
-  }, [navigation, setBiometrics, mode]);
+    navigateAfterScan();
+  }, [navigateAfterScan, setBiometrics, mode]);
 
   // Persistent exit: tearing down any in-flight scan and returning the user
   // to the screen that pushed Scan. Partial data is never persisted because
@@ -647,6 +695,13 @@ export function ScanScreen({ navigation, route }: Props) {
     if (screenState === "complete") return "COMPLETE";
     return "READING";
   };
+
+  // While the weight gate is pending, the weight sheet is about to present over
+  // this screen — render a plain dark screen so we don't flash the scan's
+  // "preparing" UI (and never Home) in the gap.
+  if (!weightGateDone) {
+    return <View style={styles.container} />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

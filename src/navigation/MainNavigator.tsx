@@ -10,6 +10,7 @@ import { EsterChatScreen } from "../screens/chat";
 import { RecipeDetailScreen } from "../screens/recipe";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ScanScreen } from "../screens/onboarding/ScanScreen";
+import { CalibrationScreen } from "../screens/onboarding/CalibrationScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
@@ -52,6 +53,11 @@ export type MainStackParamList = {
   SavedMeals: undefined;
   WeeklyReview: undefined;
   Settings: undefined;
+  // Weight-entry step shown before every re-scan (weight-only; reuses stored
+  // height/age). Forwards its params on to Scan.
+  Calibration:
+    | { mode?: "rescan"; returnTo?: "ScanResults" | "ScoreReveal" }
+    | undefined;
   Scan: {
     mode: "rescan";
     returnTo?: "ScanResults" | "ScoreReveal";
@@ -159,6 +165,15 @@ export function MainNavigator() {
         options={{
           presentation: "modal",
           animation: "slide_from_bottom",
+        }}
+      />
+      <Stack.Screen
+        name="Calibration"
+        component={CalibrationScreen}
+        options={{
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
