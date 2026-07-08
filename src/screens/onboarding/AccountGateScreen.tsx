@@ -141,6 +141,7 @@ export function AccountGateScreen({ navigation }: Props) {
   };
 
   const handleAppleSignIn = async () => {
+    if (isLoading) return;
     logEvent("onboarding_account_gate_appleCTA");
     setError(null);
     setIsLoading(true);
@@ -309,18 +310,17 @@ export function AccountGateScreen({ navigation }: Props) {
             {error && <Text style={styles.errorText}>{error}</Text>}
 
             {appleAvailable && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={
+                  AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
+                }
+                buttonStyle={
+                  AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                }
+                cornerRadius={4}
+                style={styles.appleNativeBtn}
                 onPress={handleAppleSignIn}
-                disabled={isLoading}
-                activeOpacity={0.85}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={MAROON} />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Continue with Apple</Text>
-                )}
-              </TouchableOpacity>
+              />
             )}
 
             {Platform.OS === "android" && (
@@ -458,6 +458,11 @@ const styles = StyleSheet.create({
     color: "#FF6B6B",
     fontSize: 14,
     textAlign: "center",
+  },
+  appleNativeBtn: {
+    width: "100%",
+    height: 52,
+    marginTop: 4,
   },
   primaryBtn: {
     width: "100%",

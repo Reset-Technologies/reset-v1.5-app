@@ -121,6 +121,7 @@ export function AccountScreen({ navigation }: Props) {
   };
 
   const handleAppleSignIn = async () => {
+    if (isLoading) return;
     logEvent("onboarding_account_appleSignInCTA");
     setError(null);
     setIsLoading(true);
@@ -321,20 +322,17 @@ export function AccountScreen({ navigation }: Props) {
             </View>
 
             {appleAvailable && (
-              <TouchableOpacity
-                style={[styles.appleButton, isLoading && styles.appleButtonDisabled]}
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={
+                  AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+                }
+                buttonStyle={
+                  AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                }
+                cornerRadius={12}
+                style={styles.appleNativeBtn}
                 onPress={handleAppleSignIn}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={K.white} />
-                ) : (
-                  <>
-                    <Text style={styles.appleIcon}></Text>
-                    <Text style={styles.appleText}>Sign in with Apple</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              />
             )}
 
             {Platform.OS === "android" && (
@@ -435,25 +433,9 @@ const styles = StyleSheet.create({
     color: K.faded,
     marginHorizontal: 16,
   },
-  appleButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: K.warmBlack,
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  appleButtonDisabled: {
-    opacity: 0.6,
-  },
-  appleIcon: {
-    color: K.white,
-    fontSize: 20,
-  },
-  appleText: {
-    ...typography.button,
-    color: K.white,
+  appleNativeBtn: {
+    width: "100%",
+    height: 54,
   },
   googleButton: {
     flexDirection: "row",

@@ -160,6 +160,7 @@ export function LoginScreen() {
   };
 
   const handleAppleSignIn = async () => {
+    if (isLoading) return;
     logEvent("auth_login_appleSignInCTA");
     setError(null);
     setIsLoading(true);
@@ -327,14 +328,17 @@ export function LoginScreen() {
               </View>
 
               {appleAvailable && (
-                <TouchableOpacity
-                  style={styles.ghostBtn}
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={
+                    AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
+                  }
+                  buttonStyle={
+                    AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                  }
+                  cornerRadius={4}
+                  style={styles.appleNativeBtn}
                   onPress={handleAppleSignIn}
-                  disabled={isLoading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.ghostBtnText}>Continue with Apple</Text>
-                </TouchableOpacity>
+                />
               )}
 
               {Platform.OS === "android" && (
@@ -486,6 +490,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: WHITE,
     letterSpacing: -0.14,
+  },
+  appleNativeBtn: {
+    width: "100%",
+    height: 56,
   },
   ghostBtn: {
     width: "100%",
