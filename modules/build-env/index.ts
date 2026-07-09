@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+import Constants from "expo-constants";
 import { requireNativeModule } from "expo-modules-core";
 
 // The native module is iOS-only and only present in binaries built after it
@@ -23,9 +25,18 @@ export function isTestFlightBuild(): boolean {
 }
 
 /**
- * Whether internal/experimental UI should be visible: local dev builds
- * (`__DEV__`) and TestFlight builds only — never the shipping App Store build.
+ * Whether internal/experimental UI should be visible: local dev builds, plus
+ * our internal/testing store builds — never the shipping public build.
+ *
+ * - iOS: TestFlight and the App Store are the same binary, so we use the
+ *   receipt (`isTestFlightBuild`). One binary, no separate build needed.
+ * - Android: there is NO runtime signal that distinguishes an internal-testing
+ *   install from a production install (same AAB, both from Play). So we fall
+ *   back to a build-time flag (`extra.showExperiments`) baked in by the EAS
+ *   profile — ON for the internal/testing profile, OFF for the public build.
  */
 export function shouldShowExperiments(): boolean {
-  return __DEV__ || isTestFlightBuild();
+  if (__DEV__) return true;
+  if (Platform.OS === "ios") return isTestFlightBuild();
+  return Constants.expoConfig?.extra?.showExperiments === true;
 }

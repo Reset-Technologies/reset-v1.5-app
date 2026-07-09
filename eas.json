@@ -24,6 +24,9 @@
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "env": {
+        "SHOW_EXPERIMENTS": "true"
+      },
       "ios": {
         "buildConfiguration": "Release"
       }
@@ -34,6 +37,13 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      }
+    },
+    "production-store": {
+      "extends": "production",
+      "environment": "production",
+      "env": {
+        "SHOW_EXPERIMENTS": "false"
       }
     }
   },

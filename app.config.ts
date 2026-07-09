@@ -98,6 +98,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
+    // Build-time flag that reveals the Settings > EXPERIMENTAL section on
+    // ANDROID internal/testing builds. Android can't tell an internal-testing
+    // install from a production install at runtime, so the internal EAS
+    // profile sets SHOW_EXPERIMENTS=true and the public build leaves it unset
+    // (→ false). iOS ignores this and uses the App Store receipt instead
+    // (see modules/build-env). Defaults to false so a build is private unless
+    // it explicitly opts in.
+    showExperiments: process.env.SHOW_EXPERIMENTS === "true",
     // RevenueCat public SDK keys (platform-specific). Safe to ship in the
     // bundle — these are the *public* client keys, not a secret key — so they
     // live here as defaults (same as the Braze keys above), overridable via
