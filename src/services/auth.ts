@@ -1,4 +1,4 @@
-import { apiClient, storeTokens, clearTokens } from "./apiClient";
+import { apiClient, storeTokens, clearTokens, API_BASE_URL } from "./apiClient";
 import * as BrazeService from "./braze";
 
 export interface AuthUser {
@@ -110,6 +110,64 @@ export async function fetchMe(): Promise<AuthUser> {
     timezone: data.user.timezone,
     createdAt: data.user.createdAt,
   };
+}
+
+// ── Password reset (forgot password) ──────────────────────────────────────
+// A three-step, code-based flow the user runs entirely in-app while logged
+// out: (1) request a code by email, (2) verify the code for a short-lived
+// reset token, (3) set a new password with that token.
+
+/**
+ * Step 1 — email the user a 4-digit verification code. The backend always
+ * responds success (even for unknown/non-email accounts) so this never
+ * reveals whether an account exists. Throws on the 60s resend cooldown (429).
+ */
+export async function sendPasswordResetCode(email: string): Promise<void> {
+  await apiClient("/api/auth/forgot-password/send-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Step 2 — verify the 4-digit code and receive a short-lived reset token.
+ * Throws ("Invalid or expired code") on a wrong or timed-out code.
+ */
+export async function verifyPasswordResetCode(
+  email: string,
+  code: string,
+): Promise<string> {
+  const data = await apiClient("/api/auth/forgot-password/verify-code", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+  return data.resetToken;
+}
+
+/**
+ * Step 3 — set the new password using the reset token. This endpoint
+ * authenticates with the reset token (not the stored session token — the user
+ * is logged out here), so we use a raw fetch to guarantee the reset token is
+ * the Authorization header rather than letting apiClient inject a stale
+ * session token.
+ */
+export async function resetPassword(
+  resetToken: string,
+  newPassword: string,
+  confirmPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password/reset`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${resetToken}`,
+    },
+    body: JSON.stringify({ newPassword, confirmPassword }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.message || `Request failed: ${res.status}`);
+  }
 }
 
 export async function logout(): Promise<void> {
