@@ -185,12 +185,14 @@ export function EsterChatScreen() {
   const startedAtRef = useRef<number>(0);
   const SUPPRESS_END_MS = 600;
 
-  // RES-132 — Ester text-to-speech. Off by default; toggled by the header
-  // speaker icon and persisted. A ref mirrors the state so the async
-  // send-flow reads the latest value (and can bail if toggled off mid-synth).
-  // RES-140 — this is a voice-first screen, so Ester reads aloud by default.
-  const [ttsEnabled, setTtsEnabled] = useState(true);
-  const ttsEnabledRef = useRef(true);
+  // RES-132 — Ester text-to-speech. Toggled by the header speaker icon and
+  // persisted. A ref mirrors the state so the async send-flow reads the latest
+  // value (and can bail if toggled off mid-synth).
+  // RES-179 — the speaker is OFF by default; only an explicit opt-in (persisted
+  // "1", loaded below) turns it on. (RES-140 had defaulted it on for a
+  // voice-first feel; product wants it off by default now.)
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const ttsEnabledRef = useRef(false);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   // While Ester is speaking, reveal her message text in step with playback so
   // the words appear roughly as they're voiced. Only the actively-spoken
@@ -543,11 +545,11 @@ export function EsterChatScreen() {
   useEffect(() => {
     (async () => {
       try {
-        // RES-140: voice-first — on by default; only honor an explicit mute.
+        // RES-179: off by default; only honor an explicit opt-in.
         const saved = await AsyncStorage.getItem(TTS_ENABLED_KEY);
-        if (saved === "0") {
-          setTtsEnabled(false);
-          ttsEnabledRef.current = false;
+        if (saved === "1") {
+          setTtsEnabled(true);
+          ttsEnabledRef.current = true;
         }
       } catch {}
       try {
@@ -634,15 +636,21 @@ export function EsterChatScreen() {
     }, 50);
   };
 
-  // Reveal text on a steady timer when there's no audio to sync to (voice off).
-  // ~55 chars/sec reads like a natural typewriter without dragging.
-  const startTimedReveal = (id: string, text: string) => {
+  // Reveal text on a steady timer when there's no audio to sync to (voice off,
+  // or synthesis failed). ~22 chars/sec is roughly reading speed — RES-179
+  // slowed this from 55, which blurred past unreadably fast when muted.
+  // `baseOffset` lets the reveal resume mid-message when the speaker is muted
+  // partway through an audio-synced reveal (continueWithoutVoice).
+  const startTimedReveal = (id: string, text: string, baseOffset = 0) => {
     clearRevealTick();
-    const CHARS_PER_SEC = 55;
+    const CHARS_PER_SEC = 22;
     const startedAt = Date.now();
     revealTickRef.current = setInterval(() => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      const count = Math.min(text.length, Math.ceil(CHARS_PER_SEC * elapsed));
+      const count = Math.min(
+        text.length,
+        baseOffset + Math.ceil(CHARS_PER_SEC * elapsed),
+      );
       setReveal(count);
       if (count >= text.length) {
         setSpeaking(null);
@@ -694,9 +702,10 @@ export function EsterChatScreen() {
         // fall through to text-only streaming
       }
     }
-    // Voice off, synthesis failed, or superseded mid-synth: always land the
-    // message; only start the timed reveal if we're still the latest (a newer
-    // presentation owns the reveal otherwise).
+    // Voice off (or synthesis failed): land the message and stream it in on a
+    // steady, readable timer so the teleprompter still plays when the speaker is
+    // off — just at reading speed, not the old unreadable blur (RES-179). Only
+    // if we're still the latest presentation (a newer one owns the reveal).
     setMessages((prev) => [...prev, message]);
     setAwaitingReply(false);
     if (message.text.trim() && seq === ttsSeqRef.current) {
@@ -764,14 +773,49 @@ export function EsterChatScreen() {
     }
   };
 
+  // Mirror of takeOverWithVoice: when the speaker is flipped OFF mid-reveal,
+  // silence the audio but keep the teleprompter going on the steady timer from
+  // the current word — so muting doesn't snap to the full paragraph. The reveal
+  // runs to completion regardless of how the user toggles the speaker.
+  const continueWithoutVoice = () => {
+    const active = revealStateRef.current;
+    ttsSeqRef.current++; // invalidate any in-flight synth
+    clearRevealTick(); // stop the audio-synced tick
+    try {
+      audioPlayerRef.current?.pause();
+    } catch {}
+    if (!active) {
+      // Nothing revealing (idle) → just stop.
+      setSpeaking(null);
+      setActiveReadId(null);
+      return;
+    }
+    const { id, text } = active;
+    if (revealedCountRef.current >= text.length) {
+      // Already fully revealed → finish cleanly.
+      setSpeaking(null);
+      setActiveReadId(null);
+      revealStateRef.current = null;
+      return;
+    }
+    // Resume the reveal on the timer from exactly where the voice left off.
+    startTimedReveal(id, text, revealedCountRef.current);
+  };
+
   const toggleTts = async () => {
     const next = !ttsEnabledRef.current;
     setTtsEnabled(next);
     ttsEnabledRef.current = next;
     if (!next) {
-      stopSpeaking();
+      // Muted: if a reveal is in progress, keep it playing silently from the
+      // current word (don't snap to the full paragraph); otherwise just stop.
+      if (revealStateRef.current) {
+        continueWithoutVoice();
+      } else {
+        stopSpeaking();
+      }
     } else if (revealStateRef.current) {
-      // Turned on while a (voice-off) stream is mid-flight → take it over.
+      // Turned on while a stream is mid-flight → take it over with voice.
       takeOverWithVoice();
     }
     try {
@@ -1205,6 +1249,7 @@ export function EsterChatScreen() {
               shine
               active={ttsEnabled}
               busy={isPreparingVoice}
+              busyColor="#361416"
               onPress={toggleTts}
               // Figma "Liquid Glass" fill stack: #FFFFFF @72% base, then a
               // #999999 Overlay tint — flattened to plain alpha fills since RN
@@ -1397,6 +1442,7 @@ export function EsterChatScreen() {
               shine
               active={ttsEnabled}
               busy={isPreparingVoice}
+              busyColor="#361416"
               onPress={toggleTts}
               fills={["rgba(255,255,255,0.88)", "rgba(153,153,153,0.18)"]}
             >
@@ -1872,6 +1918,7 @@ function VoiceActionButton({
   variant,
   active,
   busy,
+  busyColor = K.bone,
   shine,
   fills,
 }: {
@@ -1881,6 +1928,7 @@ function VoiceActionButton({
   variant?: "end";
   active?: boolean;
   busy?: boolean;
+  busyColor?: string;
   shine?: boolean;
   fills?: string[];
 }) {
@@ -1928,7 +1976,7 @@ function VoiceActionButton({
             shine={shine}
           />
         )}
-        {busy ? <ActivityIndicator size="small" color={K.bone} /> : children}
+        {busy ? <ActivityIndicator size="small" color={busyColor} /> : children}
       </TouchableOpacity>
       <Text style={styles.actionLabel}>{label}</Text>
     </View>

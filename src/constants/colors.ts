@@ -63,8 +63,9 @@ export const TC: Record<MetabolicType, { bg: string; text: string }> = {
     text: K.brown,
   },
   Chameleon: {
-    bg: "#8B7355", // Earthy brown variant - cyclical, grounded
-    text: K.white,
+    bg: "#9DBC92", // Sage green — matches the Chameleon logo/mascot (was an
+                   // earthy brown #8B7355 that clashed with the green logo)
+    text: K.brown,
   },
   Explorer: {
     bg: "#ccbc60", // Saturated gold — adaptable, quiet signals
