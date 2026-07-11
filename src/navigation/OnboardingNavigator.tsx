@@ -15,6 +15,9 @@ import {
   PaywallScreen,
 } from "../screens/onboarding";
 import { LoginScreen } from "../screens/auth/LoginScreen";
+import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
+import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
+import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
 import { K } from "../constants/colors";
 
 // New onboarding sequence (RES-119): education → pre-scan → scan →
@@ -29,6 +32,9 @@ export type OnboardingStackParamList = {
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
+  ForgotPassword: undefined;
+  ForgotPasswordCode: { email: string };
+  ForgotPasswordReset: { email: string; resetToken: string };
   Calibration: undefined;
   Scan: undefined;
   Survey: { step?: number } | undefined;
@@ -78,6 +84,21 @@ export function OnboardingNavigator() {
       <Stack.Screen
         name="Login"
         component={LoginScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      <Stack.Screen
+        name="ForgotPassword"
+        component={ForgotPasswordScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      <Stack.Screen
+        name="ForgotPasswordCode"
+        component={ForgotPasswordCodeScreen}
+        options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      <Stack.Screen
+        name="ForgotPasswordReset"
+        component={ForgotPasswordResetScreen}
         options={{ contentStyle: { backgroundColor: K.brown } }}
       />
       <Stack.Screen

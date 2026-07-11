@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
-const API_BASE_URL: string =
+export const API_BASE_URL: string =
   Constants.expoConfig?.extra?.apiBaseUrl ||
   (__DEV__ ? "http://192.168.1.217:3003" : "http://localhost:3003");
 

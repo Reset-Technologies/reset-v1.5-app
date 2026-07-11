@@ -10,7 +10,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { OnboardingNavigator } from "./OnboardingNavigator";
 import { MainNavigator } from "./MainNavigator";
 import { GateNavigator } from "./GateNavigator";
-import { LoginScreen } from "../screens/auth/LoginScreen";
+import { AuthNavigator } from "./AuthNavigator";
 import { useApp } from "../context/AppContext";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { K } from "../constants/colors";
@@ -128,7 +128,7 @@ export function RootNavigator() {
         {!state.user.hasCompletedOnboarding ? (
           <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
         ) : !state.auth.isAuthenticated ? (
-          <Stack.Screen name="Auth" component={LoginScreen} />
+          <Stack.Screen name="Auth" component={AuthNavigator} />
         ) : !isPro ? (
           // Subscription gate: free users can't reach Main. Subscribing flips
           // the tier to "pro" and this re-renders straight into Main.
