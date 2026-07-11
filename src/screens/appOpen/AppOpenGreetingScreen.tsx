@@ -12,7 +12,7 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useApp } from "../../context/AppContext";
 import Svg, { Path } from "react-native-svg";
-import { K, toMetabolicType, type MetabolicType } from "../../constants/colors";
+import { K, toMetabolicType } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
 import {
   generateGreeting,
@@ -33,16 +33,7 @@ import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { useSwipeToAdvance } from "../../hooks/useSwipeToAdvance";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
-
-// Per-type mascot hero. The user's metabolic type drives which gradient logo
-// bleeds off the card's top-left. (Ember's asset uses the "Restorer" name.)
-const TYPE_MASCOT: Record<MetabolicType, ReturnType<typeof require>> = {
-  Burner: require("../../../assets/images/type-mascots/Burner.png"),
-  Rebounder: require("../../../assets/images/type-mascots/Rebounder.png"),
-  Ember: require("../../../assets/images/type-mascots/Restorer.png"),
-  Chameleon: require("../../../assets/images/type-mascots/Chameleon.png"),
-  Explorer: require("../../../assets/images/type-mascots/Explorer.png"),
-};
+import { TYPE_MASCOT } from "../../constants/mascots";
 
 export function AppOpenGreetingScreen() {
   const navigation =
