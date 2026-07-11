@@ -404,29 +404,32 @@ function InsightCard({
     { label: "Your meal because of that", body: mealBecause },
   ];
   return (
-    <View style={[styles.card, styles.insightCard, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
+    <View style={[styles.card, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.insightCardContent}>
-        <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
-        <Text style={styles.midGreeting}>
-          Here's what I'm thinking about your scan.
-        </Text>
-        {beats.map((beat) => (
-          <View key={beat.label} style={styles.insightWrap}>
-            <View style={[styles.eyebrowRow, styles.insightEyebrowRow]}>
-              <View style={styles.eyebrowDot} />
-              <Text style={styles.eyebrowText}>{beat.label}</Text>
+        <View style={styles.insightTop}>
+          <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
+          <Text style={styles.midGreeting}>
+            Here's what I'm thinking about your scan.
+          </Text>
+          {beats.map((beat) => (
+            <View key={beat.label} style={styles.insightWrap}>
+              <View style={[styles.eyebrowRow, styles.insightEyebrowRow]}>
+                <View style={styles.eyebrowDot} />
+                <Text style={styles.eyebrowText}>{beat.label}</Text>
+              </View>
+              <View style={styles.insightBubble}>
+                <ScrollView
+                  style={{ maxHeight: bodyMaxHeight }}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
+                  <Text style={styles.insightBody}>{beat.body}</Text>
+                </ScrollView>
+              </View>
             </View>
-            <View style={styles.insightBubble}>
-              <ScrollView
-                style={{ maxHeight: bodyMaxHeight }}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-              >
-                <Text style={styles.insightBody}>{beat.body}</Text>
-              </ScrollView>
-            </View>
-          </View>
-        ))}
+          ))}
+        </View>
+        <Text style={styles.swipeHint}>Swipe left to continue</Text>
       </View>
     </View>
   );
@@ -489,6 +492,7 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
             </TouchableOpacity>
           </View>
         </View>
+        <Text style={styles.swipeHint}>Swipe left to continue</Text>
       </View>
     </View>
   );
@@ -1242,25 +1246,28 @@ const styles = StyleSheet.create({
     color: SUBTLE,
     letterSpacing: -0.12,
     textAlign: "center",
+    width: "100%",
   },
 
   // Insight card (3rd in stack — "Here's my biggest takeaway from your scan.")
   // Per Figma 2413:8440 — single column, vertically centered, gap 24 between
   // logo / header / insight group; the insight group itself is gap 6 (eyebrow
-  // → bubble) so it reads as one unit directly below the header.
-  // Bottom padding insets the scroll VIEWPORT (not the content) up from the
-  // card's bottom edge, so a long/scrolling insight never clips text flush
-  // against the bottom — that gutter of card background is what shows in the
-  // stack-peek when this card sits behind an earlier one. (Content-side
-  // paddingBottom wouldn't help: it only adds space after the last line once
-  // fully scrolled, not at the rest position.)
-  insightCard: {
-    paddingBottom: 28,
-  },
+  // → bubble) so it reads as one unit directly below the header. The scroll
+  // gutter that keeps a long insight from clipping at the bottom edge is now
+  // provided by the swipe-hint row + its gap below insightTop (see insightTop).
   insightCardContent: {
     flex: 1,
     padding: 24,
     gap: 24,
+    alignItems: "flex-start",
+  },
+  // Flex-grows to fill the card and centers the logo/header/bubbles, so the
+  // swipe hint (a sibling below) is pinned near the card's bottom edge like the
+  // other cards — rather than floating mid-card as part of a centered group.
+  insightTop: {
+    flex: 1,
+    gap: 24,
+    width: "100%",
     justifyContent: "center",
     alignItems: "flex-start",
   },

@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { PurchasesPackage } from "react-native-purchases";
@@ -22,6 +23,7 @@ import {
 } from "../../services/revenuecat";
 import { setSubscriptionTierDev } from "../../services/profile";
 import { rootNavigationRef } from "../../navigation/rootNavigationRef";
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
 
@@ -632,7 +634,12 @@ export function PaywallScreen({ navigation }: Props) {
             )}
           </TouchableOpacity>
           <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Privacy Policy</Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+              hitSlop={8}
+            >
+              <Text style={styles.footerText}>Privacy Policy</Text>
+            </TouchableOpacity>
             <View style={styles.footerDot} />
             <TouchableOpacity onPress={handleRestore} disabled={restoring} hitSlop={8}>
               <Text style={styles.footerText}>
@@ -640,7 +647,12 @@ export function PaywallScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
             <View style={styles.footerDot} />
-            <Text style={styles.footerText}>Terms of Use</Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(TERMS_OF_USE_URL)}
+              hitSlop={8}
+            >
+              <Text style={styles.footerText}>Terms of Use</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>

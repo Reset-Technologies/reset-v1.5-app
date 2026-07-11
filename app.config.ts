@@ -48,7 +48,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-font",
     "expo-video",
-    "expo-audio",
+    [
+      // Disable background playback so expo-audio does NOT add the `audio`
+      // UIBackgroundModes entry. Ester's TTS plays only in the foreground, and
+      // Apple rejected the app (Guideline 2.5.4) for declaring background audio
+      // without a persistent background-audio feature. Also drops the unneeded
+      // Android FOREGROUND_SERVICE_MEDIA_PLAYBACK permission + playback service.
+      "expo-audio",
+      { enableBackgroundPlayback: false },
+    ],
     [
       // ShenAI SDK requires Android minSdk 26. app.config's android.minSdkVersion
       // is not a real Expo field (it was silently ignored, so prebuild fell back
@@ -93,6 +101,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // AppCheckCore can be integrated as a static library (broke after adding
     // expo-image's SDWebImage stack). See plugins/withModularHeaders.js.
     "./plugins/withModularHeaders",
+    // Strips unused `audio`/`voip` UIBackgroundModes from the final plist
+    // (Apple Guideline 2.5.4). Runs last as a safety net. See the plugin file.
+    "./plugins/withCleanBackgroundModes",
   ],
   extra: {
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",

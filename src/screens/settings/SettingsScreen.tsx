@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,6 +15,7 @@ import { useNavigation } from "@react-navigation/native";
 import { K } from "../../constants/colors";
 import { typography, spacing, radius } from "../../constants/typography";
 import { DIETARY_RESTRICTIONS, TASTE_CLUSTERS } from "../../constants/types";
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 import { Pill } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { logout } from "../../services/auth";
@@ -330,13 +332,19 @@ export function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>DATA & PRIVACY</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.linkRow}>
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+            >
               <Text style={styles.linkText}>Privacy Policy</Text>
               <Text style={styles.linkArrow}>›</Text>
             </TouchableOpacity>
             <View style={styles.linkBorder} />
-            <TouchableOpacity style={styles.linkRow}>
-              <Text style={styles.linkText}>Terms of Service</Text>
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => Linking.openURL(TERMS_OF_USE_URL)}
+            >
+              <Text style={styles.linkText}>Terms of Use</Text>
               <Text style={styles.linkArrow}>›</Text>
             </TouchableOpacity>
             <View style={styles.linkBorder} />
