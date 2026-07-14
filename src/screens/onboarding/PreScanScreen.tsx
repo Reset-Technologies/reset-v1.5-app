@@ -90,7 +90,7 @@ function SpaIcon() {
 const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
   { Icon: HeartRateIcon, label: "Heart Rate" },
   { Icon: BreathingIcon, label: "Breathing Rate" },
-  { Icon: StressIcon, label: "Stress Index" },
+  { Icon: StressIcon, label: "Stress Balance" },
   { Icon: SpaIcon, label: "Wellness Score" },
 ];
 

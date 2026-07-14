@@ -8,6 +8,7 @@ import { EsterBubble, Button, Avatar } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { determineType, getTypeRevealText } from "../../constants/types";
 import { logEvent } from "../../services/braze";
+import { STRESS_LABEL, stressBand } from "../../utils/stress";
 
 type Props = NativeStackScreenProps<any, "ScanReveal">;
 
@@ -116,9 +117,8 @@ export function ScanRevealScreen({ navigation }: Props) {
 
           <BiometricRow
             icon="🧘"
-            label="Stress Index"
-            value={biometrics.stressIndex}
-            note="elevated"
+            label={STRESS_LABEL}
+            value={stressBand(biometrics.stressIndex) ?? "—"}
             delay={0}
           />
           <BiometricRow

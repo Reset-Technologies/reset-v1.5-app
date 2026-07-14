@@ -10,11 +10,14 @@ import {
   getCurrentViolatedMeasurementEnvironmentCondition,
   setOperatingMode,
   setCameraMode,
+  setCustomMeasurementConfig,
   OperatingMode,
   MeasurementPreset,
   PrecisionMode,
   OnboardingMode,
   CameraMode,
+  Metric,
+  HealthIndex,
   UiVersion,
   Gender,
   FaceState as SdkFaceState,
@@ -23,6 +26,7 @@ import {
   type MeasurementResults,
   type HealthRisks,
 } from "react-native-shenai-sdk";
+import { Platform } from "react-native";
 
 // Pre-scan calibration passed to ShenAI as risksFactors. Without these
 // ShenAI can't compute basalMetabolicRate / totalDailyEnergyExpenditure.
@@ -145,12 +149,50 @@ export function computeBmrTdeeDelta(
   return (expected - shenBmr) / expected;
 }
 
+// App-Store wellness framing (Apple Guideline 1.4.1 + ShenAI rep guidance):
+// the SDK's own in-scan UI renders a live tile per displayed metric, and the
+// ALL_METRICS preset shows "Blood Pressure" and "Stress Index" tiles — a
+// diagnostic-looking presentation Apple flags. On iOS we switch to the CUSTOM
+// preset and display only heart rate, HRV, and breathing rate (the metrics with
+// published clinical validation). Blood Pressure is dropped entirely; stress is
+// still computed and surfaced through our own wellness "Stress Balance" band
+// (see utils/stress), so we hide the SDK's raw stress tile too.
+//
+// instantMetrics/summaryMetrics are DISPLAY lists — they control which tiles
+// the SDK paints, not what it computes. The 30s duration + RELAXED precision is
+// unchanged, so getMeasurementResults() still returns stressIndex (verified on
+// a physical device: real scan → "Stress Balance" band renders) and BP (which
+// we keep parsing but never show).
+//
+// ⚠️ iOS-ONLY: the Android SDK bridge throws "java.lang.Double cannot be cast
+// to java.lang.String" on the CUSTOM config (verified on a Galaxy S24), so
+// Android keeps ALL_METRICS — its scan still shows the BP/Stress tiles. Google
+// Play hasn't flagged this; the Apple review is the blocker. TODO(android):
+// hide the tiles on Android too — raise the CUSTOM-config crash with MX Labs
+// or evaluate a validated HR/HRV/BR-only preset.
+const USE_CUSTOM_PRESET = Platform.OS === "ios";
+const SCAN_DURATION_SECONDS = 30;
+const DISPLAYED_METRICS: Metric[] = [
+  Metric.HEART_RATE,
+  Metric.HRV_SDNN,
+  Metric.BREATHING_RATE,
+];
+// Health indices we read in mapSdkResults — keep them computed under CUSTOM.
+const HEALTH_INDICES: HealthIndex[] = [
+  HealthIndex.WELLNESS_SCORE,
+  HealthIndex.VASCULAR_AGE,
+  HealthIndex.BASAL_METABOLIC_RATE,
+  HealthIndex.TOTAL_DAILY_ENERGY_EXPENDITURE,
+];
+
 export async function initShenAI(
   apiKey: string,
   calibration?: ShenCalibration,
 ): Promise<void> {
   const result = await initialize(apiKey, undefined, {
-    measurementPreset: MeasurementPreset.THIRTY_SECONDS_ALL_METRICS,
+    measurementPreset: USE_CUSTOM_PRESET
+      ? MeasurementPreset.CUSTOM
+      : MeasurementPreset.THIRTY_SECONDS_ALL_METRICS,
     precisionMode: PrecisionMode.RELAXED,
     cameraMode: CameraMode.FACING_USER,
     // RES-133: SDK 3.x defaults to "on-demand server models" — the model
@@ -208,6 +250,17 @@ export async function initShenAI(
   // InitializationResult.OK === 0
   if (result !== 0) {
     throw new Error(`Shen AI init failed: code ${result}`);
+  }
+
+  // iOS only — see USE_CUSTOM_PRESET note above (Android's bridge crashes on
+  // this config). Only takes effect because the preset is CUSTOM.
+  if (USE_CUSTOM_PRESET) {
+    await setCustomMeasurementConfig({
+      durationSeconds: SCAN_DURATION_SECONDS,
+      instantMetrics: DISPLAYED_METRICS,
+      summaryMetrics: DISPLAYED_METRICS,
+      healthIndices: HEALTH_INDICES,
+    });
   }
 }
 

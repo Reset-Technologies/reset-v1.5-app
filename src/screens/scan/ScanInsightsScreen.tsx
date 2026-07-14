@@ -24,6 +24,7 @@ import { getScanInsightsMessage } from "../../services/scanInsights";
 import { getCheckInHistory, type CheckInEntry } from "../../services/checkIn";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { TrendIcon } from "../../components/TrendIcon";
+import { STRESS_LABEL, stressBand } from "../../utils/stress";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
@@ -60,10 +61,13 @@ interface MetricValue {
   previous: number | null;
 }
 
+// Keep the raw (un-rounded) Baevsky value — it drives the wellness band and the
+// trend direction. We never surface the raw number; stress renders as a band
+// word (see utils/stress). Rounding here would collapse the ~0.5–4 range.
 function pickStress(scan: ScanRecord | null): number | null {
   if (!scan) return null;
   const v = scan.stressIndex;
-  return typeof v === "number" ? Math.round(v) : null;
+  return typeof v === "number" ? v : null;
 }
 
 function pickHrv(scan: ScanRecord | null): number | null {
@@ -521,10 +525,12 @@ export function ScanInsightsScreen() {
             <View style={styles.metricsGrid}>
               <View style={styles.metricsRow}>
                 <MetricCard
-                  label="Stress Index"
+                  label={STRESS_LABEL}
                   current={stress.current}
                   previous={stress.previous}
                   betterDirection="down"
+                  valueOverride={stressBand(stress.current) ?? "—"}
+                  hideDeltaPercent
                 />
                 <MetricCard
                   label="Heart Rate Variability"
@@ -593,6 +599,12 @@ interface MetricCardProps {
   // change moves in this direction (a good change), blue otherwise.
   betterDirection?: "up" | "down";
   showPlus?: boolean;
+  // Show this string as the value instead of the raw number (used for stress,
+  // which is presented as a wellness band, not a diagnostic reading).
+  valueOverride?: string;
+  // Suppress the numeric trend "%" (keep the direction arrow). Used with
+  // valueOverride so a banded metric shows direction without a misleading %.
+  hideDeltaPercent?: boolean;
 }
 
 function SurveyCard({
@@ -632,16 +644,31 @@ function MetricCard({
   unit,
   showPlus,
   betterDirection,
+  valueOverride,
+  hideDeltaPercent,
 }: MetricCardProps) {
   const { nestedBg, textColor, subtleText } = useAppPalette();
   const delta = trendPercent(current, previous);
-  const valueDisplay = current === null ? "—" : `${showPlus ? "+" : ""}${current}`;
+  const valueDisplay =
+    valueOverride ??
+    (current === null ? "—" : `${showPlus ? "+" : ""}${current}`);
 
   return (
     <View style={[styles.metricCard, { backgroundColor: nestedBg }]}>
       <Text style={[styles.metricLabel, { color: textColor }]}>{label}</Text>
       <View style={styles.metricBottomRow}>
-        <Text style={[styles.metricValue, { color: textColor }]}>
+        <Text
+          style={[
+            // Band words (e.g. "Elevated") are longer than the numeric values
+            // this card was built for; render them smaller + one line so they
+            // don't wrap and shove the trend arrow on narrow screens (S24).
+            valueOverride ? styles.metricValueWord : styles.metricValue,
+            { color: textColor },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
           {valueDisplay}
           {unit ? <Text style={styles.metricUnit}>{unit}</Text> : null}
         </Text>
@@ -656,9 +683,11 @@ function MetricCard({
                 direction={delta > 0 ? "up" : delta < 0 ? "down" : "same"}
                 betterDirection={betterDirection}
               />
-              <Text style={[styles.metricTrendText, { color: textColor }]}>
-                {delta === 0 ? "0%" : `${Math.abs(delta)}%`}
-              </Text>
+              {hideDeltaPercent ? null : (
+                <Text style={[styles.metricTrendText, { color: textColor }]}>
+                  {delta === 0 ? "0%" : `${Math.abs(delta)}%`}
+                </Text>
+              )}
             </>
           )}
         </View>
@@ -843,6 +872,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.32,
     color: K.brown,
     lineHeight: 36,
+    flexShrink: 1,
+  },
+  // Qualitative band words (Stress Balance) — smaller than the numeric value so
+  // longer words fit on one line beside the trend arrow.
+  metricValueWord: {
+    fontFamily: fonts.dmSansBold,
+    fontSize: 22,
+    letterSpacing: -0.22,
+    color: K.brown,
+    lineHeight: 28,
+    flexShrink: 1,
   },
   surveyValue: {
     fontFamily: fonts.dmSansBold,

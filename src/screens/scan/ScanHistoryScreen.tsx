@@ -24,6 +24,7 @@ import {
 } from "../../services/profile";
 import { logEvent } from "../../services/braze";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
+import { stressBand } from "../../utils/stress";
 
 // Per-type gradient stops (kept in sync with ProfileScreen's TYPE_GRADIENT_STOPS).
 const TYPE_GRADIENT_STOPS: Record<
@@ -156,7 +157,8 @@ function scanChips(s: ScanHistoryItem): string[] {
   if (s.heartRate != null) chips.push(`HR ${Math.round(s.heartRate)}`);
   if (s.hrvSdnn != null) chips.push(`HRV ${Math.round(s.hrvSdnn)}ms`);
   if (s.breathingRate != null) chips.push(`Br ${Math.round(s.breathingRate)}/min`);
-  if (s.stressIndex != null) chips.push(`Stress ${Math.round(s.stressIndex)}`);
+  const band = stressBand(s.stressIndex);
+  if (band) chips.push(`Stress ${band}`);
   return chips;
 }
 

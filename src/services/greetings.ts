@@ -1,5 +1,6 @@
 import { MetabolicType } from "../constants/colors";
 import { TYPE_CONFIGS } from "../constants/types";
+import { stressBand } from "../utils/stress";
 
 // ---------- Types ----------
 
@@ -259,7 +260,8 @@ function getScanDay1Greeting(ctx: GreetingContext): GreetingResult {
 
   let message: string;
   if (stressIndex) {
-    message = `Your stress index is ${stressIndex}. That confirms what your quiz suggested — your body runs ${type.signals.stress === "high" ? "hot" : "steady"}.`;
+    const band = stressBand(Number(stressIndex));
+    message = `Your stress balance looks ${(band ?? "balanced").toLowerCase()}. That confirms what your quiz suggested — your body runs ${type.signals.stress === "high" ? "hot" : "steady"}.`;
   } else if (heartRate) {
     message = `Resting at ${heartRate} bpm. Combined with your quiz answers, I can see how your body manages fuel.`;
   } else if (wellness) {
@@ -559,10 +561,10 @@ function getRecentScanGreeting(ctx: GreetingContext): GreetingResult {
   const wellness = scanVal(scan, "wellnessIndex");
 
   if (stressIndex) {
-    const level = Number(stressIndex) > 60 ? "elevated" : Number(stressIndex) > 40 ? "moderate" : "low";
+    const stressWord = stressBand(Number(stressIndex)) ?? "Balanced";
     return {
       nameGreeting,
-      message: `Stress index at ${stressIndex} — ${level}. Today's meals are calibrated to match.${tail}`,
+      message: `Your stress balance looks ${stressWord.toLowerCase()}. Today's meals are calibrated to match.${tail}`,
     };
   }
   if (heartRate) {

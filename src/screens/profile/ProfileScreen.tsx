@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { K, TC, toMetabolicType, MetabolicType } from "../../constants/colors";
+import { STRESS_LABEL, stressBand } from "../../utils/stress";
 import { fonts, spacing, radius } from "../../constants/typography";
 import { TYPE_CONFIGS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
@@ -311,25 +312,19 @@ export function ProfileScreen() {
     .slice(-7);
   const latestStressIdx = stressSeries.length ? stressSeries[stressSeries.length - 1] : null;
 
-  // Scan-derived stress word (mirrors Recovery's threshold pattern). Higher
-  // stressIndex = more stress; thresholds sit on the same ~20–80 plausible
-  // range used for `stressLevel`. Falls back to the type's default copy when
-  // there's no scan yet.
+  // Scan-derived stress presented as a wellness band (Calm/Balanced/Elevated),
+  // anchored to the real ~0.5–4+ Baevsky range (see utils/stress). We never
+  // surface the raw index. Falls back to the type's default copy when there's
+  // no scan yet.
   const stressWord =
-    latestStressIdx != null
-      ? latestStressIdx >= 60
-        ? "Elevated"
-        : latestStressIdx >= 40
-          ? "Moderate"
-          : "Stable"
-      : cap(String(typeConfig.signals.stress));
+    stressBand(latestStressIdx) ?? cap(String(typeConfig.signals.stress));
 
   // Normalized 0–1 value level per signal — drives the single-data-point line
   // slope (up = high, down = low, flat = middle). Ranges are the plausible
   // span for each metric (stress/recovery indices, energy rank 1–4).
   const norm01 = (v: number | null, lo: number, hi: number) =>
     v == null ? 0.5 : Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
-  const stressLevel = norm01(latestStressIdx, 20, 80);
+  const stressLevel = norm01(latestStressIdx, 0.5, 4);
   const recoveryLevel = norm01(recoveryCurrent, 20, 60);
   const energyLevel = norm01(energyRank(energyLogSorted[0]?.energy ?? null), 1, 4);
 
@@ -578,11 +573,13 @@ export function ProfileScreen() {
             {biometricsFresh ? (
               <View style={styles.signalStack}>
                 <SignalBanner
-                  title="Stress Index"
+                  title={STRESS_LABEL}
                   delta={deltaText(stressTrendDir)}
                   value={stressWord}
                   series={stressSeries}
-                  today={latestStressIdx}
+                  // No "Today: NN" pill — stress is shown as a band, never a
+                  // raw index (which is also meaningless on the ~0.5–4 scale).
+                  today={null}
                   surfaces={surfaces}
                   accent={primary}
                   level={stressLevel}
@@ -592,11 +589,13 @@ export function ProfileScreen() {
                       metric: "stress",
                       variant: "signal",
                       eyebrow: "About Today's Signals",
-                      title: "Stress Index",
+                      title: STRESS_LABEL,
                       value: stressWord,
                       trend: stressTrendDir,
                       trendText: deltaText(stressTrendDir),
-                      number: latestStressIdx,
+                      // Show the band word big, not the raw index number.
+                      number: null,
+                      valueBig: stressWord,
                       series: stressSeries,
                       level: stressLevel,
                     })
@@ -883,7 +882,12 @@ function SignalBanner({
           <Text style={[styles.signalBannerDelta, { color: surfaces.textSubtle }]}>{delta}</Text>
         </View>
         <View style={styles.signalBannerValueRow}>
-          <Text style={[styles.signalBannerValue, { color: surfaces.textStrong }]} numberOfLines={1}>
+          <Text
+            style={[styles.signalBannerValue, { color: surfaces.textStrong }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
             {value}
           </Text>
           <TouchableOpacity
@@ -1399,6 +1403,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.quadrant,
     fontSize: 32,
     letterSpacing: -0.32,
+    flexShrink: 1,
   },
   graphWrap: {
     width: GRAPH_W,

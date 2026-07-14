@@ -8,6 +8,7 @@ import { Avatar, Button } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { refreshDailyPlan, cacheDailyPlan } from "../../services/meals";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
+import { STRESS_LABEL, stressBand } from "../../utils/stress";
 
 type Props = NativeStackScreenProps<MainStackParamList, "ScanResults">;
 
@@ -101,8 +102,8 @@ export function ScanResultsScreen({ navigation }: Props) {
 
           <BiometricRow
             icon="🧘"
-            label="Stress Index"
-            value={biometrics.stressIndex}
+            label={STRESS_LABEL}
+            value={stressBand(biometrics.stressIndex) ?? "—"}
             delay={0}
           />
           <BiometricRow

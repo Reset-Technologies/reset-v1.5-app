@@ -73,7 +73,7 @@ const SCAN_PHASES = [
   {
     id: "mapping",
     label: "Mapping markers",
-    ester: "Stress index... heart rate variability... wellness score...",
+    ester: "Stress balance... heart rate variability... wellness score...",
   },
 ];
 

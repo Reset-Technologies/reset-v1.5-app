@@ -102,7 +102,7 @@ export function CameraPermScreen({ navigation }: Props) {
           <View style={styles.feature}>
             <Text style={styles.featureIcon}>🧘</Text>
             <View>
-              <Text style={styles.featureTitle}>Stress Index</Text>
+              <Text style={styles.featureTitle}>Stress Balance</Text>
               <Text style={styles.featureDesc}>Stress patterns</Text>
             </View>
           </View>
