@@ -5,6 +5,7 @@ import { MetabolicType } from "../constants/colors";
 import { getTokens, clearTokens } from "../services/apiClient";
 import { fetchMe, AuthUser } from "../services/auth";
 import { getProfile } from "../services/profile";
+import { getAiConsent } from "../services/aiConsent";
 import * as BrazeService from "../services/braze";
 import {
   configureRevenueCat,
@@ -40,6 +41,12 @@ interface UserProfile {
   // backend confirms otherwise, so we never accidentally gate biomarkers
   // a user already has access to.
   subscriptionTier?: SubscriptionTier;
+  // RES-188 — third-party-AI data-sharing consent. `aiConsentGranted` gates
+  // AI features on the client (the backend enforces independently);
+  // `aiConsentNeedsPrompt` is true when the user hasn't decided (or the
+  // disclosure materially changed) so we can prompt on the next AI action.
+  aiConsentGranted?: boolean;
+  aiConsentNeedsPrompt?: boolean;
   goal?: string;
   calibration?: CalibrationData;
   quizAnswers: Record<string, string>;
@@ -104,6 +111,10 @@ type AppAction =
   | { type: "SET_QUIZ_ANSWER"; payload: { questionId: string; answer: string } }
   | { type: "SET_METABOLIC_TYPE"; payload: MetabolicType }
   | { type: "SET_SUBSCRIPTION_TIER"; payload: SubscriptionTier }
+  | {
+      type: "SET_AI_CONSENT";
+      payload: { granted: boolean; needsPrompt: boolean };
+    }
   | {
       type: "SET_TYPING_RESULT";
       payload: {
@@ -186,6 +197,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
         user: {
           ...state.user,
           subscriptionTier: action.payload,
+        },
+      };
+
+    case "SET_AI_CONSENT":
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          aiConsentGranted: action.payload.granted,
+          aiConsentNeedsPrompt: action.payload.needsPrompt,
         },
       };
 
@@ -311,6 +332,7 @@ interface AppContextValue {
   setQuizAnswer: (questionId: string, answer: string) => void;
   setMetabolicType: (type: MetabolicType) => void;
   setSubscriptionTier: (tier: SubscriptionTier) => void;
+  setAiConsent: (granted: boolean, needsPrompt: boolean) => void;
   setTypingResult: (payload: {
     metabolicType: MetabolicType;
     startingRead: boolean;
@@ -423,6 +445,18 @@ export function AppProvider({ children }: AppProviderProps) {
             // Profile fetch failed — leave existing local value.
           }
 
+          // RES-188 — hydrate third-party-AI consent so AI surfaces gate
+          // correctly on session restore (and we can prompt if it's stale).
+          try {
+            const { consent, needsPrompt } = await getAiConsent();
+            dispatch({
+              type: "SET_AI_CONSENT",
+              payload: { granted: consent?.status === "granted", needsPrompt },
+            });
+          } catch {
+            // Leave existing local value on failure.
+          }
+
           // If local state is missing onboarding data but backend has it (e.g. reinstall),
           // restore from backend profile
           const savedParsed = savedState ? JSON.parse(savedState) : null;
@@ -504,6 +538,10 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: "SET_SUBSCRIPTION_TIER", payload: tier });
   };
 
+  const setAiConsent = (granted: boolean, needsPrompt: boolean) => {
+    dispatch({ type: "SET_AI_CONSENT", payload: { granted, needsPrompt } });
+  };
+
   const setGoal = (goal: string) => {
     dispatch({ type: "SET_GOAL", payload: goal });
   };
@@ -533,10 +571,11 @@ export function AppProvider({ children }: AppProviderProps) {
       type: "SET_AUTH",
       payload: { isAuthenticated: true, authUser: user },
     });
-    // Identify user with Braze + RevenueCat and request push permission
+    // Identify user with Braze + RevenueCat. RES-188: the push soft-ask is no
+    // longer fired here at signup (it stacked with the AI-consent screen) —
+    // it's now primed once from the home screen after the first meal card.
     BrazeService.changeUser(user.id);
     loginRevenueCat(user.id);
-    requestPushPermission();
     // Pull metabolicType + subscriptionTier from backend so type-derived UI
     // and Ester's account-status gating both match the user we just signed in
     // as (rather than the previous user's local state).
@@ -595,6 +634,7 @@ export function AppProvider({ children }: AppProviderProps) {
     setQuizAnswer,
     setMetabolicType,
     setSubscriptionTier,
+    setAiConsent,
     setTypingResult,
     setGoal,
     setCalibration,

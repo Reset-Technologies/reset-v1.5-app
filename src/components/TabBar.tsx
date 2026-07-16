@@ -14,6 +14,7 @@ import type { MainStackParamList } from "../navigation/MainNavigator";
 import { K } from "../constants/colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppPalette } from "../hooks/useAppPalette";
+import { useAiConsentGate } from "../hooks/useAiConsentGate";
 
 // Figma: Reset v1.5 / Bottom Nav (node 1324:14600)
 // Paths exported directly from Figma — left D, right D, and a center
@@ -65,6 +66,7 @@ function AccountIcon({ color }: { color: string }) {
 export function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { innerBg, evening } = useAppPalette();
+  const { runWithAiConsent } = useAiConsentGate();
   const stackNavigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
@@ -198,7 +200,9 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           style={[styles.esterButton, { backgroundColor: esterBg }]}
           activeOpacity={0.85}
           onPress={() =>
-            stackNavigation.navigate("EsterChat", { context: "general" })
+            runWithAiConsent(() =>
+              stackNavigation.navigate("EsterChat", { context: "general" }),
+            )
           }
           accessibilityRole="button"
           accessibilityLabel="Ester"

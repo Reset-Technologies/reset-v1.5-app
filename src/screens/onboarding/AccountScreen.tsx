@@ -65,7 +65,8 @@ export function AccountScreen({ navigation }: Props) {
     if (state.biometrics) {
       // reset (not navigate) so the now-stale account screens leave the stack —
       // a signed-up user must never be able to land back on a sign-up screen.
-      navigation.reset({ index: 0, routes: [{ name: "TypeReveal" }] });
+      // RES-188: third-party-AI consent sits between account creation and reveal.
+      navigation.reset({ index: 0, routes: [{ name: "AiConsent" }] });
     } else {
       completeOnboarding();
     }

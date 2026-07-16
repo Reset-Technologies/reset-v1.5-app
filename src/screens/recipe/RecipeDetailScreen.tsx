@@ -23,6 +23,8 @@ import { K, toMetabolicType, type MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import type { Meal } from "../../components";
+import { AiConsentNudge } from "../../components";
+import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import {
   getMealDetail,
@@ -339,6 +341,7 @@ export function RecipeDetailScreen() {
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
+  const { aiConsentGranted } = useAiConsentGate();
   // The Ester bubble's avatar + gradient reflect the user's metabolic type.
   const metabolicType: MetabolicType =
     toMetabolicType(state.user.metabolicType) ?? "Explorer";
@@ -383,6 +386,14 @@ export function RecipeDetailScreen() {
   }, [meal.id]);
 
   useEffect(() => {
+    // RES-188 — the "message from Ester" why-blurb is OpenAI-generated. Skip
+    // the fetch when third-party-AI consent is off; the render shows the
+    // AiConsentNudge in its place. Granting re-runs this effect.
+    if (!aiConsentGranted) {
+      setEsterLoading(false);
+      setEsterText(null);
+      return;
+    }
     let cancelled = false;
     setEsterLoading(true);
     setEsterText(null);
@@ -401,7 +412,7 @@ export function RecipeDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [meal.id]);
+  }, [meal.id, aiConsentGranted]);
 
   useEffect(() => {
     if (siblings.length > 0) return;
@@ -603,7 +614,15 @@ export function RecipeDetailScreen() {
           ) : null}
 
           {/* Message from Ester */}
-          {esterLoading || esterMessage ? (
+          {!aiConsentGranted ? (
+            <View style={styles.esterBlock}>
+              <View style={styles.esterEyebrowRow}>
+                <View style={styles.esterEyebrowDot} />
+                <Text style={styles.esterEyebrowText}>Message from Ester</Text>
+              </View>
+              <AiConsentNudge />
+            </View>
+          ) : esterLoading || esterMessage ? (
             <View style={styles.esterBlock}>
               <View style={styles.esterEyebrowRow}>
                 <View style={styles.esterEyebrowDot} />

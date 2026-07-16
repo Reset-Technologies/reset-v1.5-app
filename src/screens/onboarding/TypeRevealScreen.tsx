@@ -563,12 +563,18 @@ export function TypeRevealScreen({ navigation }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // RES-188 — the scan-insight blurb is OpenAI-generated. If the user
+      // declined third-party-AI consent, we skip it entirely and show the
+      // static type (the reset score is a deterministic backend calc, kept).
+      const aiGranted = state.user.aiConsentGranted === true;
       const [scoreRes, insightRes] = await Promise.allSettled([
         getResetScore(),
         // No meal slots pre-paywall; request the SPLIT format so the takeaway
         // renders as two beats ("what we noticed" + "your meal because of that")
         // instead of one wall of text. The long prose stays post-paywall.
-        getScanInsightsMessage(undefined, "split"),
+        aiGranted
+          ? getScanInsightsMessage(undefined, "split")
+          : Promise.reject(new Error("ai_consent_declined")),
       ]);
       if (cancelled) return;
       if (scoreRes.status === "fulfilled") {

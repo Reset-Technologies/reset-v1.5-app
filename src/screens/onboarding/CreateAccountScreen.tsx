@@ -96,7 +96,9 @@ export function CreateAccountScreen({ navigation }: Props) {
     //
     // reset (not navigate) so the now-stale account screens leave the stack —
     // a signed-up user must never be able to land back on a sign-up screen.
-    navigation.reset({ index: 0, routes: [{ name: "TypeReveal" }] });
+    // RES-188: the third-party-AI consent screen sits between account creation
+    // and the type reveal (the first call that would hit OpenAI).
+    navigation.reset({ index: 0, routes: [{ name: "AiConsent" }] });
   };
 
   const handleSubmit = async () => {

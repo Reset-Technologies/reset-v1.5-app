@@ -24,6 +24,7 @@ import { getScanInsightsMessage } from "../../services/scanInsights";
 import { getCheckInHistory, type CheckInEntry } from "../../services/checkIn";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { TrendIcon } from "../../components/TrendIcon";
+import { AiConsentNudge } from "../../components/AiConsentNudge";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
@@ -157,6 +158,10 @@ export function ScanInsightsScreen() {
   const fromAppOpen = !!route.params?.fromAppOpen;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
+  // RES-188 — when third-party-AI consent is off, the "Messages from Ester"
+  // section is hidden entirely (the scan-signal tiles below are on-device data,
+  // not AI, so they still show).
+  const aiConsentGranted = state.user.aiConsentGranted === true;
   const { innerBg, nestedBg, textColor, subtleText, statusBarStyle } =
     useAppPalette();
   const metabolicType =
@@ -194,6 +199,17 @@ export function ScanInsightsScreen() {
             dinner: plan.dinner.map((m) => ({ name: m.name, whyLine: m.whyLine })),
           }
         : undefined;
+      // RES-188 — the insight blurb is OpenAI-generated. If the user declined
+      // third-party-AI consent, skip the call and show the static fallback
+      // (the backend would 403 it anyway).
+      if (state.user.aiConsentGranted !== true) {
+        if (!cancelled) {
+          setNoticed(FALLBACK_NOTICED);
+          setMealBecause(FALLBACK_MEAL_BECAUSE);
+          setBlurbLoading(false);
+        }
+        return;
+      }
       try {
         // Split format: meal slots present here (post-paywall), so the meal beat
         // names the actual meals rather than staying generic.
@@ -368,7 +384,18 @@ export function ScanInsightsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Messages from Ester — two separate chat bubbles: what we noticed,
-            then your meal because of that. */}
+            then your meal because of that. RES-188: this section is AI-generated,
+            so when third-party-AI consent is off we show a turn-on nudge in its
+            place instead of the AI content. */}
+        {!aiConsentGranted ? (
+          <View style={styles.esterBlock}>
+            <AiConsentNudge
+              cardBg={nestedBg}
+              textColor={textColor}
+              subtleText={subtleText}
+            />
+          </View>
+        ) : (
         <View style={styles.esterBlock}>
           <View style={styles.esterEyebrowRow}>
             <View style={styles.esterEyebrowDot} />
@@ -440,6 +467,7 @@ export function ScanInsightsScreen() {
             </View>
           )}
         </View>
+        )}
 
         {!hasAnyData ? (
           <View style={[styles.emptyCard, { backgroundColor: nestedBg }]}>

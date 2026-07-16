@@ -37,6 +37,8 @@ import type {
 import { useApp } from "../../context/AppContext";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent, setCustomAttribute } from "../../services/braze";
+import { maybePrimePushOnce } from "../../services/pushNotifications";
+import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import {
   MealTabsSection,
   HomeHeader,
@@ -52,6 +54,7 @@ export function HomeScreenV2() {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { state } = useApp();
+  const { runWithAiConsent } = useAiConsentGate();
   const { innerBg, textColor } = useAppPalette();
 
   const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
@@ -106,6 +109,10 @@ export function HomeScreenV2() {
 
   React.useEffect(() => {
     logEvent("home_main");
+    // RES-188 — prime the push soft-ask here (after the first meal card),
+    // not at signup where it stacked with the AI-consent screen. No-op after
+    // the first time.
+    maybePrimePushOnce();
   }, []);
 
   const handleMealPress = useCallback(
@@ -119,9 +126,11 @@ export function HomeScreenV2() {
   const handleDeepRead = useCallback(
     (meal: Meal) => {
       logEvent("home_meal_askEsterCTA", { mealId: meal.id });
-      navigation.navigate("EsterChat", { context: "meal", meal });
+      runWithAiConsent(() =>
+        navigation.navigate("EsterChat", { context: "meal", meal }),
+      );
     },
-    [navigation],
+    [navigation, runWithAiConsent],
   );
 
   const handleScanAgain = useCallback(() => {

@@ -17,7 +17,9 @@ import type { Meal } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { useFeedbackPrompt } from "../../hooks/useFeedbackPrompt";
 import * as BrazeService from "../../services/braze";
+import { maybePrimePushOnce } from "../../services/pushNotifications";
 import { useScanNudge } from "../../hooks/useScanNudge";
+import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
 import {
   generateGreeting,
@@ -54,6 +56,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { state } = useApp();
+  const { runWithAiConsent } = useAiConsentGate();
   const hasScanLocal = !!state.biometrics;
 
   // Use authenticated user name, fall back to onboarding name
@@ -89,6 +92,10 @@ export function HomeScreen() {
   useEffect(() => {
     BrazeService.logEvent("home_main");
     loadProfile();
+    // RES-188 — prime the push soft-ask here (after the first meal card),
+    // not at signup where it stacked with the AI-consent screen. No-op after
+    // the first time.
+    maybePrimePushOnce();
   }, [loadProfile]);
 
   // Re-fetch profile when screen regains focus (e.g. after scan)
@@ -332,7 +339,9 @@ export function HomeScreen() {
 
   const handleMealChatPress = (meal: Meal) => {
     BrazeService.logEvent("home_meal_askEsterCTA", { mealId: meal.id });
-    navigation.navigate("EsterChat", { context: "meal", meal });
+    runWithAiConsent(() =>
+      navigation.navigate("EsterChat", { context: "meal", meal }),
+    );
   };
 
   const handleFeedback = async (mealId: string, feedback: "up" | "down", tags?: string[], freeText?: string) => {
@@ -624,7 +633,11 @@ export function HomeScreen() {
         {biometricsFresh && dailyPlan?.signalAdjustments && (dailyPlan.signalAdjustments.stress || dailyPlan.signalAdjustments.sleep || dailyPlan.signalAdjustments.energy) && (
           <TouchableOpacity
             style={styles.signalIndicator}
-            onPress={() => navigation.navigate("EsterChat", { context: "general" })}
+            onPress={() =>
+              runWithAiConsent(() =>
+                navigation.navigate("EsterChat", { context: "general" }),
+              )
+            }
           >
             <Text style={styles.signalIndicatorText}>
               {dailyPlan.signalAdjustments.stress

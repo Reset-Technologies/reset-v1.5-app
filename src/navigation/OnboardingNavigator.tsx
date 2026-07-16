@@ -12,6 +12,7 @@ import {
   AccountScreen,
   AccountGateScreen,
   CreateAccountScreen,
+  AiConsentScreen,
   PaywallScreen,
 } from "../screens/onboarding";
 import { LoginScreen } from "../screens/auth/LoginScreen";
@@ -40,6 +41,7 @@ export type OnboardingStackParamList = {
   Survey: { step?: number } | undefined;
   AccountGate: undefined;
   CreateAccount: undefined;
+  AiConsent: undefined;
   TypeReveal: undefined;
   Paywall: undefined;
   Share: undefined;
@@ -135,6 +137,15 @@ export function OnboardingNavigator() {
         component={CreateAccountScreen}
         options={{
           contentStyle: { backgroundColor: K.brown },
+        }}
+      />
+      <Stack.Screen
+        name="AiConsent"
+        component={AiConsentScreen}
+        options={{
+          contentStyle: { backgroundColor: K.cream },
+          animation: "fade",
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen

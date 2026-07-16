@@ -15,7 +15,12 @@ import { useNavigation } from "@react-navigation/native";
 import { K } from "../../constants/colors";
 import { typography, spacing, radius } from "../../constants/typography";
 import { DIETARY_RESTRICTIONS, TASTE_CLUSTERS } from "../../constants/types";
-import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
+import {
+  AI_DISCLOSURE_URL,
+  PRIVACY_POLICY_URL,
+  TERMS_OF_USE_URL,
+} from "../../constants/legal";
+import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { Pill } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { logout } from "../../services/auth";
@@ -44,6 +49,7 @@ export function SettingsScreen() {
     setHomeV2Enabled,
     setAppOpenFlowEnabled,
     setUseNewSurveyFlow,
+    setAiConsent,
   } = useApp();
 
   // Notification toggles — persisted via AsyncStorage
@@ -104,6 +110,49 @@ export function SettingsScreen() {
   const saveTastePreferences = () => {
     setTastePreferences(tasteSelection);
     setEditingTaste(false);
+  };
+
+  // RES-188 — grant / withdraw third-party-AI data-sharing consent. Withdrawing
+  // turns all AI features off and returns the user to the non-AI experience;
+  // for subscribers we're honest that paid features can't run without it.
+  const aiConsentGranted = state.user.aiConsentGranted === true;
+
+  const applyAiConsent = async (status: "granted" | "declined") => {
+    // Optimistic: reflect immediately, reconcile from the server response.
+    setAiConsent(status === "granted", status !== "granted");
+    try {
+      const next = await persistAiConsent(status);
+      setAiConsent(next.consent?.status === "granted", next.needsPrompt);
+    } catch {
+      // Revert on failure so the toggle never lies about the saved state.
+      setAiConsent(aiConsentGranted, !aiConsentGranted);
+      Alert.alert(
+        "Couldn't update",
+        "We couldn't save that change. Please try again.",
+      );
+    }
+  };
+
+  const handleAiConsentToggle = (nextOn: boolean) => {
+    if (nextOn) {
+      applyAiConsent("granted");
+      return;
+    }
+    const isPro = state.user.subscriptionTier !== "free";
+    Alert.alert(
+      "Turn off AI personalization?",
+      isPro
+        ? "Ester, insights, and meal reasoning will stop, and your data will no longer be shared with our AI partners. Your paid features rely on this processing, so they won't run until you turn it back on."
+        : "Ester, insights, and meal reasoning will stop, and your data will no longer be shared with our AI partners. You can turn this back on anytime.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Turn off",
+          style: "destructive",
+          onPress: () => applyAiConsent("declined"),
+        },
+      ],
+    );
   };
 
   const handleSignOut = () => {
@@ -332,6 +381,32 @@ export function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>DATA & PRIVACY</Text>
           <View style={styles.card}>
+            {/* RES-188 — third-party-AI consent grant/withdraw. */}
+            <View style={styles.toggleRow}>
+              <View style={styles.aiConsentLabelWrap}>
+                <Text style={styles.toggleLabel}>AI personalization</Text>
+                <Text style={styles.aiConsentSub}>
+                  Shares your first name, chats, check-ins, and scan wellness
+                  signals with OpenAI (and ElevenLabs for voice) to personalize
+                  your experience.
+                </Text>
+              </View>
+              <Switch
+                value={aiConsentGranted}
+                onValueChange={handleAiConsentToggle}
+                trackColor={{ false: K.border, true: K.ochre }}
+                thumbColor={K.white}
+              />
+            </View>
+            <View style={styles.linkBorder} />
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => Linking.openURL(AI_DISCLOSURE_URL)}
+            >
+              <Text style={styles.linkText}>AI Disclosure</Text>
+              <Text style={styles.linkArrow}>›</Text>
+            </TouchableOpacity>
+            <View style={styles.linkBorder} />
             <TouchableOpacity
               style={styles.linkRow}
               onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
@@ -590,6 +665,16 @@ const styles = StyleSheet.create({
   toggleLabel: {
     ...typography.body,
     color: K.brown,
+  },
+  aiConsentLabelWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  aiConsentSub: {
+    ...typography.caption,
+    color: K.sub,
+    marginTop: 4,
+    lineHeight: 17,
   },
   pillGrid: {
     flexDirection: "row",

@@ -8,7 +8,6 @@ import {
   StatusBar,
   ActivityIndicator,
   ScrollView,
-  Dimensions,
   Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,15 +29,10 @@ import {
 import { getResetScore } from "../../services/resetScore";
 import { getMealWhy } from "../../services/mealInsights";
 import { useAppPalette } from "../../hooks/useAppPalette";
+import { useAiConsentGate } from "../../hooks/useAiConsentGate";
+import { AiConsentNudge } from "../../components/AiConsentNudge";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
-
-const SCREEN_H = Dimensions.get("window").height;
-// Height of everything in the card that ISN'T the why-bubble text — top bar,
-// heading, hero photo, eyebrow, prompt, the two chips, and the inter-section
-// gaps/padding. The why text's scroll cap is whatever vertical space is left
-// after these, so the chips never get pushed off the bottom edge.
-const WHY_RESERVED_H = 644;
 
 // The user's metabolic-type mark (full-colour), shown centered in the top bar.
 // Ember maps to the "Restorer" asset (display name = Restorer, key = Ember).
@@ -121,66 +115,6 @@ function renderBoldSegments(text: string, boldColor: string): React.ReactNode[] 
     );
 }
 
-// A height-capped scroll area with an always-visible mini scrollbar on the
-// right — shown only when the content overflows — so users know the why-blurb
-// has more text below the fold.
-function WhyScroll({
-  maxHeight,
-  thumbColor,
-  trackColor,
-  children,
-}: {
-  maxHeight: number;
-  thumbColor: string;
-  trackColor: string;
-  children: React.ReactNode;
-}) {
-  const [viewH, setViewH] = useState(0);
-  const [contentH, setContentH] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
-
-  // Inset the track from the bubble's top (and bottom) so it doesn't touch the
-  // rounded border corner.
-  const TRACK_INSET = 8;
-  const scrollable = contentH > viewH + 1;
-  const trackH = Math.max(0, viewH - TRACK_INSET * 2);
-  const thumbH = scrollable ? Math.max(24, (viewH / contentH) * trackH) : 0;
-  const maxOffset = Math.max(1, contentH - viewH);
-  const thumbY = scrollable
-    ? (trackH - thumbH) * Math.min(1, Math.max(0, offsetY) / maxOffset)
-    : 0;
-
-  return (
-    <View style={styles.whyScrollWrap}>
-      <ScrollView
-        style={{ maxHeight }}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        scrollEventThrottle={16}
-        onLayout={(e) => setViewH(e.nativeEvent.layout.height)}
-        onContentSizeChange={(_, h) => setContentH(h)}
-        onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
-      >
-        {children}
-      </ScrollView>
-      {scrollable ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.scrollTrack,
-            { top: TRACK_INSET, height: trackH, backgroundColor: trackColor },
-          ]}
-        >
-          <View
-            style={[styles.scrollThumb, { height: thumbH, top: thumbY, backgroundColor: thumbColor }]}
-          />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 // Per-variant heading — a regular lead-in + a bold emphasis clause, matching the
 // Figma "picked for your body." treatment. whyLine moved out of the heading and
 // into the "Why this meal?" bubble below the photo.
@@ -249,6 +183,7 @@ export function NextMealScreen() {
   // the heading to a first-meal/welcome variant instead of the daily framing.
   const fromOnboarding = route.params?.fromOnboarding === true;
   const { state } = useApp();
+  const { aiConsentGranted } = useAiConsentGate();
   const metabolicType = toMetabolicType(state.user.metabolicType) ?? "Explorer";
   const insets = useSafeAreaInsets();
   const { evening, outerBg, innerBg, nestedBg, textColor, subtleText, borderColor, statusBarStyle } =
@@ -306,6 +241,14 @@ export function NextMealScreen() {
       setWhyError(false);
       return;
     }
+    // RES-188 — the "why this meal" blurb is OpenAI-generated. Skip the fetch
+    // when third-party-AI consent is off; the render shows the AiConsentNudge
+    // in place. Granting flips aiConsentGranted and re-runs this effect.
+    if (!aiConsentGranted) {
+      setEsterWhy(null);
+      setWhyError(false);
+      return;
+    }
     let cancelled = false;
     setEsterWhy(null);
     setWhyError(false);
@@ -320,7 +263,7 @@ export function NextMealScreen() {
     return () => {
       cancelled = true;
     };
-  }, [meal?.id]);
+  }, [meal?.id, aiConsentGranted]);
 
   useEffect(() => {
     if (!meal?.id) {
@@ -440,13 +383,6 @@ export function NextMealScreen() {
       ? `**${whyLead}** ${whyMessage}`
       : `**${whyLead}**`
     : whyMessage;
-  // Cap the why-bubble text height so a long blurb scrolls in place instead of
-  // shoving the chips past the bottom edge. Grows to fit short copy, scrolls
-  // beyond the leftover space on a given device.
-  const whyMaxHeight = Math.max(
-    72,
-    SCREEN_H - insets.top - insets.bottom - WHY_RESERVED_H,
-  );
   // Chat-bubble surface — brown-tinted ghost on light themes, bone-tinted on dark.
   const chipBg = evening ? "rgba(243,239,227,0.14)" : "rgba(54,20,22,0.12)";
   // Sheet surface = Figma page-surface-alt (#F3EFE3 / K.bone) on light themes;
@@ -501,7 +437,14 @@ export function NextMealScreen() {
           <View style={styles.iconButton} />
         </View>
 
-        <View style={[styles.slot, { paddingBottom: spacing.lg + insets.bottom }]}>
+        <ScrollView
+          style={styles.slotScroll}
+          contentContainerStyle={[
+            styles.slot,
+            { paddingBottom: spacing.lg + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={[styles.heading, { color: textColor }]}>
             <Text style={styles.headingLead}>{heading.lead}</Text>
             <Text style={styles.headingStrong}>{heading.strong}</Text>
@@ -589,7 +532,23 @@ export function NextMealScreen() {
                     check-in reason (whyLead) is folded in as a bold lead sentence
                     on this paragraph; it shows immediately even while the LLM
                     blurb is still typing. */}
-                {whyBody || whyPending ? (
+                {!aiConsentGranted ? (
+                  <View style={styles.whyWrap}>
+                    <View style={styles.eyebrowRow}>
+                      <View style={styles.eyebrowDot} />
+                      <Text style={[styles.eyebrowText, { color: textColor }]}>
+                        Why this meal?
+                      </Text>
+                    </View>
+                    <AiConsentNudge
+                      compact
+                      cardBg={nestedBg}
+                      textColor={textColor}
+                      subtleText={subtleText}
+                      borderColor={borderColor}
+                    />
+                  </View>
+                ) : whyBody || whyPending ? (
                   <View style={styles.whyWrap}>
                     <View style={styles.eyebrowRow}>
                       <View style={styles.eyebrowDot} />
@@ -610,19 +569,9 @@ export function NextMealScreen() {
                           <WhyTypingDots color={subtleText} />
                         </>
                       ) : (
-                        <WhyScroll
-                          maxHeight={whyMaxHeight}
-                          thumbColor={subtleText}
-                          trackColor={
-                            evening
-                              ? "rgba(250,253,254,0.15)"
-                              : "rgba(54,20,22,0.1)"
-                          }
-                        >
-                          <Text style={[styles.whyText, { color: subtleText }]}>
-                            {renderBoldSegments(whyBody, textColor)}
-                          </Text>
-                        </WhyScroll>
+                        <Text style={[styles.whyText, { color: subtleText }]}>
+                          {renderBoldSegments(whyBody, textColor)}
+                        </Text>
                       )}
                     </View>
                   </View>
@@ -661,7 +610,7 @@ export function NextMealScreen() {
               </Text>
             </View>
           )}
-        </View>
+        </ScrollView>
       </View>
     </View>
   );
@@ -699,8 +648,11 @@ const styles = StyleSheet.create({
     width: 40.5,
     height: 40.5,
   },
-  slot: {
+  slotScroll: {
     flex: 1,
+  },
+  slot: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     gap: spacing.lg,
@@ -844,22 +796,6 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-  },
-  whyScrollWrap: {
-    position: "relative",
-  },
-  scrollTrack: {
-    position: "absolute",
-    right: -8,
-    top: 0,
-    width: 3,
-    borderRadius: 1.5,
-  },
-  scrollThumb: {
-    position: "absolute",
-    left: 0,
-    width: 3,
-    borderRadius: 1.5,
   },
   prompt: {
     fontFamily: fonts.catalogue,

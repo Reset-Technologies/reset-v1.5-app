@@ -20,6 +20,8 @@ import {
 } from "../../services/profile";
 import { TrendIcon } from "../../components/TrendIcon";
 import { ConfidencePie } from "../../components/ConfidencePie";
+import { AiConsentNudge } from "../../components/AiConsentNudge";
+import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 
 
 export type StatDetailVariant = "signal" | "confidence" | "simple";
@@ -225,6 +227,7 @@ export function StatDetailSheet({
   onStartChat,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { aiConsentGranted } = useAiConsentGate();
   const [insight, setInsight] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -237,6 +240,14 @@ export function StatDetailSheet({
 
   useEffect(() => {
     if (!visible || !data) return;
+    // RES-188 — the insight is OpenAI-generated; only fetch with consent. When
+    // it's off we render the AiConsentNudge instead (granting flips this and
+    // re-runs the effect, loading the real insight in place).
+    if (!aiConsentGranted) {
+      setInsight(null);
+      setLoading(false);
+      return;
+    }
     let alive = true;
     setInsight(null);
     setLoading(true);
@@ -260,7 +271,7 @@ export function StatDetailSheet({
     return () => {
       alive = false;
     };
-  }, [visible, data]);
+  }, [visible, data, aiConsentGranted]);
 
   if (!data) return null;
 
@@ -368,6 +379,8 @@ export function StatDetailSheet({
                   What this means for you
                 </Text>
               </View>
+              {aiConsentGranted ? (
+                <>
               <View
                 style={[
                   styles.insightCard,
@@ -419,6 +432,16 @@ export function StatDetailSheet({
                   <Text style={styles.chatBtnText}>Start a chat</Text>
                 </TouchableOpacity>
               ) : null}
+                </>
+              ) : (
+                <AiConsentNudge
+                  accent={accent}
+                  textColor={textStrong}
+                  subtleText={textSubtle}
+                  cardBg={cardBg}
+                  borderColor={divider}
+                />
+              )}
             </View>
           </ScrollView>
 
