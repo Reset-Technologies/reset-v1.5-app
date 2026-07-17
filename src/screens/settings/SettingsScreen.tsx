@@ -8,6 +8,9 @@ import {
   Switch,
   Alert,
   Linking,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -23,7 +26,7 @@ import {
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { Pill } from "../../components";
 import { useApp } from "../../context/AppContext";
-import { logout } from "../../services/auth";
+import { logout, deleteAccount } from "../../services/auth";
 import * as BrazeService from "../../services/braze";
 import { resetAppOpenFlowGate } from "../../utils/appOpenFlowGate";
 import { shouldShowExperiments } from "../../../modules/build-env";
@@ -56,6 +59,11 @@ export function SettingsScreen() {
   const [notifications, setNotifications] = useState<Record<string, boolean>>(
     Object.fromEntries(NOTIFICATION_CATEGORIES.map((c) => [c.id, true]))
   );
+
+  // Account-deletion confirmation modal
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     BrazeService.logEvent("profile_settings");
@@ -169,35 +177,37 @@ export function SettingsScreen() {
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      "Delete Account",
-      "This will permanently delete your account and all your data. This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            Alert.alert(
-              "Are you sure?",
-              "Type DELETE to confirm.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete Forever",
-                  style: "destructive",
-                  onPress: async () => {
-                    // TODO: Call delete account API endpoint
-                    await logout();
-                    resetState();
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
+    setDeleteConfirmText("");
+    setDeleteModalVisible(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return; // don't let a dismiss interrupt an in-flight delete
+    setDeleteModalVisible(false);
+    setDeleteConfirmText("");
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE" || deleting) return;
+    setDeleting(true);
+    try {
+      // Server deletes everything first. Only on success do we tear down the
+      // local session — so a failure leaves the user signed in and informed.
+      await deleteAccount();
+      setDeleting(false);
+      setDeleteModalVisible(false);
+      setDeleteConfirmText("");
+      // Reset all local state and drop the auth/RevenueCat identity. This flips
+      // isAuthenticated → false, returning the app to the signed-out flow.
+      resetState();
+      clearAuth();
+    } catch (err) {
+      setDeleting(false);
+      Alert.alert(
+        "Couldn't delete account",
+        "Something went wrong and your account was not deleted. You're still signed in. Please check your connection and try again.",
+      );
+    }
   };
 
   return (
@@ -566,6 +576,66 @@ export function SettingsScreen() {
           <Text style={styles.versionText}>Reset v1.5.0</Text>
         </View>
       </ScrollView>
+
+      {/* Delete-account confirmation */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Delete account?</Text>
+            <Text style={styles.modalBody}>
+              This permanently deletes your account and all of your data —
+              scans, meal plans, check-ins, chats, and profile. This cannot be
+              undone.
+            </Text>
+            <Text style={styles.modalPrompt}>
+              Type <Text style={styles.modalPromptBold}>DELETE</Text> to confirm.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="DELETE"
+              placeholderTextColor={K.faded}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!deleting}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              style={[
+                styles.modalDeleteButton,
+                (deleteConfirmText.trim().toUpperCase() !== "DELETE" ||
+                  deleting) &&
+                  styles.modalDeleteButtonDisabled,
+              ]}
+              onPress={confirmDeleteAccount}
+              disabled={
+                deleteConfirmText.trim().toUpperCase() !== "DELETE" || deleting
+              }
+              activeOpacity={0.8}
+            >
+              {deleting ? (
+                <ActivityIndicator color={K.white} />
+              ) : (
+                <Text style={styles.modalDeleteText}>Delete Forever</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={closeDeleteModal}
+              disabled={deleting}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -763,5 +833,72 @@ const styles = StyleSheet.create({
   versionText: {
     ...typography.caption,
     color: K.faded,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(54, 20, 22, 0.55)",
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: K.white,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: K.text,
+    marginBottom: spacing.sm,
+  },
+  modalBody: {
+    ...typography.body,
+    color: K.textMuted,
+    marginBottom: spacing.md,
+  },
+  modalPrompt: {
+    ...typography.bodyMedium,
+    color: K.text,
+    marginBottom: spacing.sm,
+  },
+  modalPromptBold: {
+    ...typography.bodyMedium,
+    fontWeight: "700",
+    color: K.err,
+  },
+  modalInput: {
+    ...typography.body,
+    color: K.text,
+    borderWidth: 1,
+    borderColor: K.border,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: K.bone,
+    marginBottom: spacing.lg,
+  },
+  modalDeleteButton: {
+    backgroundColor: K.err,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  modalDeleteButtonDisabled: {
+    opacity: 0.4,
+  },
+  modalDeleteText: {
+    ...typography.bodyMedium,
+    color: K.white,
+    fontWeight: "700",
+  },
+  modalCancelButton: {
+    padding: spacing.md,
+    alignItems: "center",
+    marginTop: spacing.xs,
+  },
+  modalCancelText: {
+    ...typography.bodyMedium,
+    color: K.textMuted,
   },
 });

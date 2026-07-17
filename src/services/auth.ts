@@ -179,3 +179,19 @@ export async function logout(): Promise<void> {
   BrazeService.wipeData();
   await clearTokens();
 }
+
+/**
+ * Permanently delete the authenticated user's account and all their data
+ * (Apple Guideline 5.1.1(v)). Unlike logout, this MUST confirm the server
+ * succeeded before we tear down the local session — the caller only wipes
+ * local state / signs out when this resolves. If the request fails it throws,
+ * and the caller keeps the user signed in so they know deletion did not happen.
+ */
+export async function deleteAccount(): Promise<void> {
+  // Let errors propagate — the caller must not sign out on failure.
+  await apiClient("/api/auth/me", { method: "DELETE" });
+
+  // Server delete succeeded — now tear down every local trace of the account.
+  BrazeService.wipeData();
+  await clearTokens();
+}
