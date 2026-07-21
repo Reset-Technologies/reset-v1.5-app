@@ -153,8 +153,8 @@ export function computeBmrTdeeDelta(
 // App-Store wellness framing (Apple Guideline 1.4.1 + ShenAI rep guidance):
 // the SDK's own in-scan UI renders a live tile per displayed metric, and the
 // ALL_METRICS preset shows "Blood Pressure" and "Stress Index" tiles — a
-// diagnostic-looking presentation Apple flags. On iOS we switch to the CUSTOM
-// preset and display only heart rate, HRV, and breathing rate (the metrics with
+// diagnostic-looking presentation Apple flags. We switch to the CUSTOM preset
+// and display only heart rate, HRV, and breathing rate (the metrics with
 // published clinical validation). Blood Pressure is dropped entirely; stress is
 // still computed and surfaced through our own wellness "Stress Balance" band
 // (see utils/stress), so we hide the SDK's raw stress tile too.
@@ -164,14 +164,6 @@ export function computeBmrTdeeDelta(
 // unchanged, so getMeasurementResults() still returns stressIndex (verified on
 // a physical device: real scan → "Stress Balance" band renders) and BP (which
 // we keep parsing but never show).
-//
-// ⚠️ iOS-ONLY: the Android SDK bridge throws "java.lang.Double cannot be cast
-// to java.lang.String" on the CUSTOM config (verified on a Galaxy S24), so
-// Android keeps ALL_METRICS — its scan still shows the BP/Stress tiles. Google
-// Play hasn't flagged this; the Apple review is the blocker. TODO(android):
-// hide the tiles on Android too — raise the CUSTOM-config crash with MX Labs
-// or evaluate a validated HR/HRV/BR-only preset.
-const USE_CUSTOM_PRESET = Platform.OS === "ios";
 const SCAN_DURATION_SECONDS = 30;
 const DISPLAYED_METRICS: Metric[] = [
   Metric.HEART_RATE,
@@ -186,14 +178,50 @@ const HEALTH_INDICES: HealthIndex[] = [
   HealthIndex.TOTAL_DAILY_ENERGY_EXPENDITURE,
 ];
 
+// ⚠️ react-native-shenai-sdk's two native bridges disagree on the wire format
+// for the CUSTOM config's enum arrays, and the shipped TypeScript types
+// (Metric[] / HealthIndex[], numeric const enums) are only correct for iOS:
+//
+//   iOS   ShenaiSdkNativeModule.m  → [metricNumber integerValue]  (NUMBERS)
+//   Android ShenaiSdkModule.java   → Metric.valueOf(array.getString(i))  (NAMES)
+//
+// Passing the numeric enum on Android makes getString() hit a Double, which is
+// the "java.lang.Double cannot be cast to java.lang.String" crash we previously
+// attributed to the CUSTOM preset itself (and worked around by leaving Android
+// on ALL_METRICS, i.e. still showing BP/Stress tiles). It was never a preset
+// limitation — just a marshalling mismatch. We send each platform the shape its
+// bridge parses. The name strings below are verified against the AAR's enum
+// constants (ai.mxlabs.shenai_sdk.ShenAIAndroidSDK$Metric / $HealthIndex);
+// note the SDK's own TS enum misspells NON_ALCOHOLIC_FATTY_..., so map only the
+// members we use rather than deriving names generically.
+const METRIC_NAMES: Record<number, string> = {
+  [Metric.HEART_RATE]: "HEART_RATE",
+  [Metric.HRV_SDNN]: "HRV_SDNN",
+  [Metric.BREATHING_RATE]: "BREATHING_RATE",
+};
+const HEALTH_INDEX_NAMES: Record<number, string> = {
+  [HealthIndex.WELLNESS_SCORE]: "WELLNESS_SCORE",
+  [HealthIndex.VASCULAR_AGE]: "VASCULAR_AGE",
+  [HealthIndex.BASAL_METABOLIC_RATE]: "BASAL_METABOLIC_RATE",
+  [HealthIndex.TOTAL_DAILY_ENERGY_EXPENDITURE]: "TOTAL_DAILY_ENERGY_EXPENDITURE",
+};
+
+// Android wants enum names, iOS wants ordinals. The cast is the point: the
+// declared param type matches only the iOS bridge.
+function toEnumWire<T extends number>(
+  values: T[],
+  names: Record<number, string>,
+): T[] {
+  if (Platform.OS !== "android") return values;
+  return values.map((v) => names[v] ?? v) as unknown as T[];
+}
+
 export async function initShenAI(
   apiKey: string,
   calibration?: ShenCalibration,
 ): Promise<void> {
   const result = await initialize(apiKey, undefined, {
-    measurementPreset: USE_CUSTOM_PRESET
-      ? MeasurementPreset.CUSTOM
-      : MeasurementPreset.THIRTY_SECONDS_ALL_METRICS,
+    measurementPreset: MeasurementPreset.CUSTOM,
     precisionMode: PrecisionMode.RELAXED,
     cameraMode: CameraMode.FACING_USER,
     // RES-133 / App Store privacy declaration: SDK 3.x defaults to
@@ -210,9 +238,13 @@ export async function initShenAI(
     // ⚠️ One residual is license-level, not code: MX Labs must confirm our
     // specific license does not enable cropped-frame / image-bearing
     // diagnostic telemetry.
-    // SDK 3.x introduced UI V2/V3. Pin V1 to preserve the 2.11.6 scan UX
-    // (face-positioning overlay only, our own React UI layered on top).
-    uiVersion: UiVersion.V1,
+    // SDK 3.x UI version. Moved V1 → V3 (Bryan/Alex): V3 is ShenAI's
+    // general-wellness UI layout (per MX Labs' 1.4.1 guidance). Completion
+    // verified on a Galaxy S24 — V3 auto-advances FINALIZING → FINISHED with
+    // showResultsFinishButton/enableSummaryScreen disabled (the July-2026 stall
+    // no longer reproduces). ⚠️ Re-verify on a physical iPhone that the iOS
+    // CUSTOM preset still hides BP/stress under V3 before shipping (Apple 1.4.1).
+    uiVersion: UiVersion.V3,
     showUserInterface: true,
     showFacePositioningOverlay: true,
     // Red low-signal indicator so the user knows to hold still / fix lighting.
@@ -266,16 +298,14 @@ export async function initShenAI(
   // rather than rely on the SDK default.
   await setRecordingEnabled(false);
 
-  // iOS only — see USE_CUSTOM_PRESET note above (Android's bridge crashes on
-  // this config). Only takes effect because the preset is CUSTOM.
-  if (USE_CUSTOM_PRESET) {
-    await setCustomMeasurementConfig({
-      durationSeconds: SCAN_DURATION_SECONDS,
-      instantMetrics: DISPLAYED_METRICS,
-      summaryMetrics: DISPLAYED_METRICS,
-      healthIndices: HEALTH_INDICES,
-    });
-  }
+  // Only takes effect because the preset is CUSTOM. Enum arrays go over the
+  // wire per-platform — see toEnumWire.
+  await setCustomMeasurementConfig({
+    durationSeconds: SCAN_DURATION_SECONDS,
+    instantMetrics: toEnumWire(DISPLAYED_METRICS, METRIC_NAMES),
+    summaryMetrics: toEnumWire(DISPLAYED_METRICS, METRIC_NAMES),
+    healthIndices: toEnumWire(HEALTH_INDICES, HEALTH_INDEX_NAMES),
+  });
 }
 
 // Measurement starts automatically when in MEASURE mode and a face is detected.
