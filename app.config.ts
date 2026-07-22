@@ -19,7 +19,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     backgroundColor: "#361416",
   },
   ios: {
-    supportsTablet: false,
+    // The legacy App Store record we're migrating onto is a UNIVERSAL app, and
+    // iPad is ~54% of its activity (72% of updates). Shipping iPhone-only would
+    // letterbox the app to ~23% of an iPad screen for the majority of the
+    // existing base, and risks review rejection for dropping a supported
+    // device. See app.config.ts history / the migration notes.
+    supportsTablet: true,
     // Must match the target App Store record exactly — this is what routes the
     // build to Apple ID 1478144712 and keeps its existing ratings and reviews.
     // The previous `.dev`-suffixed id belonged to a separate, never-released
