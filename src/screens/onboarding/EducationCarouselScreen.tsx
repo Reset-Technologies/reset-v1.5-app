@@ -28,6 +28,7 @@ import Svg, {
 import { VideoView, useVideoPlayer } from "expo-video";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
+import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 import { logEvent } from "../../services/braze";
 import { PreScanView } from "./PreScanScreen";
 
@@ -105,7 +106,21 @@ const SLIDES: Slide[] = [
 const EDU_SLIDE_COUNT = 4;
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const ACTIVE_BLOCK_LEFT = 46;
+// On iPad, keep the carousel's phone-tuned content in a centered column of at
+// most CONTENT_MAX_WIDTH while the full-bleed backgrounds still span the screen.
+// STAGE_INSET is that column's left/right margin; it is 0 on phones
+// (SCREEN_WIDTH <= CONTENT_MAX_WIDTH), so every offset derived from it below is
+// a no-op there.
+const STAGE_WIDTH = Math.min(SCREEN_WIDTH, CONTENT_MAX_WIDTH);
+const STAGE_INSET = (SCREEN_WIDTH - STAGE_WIDTH) / 2;
+const ACTIVE_BLOCK_LEFT = 46 + STAGE_INSET;
+// On large screens (iPad) the capped card images end up small and sit too low,
+// so the text block (pinned at 60% height) overlaps them. IS_LARGE is true only
+// when there is width beyond a phone (STAGE_INSET > 0), so both adjustments are
+// no-ops on phones: scale the images up and lift them into the upper half.
+const IS_LARGE = STAGE_INSET > 0;
+const IMAGE_MAX_SCALE = IS_LARGE ? 1.3 : 1;
+const IMAGE_LIFT = IS_LARGE ? 250 : 0;
 const BLOCK_WIDTH = 304;
 const BLOCK_GAP = 24;
 const BLOCK_STRIDE = BLOCK_WIDTH + BLOCK_GAP;
@@ -425,7 +440,17 @@ export function EducationCarouselScreen({ navigation }: Props) {
                 styles.heroImageWrap,
                 {
                   width: `${(item.imageWidthPct ?? 1) * 100}%`,
+                  // Cap the hero image on large screens. At 110% of screen width
+                  // it balloons to ~1070pt wide (and, via aspectRatio, ~1400pt
+                  // tall) on a 13" iPad, overrunning the bottom text block. The
+                  // cap keeps it phone-sized and centered; it no-ops on phones,
+                  // where the percentage width is already below this max.
+                  // IMAGE_MAX_SCALE enlarges it on iPad only; IMAGE_LIFT raises
+                  // it into the upper half so the 60%-height text sits below it.
+                  maxWidth:
+                    (item.imageWidthPct ?? 1) * CONTENT_MAX_WIDTH * IMAGE_MAX_SCALE,
                   aspectRatio: item.imageAspectRatio ?? 345 / 412,
+                  transform: [{ translateY: -IMAGE_LIFT }],
                 },
               ]}
             >
@@ -647,7 +672,9 @@ const styles = StyleSheet.create({
   },
   footerOverlay: {
     position: "absolute",
-    right: 24,
+    // Align the advance arrow to the right edge of the centered content column
+    // on iPad (STAGE_INSET is 0 on phones, so this stays right: 24 there).
+    right: 24 + STAGE_INSET,
     bottom: 0,
     alignItems: "flex-end",
   },

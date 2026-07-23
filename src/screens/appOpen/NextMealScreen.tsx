@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from "react-native-svg";
 import { K, toMetabolicType } from "../../constants/colors";
 import { fonts, spacing, radius } from "../../constants/typography";
+import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 import { useApp } from "../../context/AppContext";
 import {
   getDailyPlan,
@@ -653,6 +654,13 @@ const styles = StyleSheet.create({
   },
   slot: {
     flexGrow: 1,
+    width: "100%",
+    // Cap the content column so it reads like a centered phone-width layout on
+    // iPad instead of stretching to ~1000pt. Also shrinks the hero photo, which
+    // meaningfully reduces upscaling of the modest-resolution catalog images.
+    // No-op on phones (already narrower than the cap); alignSelf centers it.
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     gap: spacing.lg,

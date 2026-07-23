@@ -17,6 +17,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { MetabolicType, TC } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 // RES-121: metabolicType is now sourced from `state.user.metabolicType`
 // (set by CreateAccountScreen after the backend's TypingService runs on
 // the submitted behaviorAnswers). The FE no longer computes the type.
@@ -104,7 +105,11 @@ const STARTING_READ_PARAGRAPH =
 // Max) aren't letterboxed. All cards share the same footprint; the stack-peek
 // effect comes from the staggered offsets + the inset "Bubble" shadow.
 const CARD_SIDE_MARGIN = 12;
-const CARD_W = SCREEN_W - CARD_SIDE_MARGIN * 2;
+// Cap the card width so it reads as a centered phone-width card on iPad instead
+// of stretching to the full ~1000pt screen. No-ops on phones (SCREEN_W minus
+// margins is already < CONTENT_MAX_WIDTH). The `left: (SCREEN_W - cardW)/2`
+// positioning below keeps the narrower card centered automatically.
+const CARD_W = Math.min(SCREEN_W - CARD_SIDE_MARGIN * 2, CONTENT_MAX_WIDTH);
 const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
