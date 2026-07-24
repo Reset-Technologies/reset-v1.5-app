@@ -18,10 +18,19 @@ export async function registerWithEmail(
   timezone?: string,
   firstName?: string,
   lastName?: string,
+  ageConfirmed?: boolean,
 ): Promise<AuthUser> {
   const data = await apiClient("/api/auth/register/email", {
     method: "POST",
-    body: JSON.stringify({ email, password, firstName, lastName, timezone }),
+    body: JSON.stringify({
+      email,
+      password,
+      firstName,
+      lastName,
+      timezone,
+      // RES-196 — 18+/Terms acceptance made at signup; server stamps timestamp.
+      ageConfirmed,
+    }),
   });
 
   // Register endpoint returns {id, email, firstName, lastName, token, deviceId}

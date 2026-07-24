@@ -5,8 +5,10 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  Pressable,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   ActivityIndicator,
@@ -21,6 +23,7 @@ import { registerWithEmail } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
 type Props = NativeStackScreenProps<any, "CreateAccount">;
 
@@ -70,6 +73,11 @@ export function CreateAccountScreen({ navigation }: Props) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // RES-196: 18+ attestation + Terms/Privacy acceptance. Reset is an adults-only
+  // (18+) platform per our Terms/Privacy/Biometric policies; the user must
+  // affirm this before an account (and the on-device scan biomarkers) are
+  // persisted server-side. Gates account creation below.
+  const [agreed, setAgreed] = useState(false);
 
   // Auto-advance focus (RES-136): "next" on the keyboard tabs to the
   // following field; the last field submits.
@@ -87,7 +95,8 @@ export function CreateAccountScreen({ navigation }: Props) {
     firstName.trim().length > 0 &&
     lastName.trim().length > 0 &&
     email.includes("@") &&
-    passwordOk;
+    passwordOk &&
+    agreed;
 
   const finishAccount = () => {
     // RES-119: the 3-card reveal flow is now part of every onboarding, not
@@ -113,7 +122,8 @@ export function CreateAccountScreen({ navigation }: Props) {
         password,
         timezone,
         firstName.trim() || undefined,
-        lastName.trim() || undefined
+        lastName.trim() || undefined,
+        agreed // RES-196: 18+ / Terms + Privacy acceptance
       );
       setUserAccount(
         user.email ?? email,
@@ -275,32 +285,67 @@ export function CreateAccountScreen({ navigation }: Props) {
             {error && <Text style={styles.errorText}>{error}</Text>}
           </ScrollView>
 
-          {/* Bottom-right arrow button */}
+          {/* RES-196: 18+ / Terms attestation pinned above the CTA (outside the
+              ScrollView) so it's always visible and can't be scrolled past. */}
           <View style={styles.bottomRow}>
-            <TouchableOpacity
-              style={[
-                styles.arrowBtn,
-                !isValid && styles.arrowBtnDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={!isValid || isLoading}
-              activeOpacity={0.85}
-              accessibilityLabel="Create account"
-            >
-              {isLoading ? (
-                <ActivityIndicator color={MAROON} />
-              ) : (
-                <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M5 12h14M13 5l7 7-7 7"
-                    stroke={MAROON}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              )}
-            </TouchableOpacity>
+            <View style={styles.checkRow}>
+              <Pressable
+                style={[styles.checkbox, agreed && styles.checkboxOn]}
+                onPress={() => setAgreed((v) => !v)}
+                disabled={isLoading}
+                hitSlop={10}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: agreed }}
+                accessibilityLabel="I confirm I am 18 or older and agree to the Terms of Use and Privacy Policy"
+              >
+                {agreed ? <Text style={styles.checkMark}>✓</Text> : null}
+              </Pressable>
+              <Text style={styles.checkLabel} onPress={() => setAgreed((v) => !v)}>
+                I confirm I am 18 or older and agree to the{" "}
+                <Text
+                  style={styles.checkLink}
+                  onPress={() => Linking.openURL(TERMS_OF_USE_URL).catch(() => {})}
+                  accessibilityRole="link"
+                >
+                  Terms of Use
+                </Text>{" "}
+                and{" "}
+                <Text
+                  style={styles.checkLink}
+                  onPress={() =>
+                    Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})
+                  }
+                  accessibilityRole="link"
+                >
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            </View>
+
+            <View style={styles.arrowWrap}>
+              <TouchableOpacity
+                style={[styles.arrowBtn, !isValid && styles.arrowBtnDisabled]}
+                onPress={handleSubmit}
+                disabled={!isValid || isLoading}
+                activeOpacity={0.85}
+                accessibilityLabel="Create account"
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={MAROON} />
+                ) : (
+                  <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M5 12h14M13 5l7 7-7 7"
+                      stroke={MAROON}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </Svg>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -375,6 +420,47 @@ const styles = StyleSheet.create({
   bottomRow: {
     paddingHorizontal: 24,
     paddingBottom: 16,
+    paddingTop: 8,
+  },
+  checkRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 16,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: TEXT_ALT,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxOn: {
+    backgroundColor: WHITE,
+    borderColor: WHITE,
+  },
+  checkMark: {
+    color: MAROON,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 17,
+  },
+  checkLabel: {
+    flex: 1,
+    fontFamily: fonts.dmSans,
+    color: TEXT_ALT,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: -0.13,
+  },
+  checkLink: {
+    color: WHITE,
+    textDecorationLine: "underline",
+  },
+  arrowWrap: {
     alignItems: "flex-end",
   },
   arrowBtn: {
