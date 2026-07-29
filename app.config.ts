@@ -1,4 +1,15 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
+import * as fs from "fs";
+
+// Android FCM (Braze push) is only wired when a google-services.json exists —
+// via the GOOGLE_SERVICES_JSON env (EAS builds) or a local ./google-services.json.
+// Until then the whole Firebase apply is inert (enableFirebaseCloudMessaging off,
+// no googleServicesFile, google-services Gradle plugin skipped), so dev prebuilds
+// keep working before Firebase is set up. See plugins/withAndroidGoogleServices.js
+// + RES-199. The file's package_name must match android.package at build time.
+const GOOGLE_SERVICES_FILE =
+  process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json";
+const HAS_GOOGLE_SERVICES = fs.existsSync(GOOGLE_SERVICES_FILE);
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -47,7 +58,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: "com.betterwell.reset.dev",
-    permissions: ["RECORD_AUDIO"],
+    // POST_NOTIFICATIONS is the Android 13+ runtime push permission; Braze's
+    // requestPushPermission() drives the OS prompt. Safe to declare always.
+    permissions: ["RECORD_AUDIO", "POST_NOTIFICATIONS"],
+    // Copied to android/app/google-services.json at prebuild so the
+    // google-services Gradle plugin (withAndroidGoogleServices) can read it.
+    // Only set when the file exists, so builds without Firebase don't fail.
+    ...(HAS_GOOGLE_SERVICES
+      ? { googleServicesFile: GOOGLE_SERVICES_FILE }
+      : {}),
     adaptiveIcon: {
       backgroundColor: "#F1EDE1",
       foregroundImage: "./assets/android-icon-foreground.png",
@@ -97,7 +116,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         androidApiKey: "b4300a40-f8e5-4eca-baeb-eefacfe15901",
         baseUrl: "sdk.iad-07.braze.com",
         enableBrazeIosPush: true,
-        enableFirebaseCloudMessaging: false,
+        // Android push via FCM. Gated on google-services.json being present so
+        // that, without Firebase set up, the firebase-messaging dep + braze.xml
+        // FCM flag aren't added and behavior is byte-for-byte the old off state.
+        enableFirebaseCloudMessaging: HAS_GOOGLE_SERVICES,
+        // FCM sender ID = the Firebase/GCP project NUMBER. reset-fb706
+        // (34987581161) already hosts Google Sign-In, so FCM lives there too.
+        // Override per-env with FCM_SENDER_ID.
+        firebaseCloudMessagingSenderId:
+          process.env.FCM_SENDER_ID ?? "34987581161",
+        // Let Braze open a deep link embedded in a push payload (e.g.
+        // resetapp://weekly-review) natively, with no custom JS handler.
+        androidHandlePushDeepLinksAutomatically: true,
       },
     ],
     [
@@ -110,6 +140,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "./plugins/withRegisterPush",
+    // Applies the Firebase google-services Gradle plugin so Braze can register
+    // for FCM. Inert until a google-services.json is present. See RES-199.
+    "./plugins/withAndroidGoogleServices",
     // Enables modular headers for GoogleUtilities/RecaptchaInterop so the Swift pod
     // AppCheckCore can be integrated as a static library (broke after adding
     // expo-image's SDWebImage stack). See plugins/withModularHeaders.js.

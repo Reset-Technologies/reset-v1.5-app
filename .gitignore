@@ -49,3 +49,7 @@ yarn-error.*
 
 # local Claude Code session/memory data
 .claude/
+
+# Firebase FCM config (provided via EAS GOOGLE_SERVICES_JSON secret; contains the
+# Android Firebase config — kept out of git). See RES-199.
+google-services.json
