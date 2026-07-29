@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -163,7 +162,7 @@ function isSameLocalDay(iso: string | null | undefined, now: Date): boolean {
 
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const { state, resetState } = useApp();
+  const { state } = useApp();
   const { runWithAiConsent } = useAiConsentGate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [checkInHistory, setCheckInHistory] = useState<CheckInEntry[]>([]);
@@ -366,18 +365,6 @@ export function ProfileScreen() {
     .join(" ")
     .trim();
   const userName = authFullName || state.user.name?.trim() || "You";
-
-  const handleResetProfile = () => {
-    logEvent("profile_resetProfileCTA");
-    Alert.alert(
-      "Reset Profile",
-      "This will clear all your data and restart the onboarding process. Are you sure?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: resetState },
-      ],
-    );
-  };
 
   const handleSettingsPress = () => {
     logEvent("profile_settingsCTA");
@@ -806,10 +793,6 @@ export function ProfileScreen() {
             </View>
           </Section>
 
-          {/* Reset (dev tool — tucked at the bottom) */}
-          <TouchableOpacity style={styles.resetLink} onPress={handleResetProfile}>
-            <Text style={styles.resetLinkText}>Reset profile</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -1637,16 +1620,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: K.brown,
     letterSpacing: -0.14,
-  },
-  resetLink: {
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  resetLinkText: {
-    fontFamily: fonts.catalogue,
-    fontSize: 13,
-    color: K.faded,
-    textDecorationLine: "underline",
   },
 });
