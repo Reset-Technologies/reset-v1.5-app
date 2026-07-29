@@ -613,7 +613,11 @@ const styles = StyleSheet.create({
   },
   carouselOverlay: {
     position: "absolute",
-    top: "60%",
+    // Android-only lift from 60% to reclaim the bottom room after the title
+    // lineHeight bump (RES-191), so slide 01's long subtitle clears the advance
+    // arrow. Backgrounds sit higher than the text, so it stays over them. iOS
+    // keeps the tuned 60%.
+    top: Platform.OS === "android" ? "57%" : "60%",
     left: 0,
     right: 0,
     bottom: 0,
@@ -658,7 +662,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.playfairBold,
     color: K.bone,
     fontSize: 40,
-    lineHeight: 44,
+    // Playfair's descenders (y, g) need more room than a 1.1x line height
+    // leaves; at lineHeight 44 Android clipped the "y" tail flat on the last
+    // line (RES-191). 52 (~1.3x) fully clears it. Android-only — iOS renders the
+    // descender fine at 44 and this screen was tuned there, so leave it. The
+    // extra Android height is offset by lifting the block (carouselOverlay).
+    lineHeight: Platform.OS === "android" ? 52 : 44,
     letterSpacing: -0.4,
     alignSelf: "stretch",
   },

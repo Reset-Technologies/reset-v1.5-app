@@ -162,12 +162,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isLoading: action.payload };
 
     case "LOAD_STATE":
+      // Note: does NOT flip isLoading. The launch splash stays up until the
+      // session is resolved in loadState() so a logged-in user never flashes
+      // the Auth screen (RES-186); loadState dispatches SET_LOADING when done.
       return {
         ...state,
         user: action.payload.user,
         biometrics: action.payload.biometrics,
         settings: action.payload.settings ?? state.settings,
-        isLoading: false,
       };
 
     case "SET_QUIZ_ANSWER":
@@ -398,21 +400,24 @@ export function AppProvider({ children }: AppProviderProps) {
   }, [state.auth.isAuthenticated]);
 
   async function loadState() {
+    // Resolve persisted state + session BEFORE flipping isLoading, so a
+    // logged-in user never sees the Auth (Login/Sign Up) screen flash on launch
+    // (RES-186). The reveal happens in the `finally`, once we know whether the
+    // user is authenticated and (on reinstall) whether onboarding is complete.
+    let savedState: string | null = null;
+    let authUser: Awaited<ReturnType<typeof fetchMe>> | null = null;
     try {
-      // Load persisted app state
-      const savedState = await AsyncStorage.getItem(STORAGE_KEY);
+      // Load persisted app state (user profile, biometrics, settings)
+      savedState = await AsyncStorage.getItem(STORAGE_KEY);
       if (savedState) {
-        const parsed = JSON.parse(savedState);
-        dispatch({ type: "LOAD_STATE", payload: parsed });
-      } else {
-        dispatch({ type: "SET_LOADING", payload: false });
+        dispatch({ type: "LOAD_STATE", payload: JSON.parse(savedState) });
       }
 
-      // Check if user has a valid session
+      // Restore the session if we have a token
       const { accessToken } = await getTokens();
       if (accessToken) {
         try {
-          const authUser = await fetchMe();
+          authUser = await fetchMe();
           dispatch({
             type: "SET_AUTH",
             payload: { isAuthenticated: true, authUser },
@@ -423,45 +428,12 @@ export function AppProvider({ children }: AppProviderProps) {
           loginRevenueCat(authUser.id);
           requestPushPermission();
 
-          // Always re-sync metabolicType + subscriptionTier from the backend so
-          // type-derived UI (check-in surfaces, etc.) and Ester's gating match
-          // the source of truth on every session restore — even when local
-          // onboarding is already complete.
-          try {
-            const profile = await getProfile();
-            if (profile.layer1.primaryBucket) {
-              dispatch({
-                type: "SET_METABOLIC_TYPE",
-                payload: profile.layer1.primaryBucket as MetabolicType,
-              });
-            }
-            if (profile.subscriptionTier) {
-              dispatch({
-                type: "SET_SUBSCRIPTION_TIER",
-                payload: profile.subscriptionTier,
-              });
-            }
-          } catch {
-            // Profile fetch failed — leave existing local value.
-          }
-
-          // RES-188 — hydrate third-party-AI consent so AI surfaces gate
-          // correctly on session restore (and we can prompt if it's stale).
-          try {
-            const { consent, needsPrompt } = await getAiConsent();
-            dispatch({
-              type: "SET_AI_CONSENT",
-              payload: { granted: consent?.status === "granted", needsPrompt },
-            });
-          } catch {
-            // Leave existing local value on failure.
-          }
-
-          // If local state is missing onboarding data but backend has it (e.g. reinstall),
-          // restore from backend profile
+          // If local state is missing onboarding data but the backend has it
+          // (e.g. reinstall), restore it BEFORE revealing so we route straight
+          // to Main instead of flashing the onboarding flow. Only runs when
+          // local onboarding is absent, so returning users don't pay for it.
           const savedParsed = savedState ? JSON.parse(savedState) : null;
-          const localHasOnboarding = savedParsed?.user?.hasCompletedOnboarding;
-          if (!localHasOnboarding) {
+          if (!savedParsed?.user?.hasCompletedOnboarding) {
             try {
               const profile = await getProfile();
               if (profile.layer1.primaryBucket) {
@@ -482,10 +454,7 @@ export function AppProvider({ children }: AppProviderProps) {
                   });
                 }
                 if (profile.layer1.goal) {
-                  dispatch({
-                    type: "SET_GOAL",
-                    payload: profile.layer1.goal,
-                  });
+                  dispatch({ type: "SET_GOAL", payload: profile.layer1.goal });
                 }
                 dispatch({ type: "COMPLETE_ONBOARDING" });
               }
@@ -496,11 +465,52 @@ export function AppProvider({ children }: AppProviderProps) {
         } catch {
           // Token invalid/expired and refresh failed
           await clearTokens();
+          authUser = null;
         }
       }
     } catch (error) {
       console.error("Failed to load state:", error);
+    } finally {
+      // Session (and reinstall onboarding) resolved — reveal the correct root
+      // stack now. No more Auth-screen flash for logged-in users.
       dispatch({ type: "SET_LOADING", payload: false });
+    }
+
+    // Background re-sync — runs with the app already visible, so a slow network
+    // never holds the launch. Best-effort; failures keep local values. These
+    // update content within the current stack, not which stack is shown (tier
+    // and type are already restored from persisted state by LOAD_STATE).
+    if (!authUser) return;
+    try {
+      // Re-sync metabolicType + subscriptionTier from the backend so
+      // type-derived UI (check-in surfaces, etc.) and Ester's gating match the
+      // source of truth on every session restore.
+      const profile = await getProfile();
+      if (profile.layer1.primaryBucket) {
+        dispatch({
+          type: "SET_METABOLIC_TYPE",
+          payload: profile.layer1.primaryBucket as MetabolicType,
+        });
+      }
+      if (profile.subscriptionTier) {
+        dispatch({
+          type: "SET_SUBSCRIPTION_TIER",
+          payload: profile.subscriptionTier,
+        });
+      }
+    } catch {
+      // Leave existing local value.
+    }
+    // RES-188 — hydrate third-party-AI consent so AI surfaces gate correctly on
+    // session restore (and we can prompt if it's stale).
+    try {
+      const { consent, needsPrompt } = await getAiConsent();
+      dispatch({
+        type: "SET_AI_CONSENT",
+        payload: { granted: consent?.status === "granted", needsPrompt },
+      });
+    } catch {
+      // Leave existing local value on failure.
     }
   }
 
