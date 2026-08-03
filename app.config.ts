@@ -67,6 +67,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // POST_NOTIFICATIONS is the Android 13+ runtime push permission; Braze's
     // requestPushPermission() drives the OS prompt. Safe to declare always.
     permissions: ["RECORD_AUDIO", "POST_NOTIFICATIONS"],
+    // Strip broad storage / media / overlay permissions that transitive SDK
+    // manifests merge in. Reset has NO photo-library picker or file-upload
+    // feature, so these are unused — blocking them keeps the Play listing's
+    // permission list clean and avoids tripping Google's Photo & Video
+    // Permissions policy (which otherwise demands a use-case declaration for
+    // READ_MEDIA_IMAGES). CAMERA (face scan) + RECORD_AUDIO (voice) stay.
+    blockedPermissions: [
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.READ_MEDIA_IMAGES",
+      "android.permission.READ_MEDIA_VIDEO",
+      "android.permission.READ_MEDIA_AUDIO",
+      "android.permission.SYSTEM_ALERT_WINDOW",
+    ],
     // Copied to android/app/google-services.json at prebuild so the
     // google-services Gradle plugin (withAndroidGoogleServices) can read it.
     // Only set when the file exists, so builds without Firebase don't fail.
