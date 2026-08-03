@@ -57,7 +57,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
-    package: "com.betterwell.reset.dev",
+    // Mirrors the iOS migration: ships onto the LEGACY Google Play listing
+    // `com.betterwell.reset` (BetterWell's original app, 4.5-star / 2000+
+    // reviews) so the ratings carry over, instead of the throwaway
+    // `.dev`-suffixed package that was only ever on an internal track. The
+    // build must be signed with the upload key Google has registered for this
+    // package (see the Android migration notes) or Play rejects the upload.
+    package: "com.betterwell.reset",
     // POST_NOTIFICATIONS is the Android 13+ runtime push permission; Braze's
     // requestPushPermission() drives the OS prompt. Safe to declare always.
     permissions: ["RECORD_AUDIO", "POST_NOTIFICATIONS"],

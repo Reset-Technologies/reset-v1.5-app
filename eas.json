@@ -55,6 +55,7 @@
         "ascAppId": "1478144712"
       },
       "android": {
+        "serviceAccountKeyPath": "/Users/coledriscoll/reset-play-service-account.json",
         "track": "internal"
       }
     }
