@@ -21,7 +21,7 @@ import {
   purchasePackage,
   restorePurchases,
 } from "../../services/revenuecat";
-import { setSubscriptionTierDev } from "../../services/profile";
+import { setSubscriptionTierDev, getProfile } from "../../services/profile";
 import { rootNavigationRef } from "../../navigation/rootNavigationRef";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
@@ -468,6 +468,53 @@ export function PaywallScreen({ navigation }: Props) {
       }
     }, 80);
   };
+
+  /**
+   * RES-207 — a returning BetterWell member already pays. Their subscription
+   * lives in Stripe, and the backend grants it durably via `legacyEntitlement`
+   * (a separate column, because the RevenueCat webhook overwrites
+   * `subscriptionTier` and would otherwise downgrade them into this very
+   * screen). Showing them a paywall would be asking them to buy what they
+   * already own — the single worst moment in this migration.
+   *
+   * Deliberately requires BOTH the legacy flag and an entitled tier. Tier
+   * alone is not safe to key on: it defaults optimistically before the
+   * backend confirms, so a lone tier check could wave ordinary new users
+   * straight past the paywall. `isReturningLegacyMember` is only ever true
+   * for an account the legacy bridge just created.
+   */
+  const isEntitledReturningMember =
+    state.legacy.isReturningLegacyMember &&
+    state.user.subscriptionTier === "pro";
+
+  React.useEffect(() => {
+    if (isGate || !state.legacy.isReturningLegacyMember) return;
+
+    if (isEntitledReturningMember) {
+      logEvent("legacy_paywall_skipped");
+      proceedToApp();
+      return;
+    }
+
+    // Returning member, but the tier says otherwise. Login hydrates it, so
+    // this only happens if that call failed. Ask once more before showing a
+    // paying member a paywall — their subscription is in Stripe, so the
+    // "Restore purchases" button here would not help them.
+    let cancelled = false;
+    getProfile()
+      .then((profile) => {
+        if (cancelled || profile.subscriptionTier !== "pro") return;
+        setSubscriptionTier("pro");
+        logEvent("legacy_paywall_skipped", { via: "retry" });
+        proceedToApp();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // Runs once: proceedToApp completes onboarding and re-roots the navigator.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubscribe = async () => {
     if (purchasing || restoring) return;

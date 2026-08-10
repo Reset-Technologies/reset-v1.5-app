@@ -130,6 +130,65 @@ export function AccountGateScreen({ navigation }: Props) {
     }
   }, []);
 
+  /**
+   * Everything this screen does *besides* authenticating: push the onboarding
+   * answers to the backend (which returns the metabolic type) and submit the
+   * scan. Both auth paths ran identical copies of this; it's extracted so the
+   * RES-207 already-authenticated path below reuses exactly the same code
+   * rather than a second implementation that could drift.
+   *
+   * Failures stay swallowed, as before — a sync problem must not strand
+   * someone mid-onboarding with an account they can't get past.
+   */
+  const syncOnboardingData = async () => {
+    try {
+      const { primaryBucket, startingRead, glp1Flag } =
+        await syncOnboardingToBackend({
+          goal: state.user.goal,
+          behaviorAnswers: {
+            q1: state.user.quizAnswers.q1,
+            q2: state.user.quizAnswers.q2,
+            q3: state.user.quizAnswers.q3,
+          },
+          tastePreferences: state.user.tastePreferences,
+          dietaryRestrictions: state.user.dietaryRestrictions,
+        });
+      if (primaryBucket) {
+        setTypingResult({ metabolicType: primaryBucket, startingRead, glp1Flag });
+      }
+    } catch {}
+
+    if (state.biometrics?.raw) {
+      try {
+        await submitScanResults(state.biometrics.raw);
+      } catch {}
+    }
+  };
+
+  /**
+   * RES-207 — a returning BetterWell member arrives here already signed in:
+   * the legacy bridge created their account at login. Asking them to make a
+   * second account would be absurd, but the rest of what this screen does is
+   * still required — without the sync they'd reach the type reveal with no
+   * metabolic type and an unsubmitted scan. So skip the sign-up UI, do the
+   * real work, and move on. The existing full-screen spinner covers it.
+   */
+  useEffect(() => {
+    if (!state.auth.isAuthenticated) return;
+    let cancelled = false;
+    setIsLoading(true);
+    (async () => {
+      await syncOnboardingData();
+      if (!cancelled) finishAccount();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally runs once on mount: this is a one-way handoff, and
+    // re-running it on any state change would re-sync and re-navigate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const finishAccount = () => {
     // RES-119: the 3-card reveal flow is now part of every onboarding, not
     // gated on a real scan — TypeRevealScreen falls back to a placeholder
@@ -162,32 +221,7 @@ export function AccountGateScreen({ navigation }: Props) {
       );
       setAuth(user);
 
-      try {
-        const { primaryBucket, startingRead, glp1Flag } =
-          await syncOnboardingToBackend({
-            goal: state.user.goal,
-            behaviorAnswers: {
-              q1: state.user.quizAnswers.q1,
-              q2: state.user.quizAnswers.q2,
-              q3: state.user.quizAnswers.q3,
-            },
-            tastePreferences: state.user.tastePreferences,
-            dietaryRestrictions: state.user.dietaryRestrictions,
-          });
-        if (primaryBucket) {
-          setTypingResult({
-            metabolicType: primaryBucket,
-            startingRead,
-            glp1Flag,
-          });
-        }
-      } catch {}
-
-      if (state.biometrics?.raw) {
-        try {
-          await submitScanResults(state.biometrics.raw);
-        } catch {}
-      }
+      await syncOnboardingData();
 
       finishAccount();
     } catch (err: any) {
@@ -212,32 +246,7 @@ export function AccountGateScreen({ navigation }: Props) {
       setUserAccount(user.email ?? "google-user", user.firstName ?? undefined);
       setAuth(user);
 
-      try {
-        const { primaryBucket, startingRead, glp1Flag } =
-          await syncOnboardingToBackend({
-            goal: state.user.goal,
-            behaviorAnswers: {
-              q1: state.user.quizAnswers.q1,
-              q2: state.user.quizAnswers.q2,
-              q3: state.user.quizAnswers.q3,
-            },
-            tastePreferences: state.user.tastePreferences,
-            dietaryRestrictions: state.user.dietaryRestrictions,
-          });
-        if (primaryBucket) {
-          setTypingResult({
-            metabolicType: primaryBucket,
-            startingRead,
-            glp1Flag,
-          });
-        }
-      } catch {}
-
-      if (state.biometrics?.raw) {
-        try {
-          await submitScanResults(state.biometrics.raw);
-        } catch {}
-      }
+      await syncOnboardingData();
 
       finishAccount();
     } catch (err: any) {

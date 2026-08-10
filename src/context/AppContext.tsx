@@ -96,10 +96,30 @@ interface SettingsState {
   useNewSurveyFlow: boolean;
 }
 
+/**
+ * RES-207 — what the last login told us about a returning BetterWell member.
+ * Session-scoped and deliberately NOT persisted: both are answers about one
+ * sign-in, and a stale `hasUnclaimedLegacyAccount` would keep offering to
+ * restore a subscription that was already restored.
+ */
+export interface LegacyState {
+  /** This login just created the v3 account from legacy credentials. */
+  isReturningLegacyMember: boolean;
+  /** An unredeemed legacy claim exists on this email. Grants nothing on its
+   *  own — it only decides whether to offer the emailed-code claim flow. */
+  hasUnclaimedLegacyAccount: boolean;
+}
+
+const LEGACY_DEFAULTS: LegacyState = {
+  isReturningLegacyMember: false,
+  hasUnclaimedLegacyAccount: false,
+};
+
 interface AppState {
   user: UserProfile;
   biometrics: BiometricData | null;
   auth: AuthState;
+  legacy: LegacyState;
   settings: SettingsState;
   isLoading: boolean;
 }
@@ -130,6 +150,7 @@ type AppAction =
   | { type: "SET_DIETARY_RESTRICTIONS"; payload: string[] }
   | { type: "SET_USER_ACCOUNT"; payload: { email: string; name?: string } }
   | { type: "SET_AUTH"; payload: AuthState }
+  | { type: "SET_LEGACY_FLAGS"; payload: LegacyState }
   | { type: "SET_HOME_V2_ENABLED"; payload: boolean }
   | { type: "SET_APP_OPEN_FLOW_ENABLED"; payload: boolean }
   | { type: "SET_USE_NEW_SURVEY_FLOW"; payload: boolean }
@@ -146,6 +167,7 @@ const initialState: AppState = {
   },
   biometrics: null,
   auth: { isAuthenticated: false, authUser: null },
+  legacy: LEGACY_DEFAULTS,
   // Experimental flags default ON — testers opt out, not in. They're also
   // re-asserted on every SET_AUTH (account creation + sign-in).
   settings: { homeV2Enabled: true, appOpenFlowEnabled: true, useNewSurveyFlow: true },
@@ -275,6 +297,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
 
+    case "SET_LEGACY_FLAGS":
+      return { ...state, legacy: action.payload };
+
     case "SET_AUTH":
       return {
         ...state,
@@ -352,6 +377,7 @@ interface AppContextValue {
   setAppOpenFlowEnabled: (enabled: boolean) => void;
   setUseNewSurveyFlow: (enabled: boolean) => void;
   completeOnboarding: () => void;
+  setLegacyFlags: (flags: LegacyState) => void;
   resetState: () => void;
 }
 
@@ -624,6 +650,10 @@ export function AppProvider({ children }: AppProviderProps) {
       type: "SET_AUTH",
       payload: { isAuthenticated: false, authUser: null },
     });
+    // RES-207 — same fail-safe as the AI-consent reset below. These describe
+    // the previous sign-in; leaving them set would offer the next account a
+    // "restore your subscription" prompt for someone else's legacy claim.
+    dispatch({ type: "SET_LEGACY_FLAGS", payload: LEGACY_DEFAULTS });
     // RES-188 — reset third-party-AI consent to the fail-safe "not granted,
     // needs prompt" default so the previous user's grant never leaks into the
     // next account. setAuth re-hydrates the real value from the backend on the
@@ -653,6 +683,10 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: "COMPLETE_ONBOARDING" });
   };
 
+  const setLegacyFlags = (flags: LegacyState) => {
+    dispatch({ type: "SET_LEGACY_FLAGS", payload: flags });
+  };
+
   const resetState = () => {
     dispatch({ type: "RESET_STATE" });
     AsyncStorage.removeItem(STORAGE_KEY);
@@ -679,6 +713,7 @@ export function AppProvider({ children }: AppProviderProps) {
     setAppOpenFlowEnabled,
     setUseNewSurveyFlow,
     completeOnboarding,
+    setLegacyFlags,
     resetState,
   };
 
