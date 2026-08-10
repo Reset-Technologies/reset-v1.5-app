@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Camera } from "expo-camera";
 import { ShenaiSdkView } from "react-native-shenai-sdk";
 import { K } from "../../constants/colors";
+import { WellnessDisclaimer } from "../../components/WellnessDisclaimer";
 import { useApp } from "../../context/AppContext";
 import { submitScanResults } from "../../services/profile";
 import Constants from "expo-constants";
@@ -800,6 +801,10 @@ export function ScanScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Guideline 1.4.1 — persistent across every scan state, including the
+            capture screen Apple screenshotted. See WellnessDisclaimer. */}
+        <WellnessDisclaimer color="rgba(255,255,255,0.6)" />
       </View>
     </SafeAreaView>
   );

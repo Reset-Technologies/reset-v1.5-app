@@ -6,6 +6,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import { ContinueButton } from "../../components/survey/ContinueButton";
+import { WellnessDisclaimer } from "../../components/WellnessDisclaimer";
 import { ScoreRing } from "../../components/survey/ScoreRing";
 import { getProfile } from "../../services/profile";
 import { getResetScore } from "../../services/resetScore";
@@ -167,6 +168,13 @@ export function ScoreRevealScreen() {
       </View>
 
       <View style={[styles.footer, { bottom: insets.bottom + 16 }]}>
+        {/* Guideline 1.4.1 — this screen presents the score itself, which is
+            what Apple's second review cited. It lives in the footer rather
+            than at the end of `content`: the footer is absolutely positioned,
+            so content flows underneath it, and on a Galaxy S24 the disclaimer
+            ended up behind the button. Anchored here it sits above the CTA at
+            every screen size. See WellnessDisclaimer. */}
+        <WellnessDisclaimer style={styles.disclaimer} />
         <ContinueButton label="See today's meal" onPress={advanceToMeal} />
       </View>
     </SafeAreaView>
@@ -299,6 +307,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     padding: 16,
     marginTop: 8,
+  },
+  disclaimer: {
+    marginBottom: 12,
   },
   confidenceLeft: {
     gap: 8,
