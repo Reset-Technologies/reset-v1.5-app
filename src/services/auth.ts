@@ -47,10 +47,32 @@ export async function registerWithEmail(
   };
 }
 
+/**
+ * RES-207 — what the login response tells us about a returning BetterWell
+ * member. Both come from the backend's legacy bridge:
+ *
+ *  - `isReturningLegacyMember` — this login just created their v3 account
+ *    just-in-time from their old credentials. They have never seen this app,
+ *    so they get the welcome-back screen and then ordinary onboarding.
+ *  - `hasUnclaimedLegacyAccount` — an ordinary v3 login, but there is still an
+ *    unredeemed legacy claim on this email (usually someone who made a fresh
+ *    account during the lockout). Nothing is granted on this flag alone; it
+ *    only decides whether to offer "restore your subscription", which verifies
+ *    an emailed code first.
+ */
+export interface LegacyLoginFlags {
+  isReturningLegacyMember: boolean;
+  hasUnclaimedLegacyAccount: boolean;
+}
+
+export interface LoginResult extends LegacyLoginFlags {
+  user: AuthUser;
+}
+
 export async function loginWithEmail(
   email: string,
   password: string,
-): Promise<AuthUser> {
+): Promise<LoginResult> {
   const data = await apiClient("/api/auth/login/email/password", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -61,7 +83,14 @@ export async function loginWithEmail(
   // Fetch full user data (including createdAt) from /me endpoint
   const user = await fetchMe();
   BrazeService.changeUser(user.id);
-  return user;
+
+  // Default to false rather than undefined: an older backend that doesn't send
+  // these must read as "ordinary login", never as "returning member".
+  return {
+    user,
+    isReturningLegacyMember: data.isReturningLegacyMember === true,
+    hasUnclaimedLegacyAccount: data.hasUnclaimedLegacyAccount === true,
+  };
 }
 
 export async function loginWithApple(idToken: string): Promise<AuthUser> {

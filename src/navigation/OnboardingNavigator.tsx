@@ -14,6 +14,7 @@ import {
   CreateAccountScreen,
   AiConsentScreen,
   PaywallScreen,
+  WelcomeBackScreen,
 } from "../screens/onboarding";
 import { LoginScreen } from "../screens/auth/LoginScreen";
 import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
@@ -33,6 +34,8 @@ export type OnboardingStackParamList = {
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
+  /** RES-207 — reached only from a successful legacy login. */
+  WelcomeBack: undefined;
   ForgotPassword: undefined;
   ForgotPasswordCode: { email: string };
   ForgotPasswordReset: { email: string; resetToken: string };
@@ -87,6 +90,18 @@ export function OnboardingNavigator() {
         name="Login"
         component={LoginScreen}
         options={{ contentStyle: { backgroundColor: K.brown } }}
+      />
+      {/* RES-207 — only a returning BetterWell member reaches this, straight
+          from a successful legacy login. gestureEnabled:false so a back-swipe
+          can't drop them onto the login screen they just cleared. */}
+      <Stack.Screen
+        name="WelcomeBack"
+        component={WelcomeBackScreen}
+        options={{
+          contentStyle: { backgroundColor: K.cream },
+          animation: "fade",
+          gestureEnabled: false,
+        }}
       />
       <Stack.Screen
         name="ForgotPassword"

@@ -19,6 +19,7 @@ import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { loginWithEmail, loginWithApple, loginWithGoogle } from "../../services/auth";
 import { logEvent } from "../../services/braze";
+import { getProfile } from "../../services/profile";
 import {
   BackArrow,
   ResetWordmark,
@@ -47,7 +48,16 @@ if (GoogleSignin) {
 
 export function LoginScreen() {
   const navigation = useNavigation<any>();
-  const { setAuth, resetState, completeOnboarding } = useApp();
+  const {
+    state,
+    setAuth,
+    resetState,
+    completeOnboarding,
+    setLegacyFlags,
+    setSubscriptionTier,
+  } = useApp();
+  // True only when this screen is the AuthNavigator (signed-out) entry point.
+  const hasOnboarded = state.user.hasCompletedOnboarding;
 
   // Signing into an existing account means the user has onboarded before —
   // mark onboarding complete so the root navigator can route to Main even
@@ -56,6 +66,40 @@ export function LoginScreen() {
   const finishLogin = (user: Parameters<typeof setAuth>[0]) => {
     completeOnboarding();
     setAuth(user);
+  };
+
+  /**
+   * RES-207 — a returning BetterWell member is the exact opposite case: the
+   * account was created just-in-time by this very login, so they have no v3
+   * profile, no metabolic type and no scan. Calling completeOnboarding() here
+   * would drop them straight into the subscription gate with nothing behind
+   * it. Per Bryan: welcome them back, then run ordinary onboarding — only
+   * account creation and the payment step come out.
+   */
+  const finishLegacyLogin = async (user: Parameters<typeof setAuth>[0]) => {
+    setAuth(user);
+
+    // Pull the entitlement now. subscriptionTier is otherwise only fetched at
+    // app launch, so a member who signs in mid-session would reach the paywall
+    // with no tier set — and be asked to buy a subscription they already pay
+    // for, which is the worst thing this migration could do to them. The user
+    // is already watching the login spinner, so the round-trip is free.
+    try {
+      const profile = await getProfile();
+      if (profile.subscriptionTier) setSubscriptionTier(profile.subscriptionTier);
+    } catch {
+      // Non-fatal: PaywallScreen retries this before it will show itself.
+    }
+
+    // WelcomeBack lives in OnboardingNavigator, which is what's mounted when
+    // this screen is reached the normal way ("I already have an account" on
+    // PreScan). The other entry point is AuthNavigator, mounted only when
+    // onboarding was already completed on this device — reachable if someone
+    // onboarded under one account, signed out, and signed in with a legacy
+    // email. There is no WelcomeBack route there, so don't navigate: setAuth
+    // has already re-rooted the navigator and they land in the app. Degraded
+    // (no welcome screen, and they'll need to scan from home) but not broken.
+    if (!hasOnboarded) navigation.navigate("WelcomeBack");
   };
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,8 +122,14 @@ export function LoginScreen() {
     setError(null);
     setIsLoading(true);
     try {
-      const user = await loginWithEmail(email, password);
-      finishLogin(user);
+      const { user, isReturningLegacyMember, hasUnclaimedLegacyAccount } =
+        await loginWithEmail(email, password);
+      setLegacyFlags({ isReturningLegacyMember, hasUnclaimedLegacyAccount });
+      if (isReturningLegacyMember) {
+        await finishLegacyLogin(user);
+      } else {
+        finishLogin(user);
+      }
     } catch (err: any) {
       setError(err.message || "Invalid email or password");
     } finally {
