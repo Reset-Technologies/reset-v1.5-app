@@ -6,6 +6,7 @@ import { useCameraPermissions } from "expo-camera";
 import { K } from "../../constants/colors";
 import { typography } from "../../constants/typography";
 import { EsterBubble, Button, Avatar } from "../../components";
+import { WellnessDisclaimer } from "../../components/WellnessDisclaimer";
 import { logEvent } from "../../services/braze";
 
 type Props = NativeStackScreenProps<any, "CameraPerm">;
@@ -121,6 +122,11 @@ export function CameraPermScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+
+        {/* Guideline 1.4.1 — first point in onboarding where we describe what
+            the scan measures (and name a Wellness Score), so the wellness
+            framing lands before the camera opens. See WellnessDisclaimer. */}
+        <WellnessDisclaimer style={styles.disclaimer} />
       </View>
 
       <View style={styles.bottom}>
@@ -139,6 +145,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 24,
+  },
+  disclaimer: {
+    marginTop: "auto",
+    paddingTop: 16,
   },
   avatarContainer: {
     alignItems: "center",

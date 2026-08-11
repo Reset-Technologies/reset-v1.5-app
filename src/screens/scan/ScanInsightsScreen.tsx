@@ -26,6 +26,7 @@ import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { TrendIcon } from "../../components/TrendIcon";
 import { AiConsentNudge } from "../../components/AiConsentNudge";
 import { STRESS_LABEL, stressBand } from "../../utils/stress";
+import { WellnessDisclaimer } from "../../components/WellnessDisclaimer";
 
 const FALLBACK_BLURB =
   "Your score reflects what your scan picked up today. Here's the breakdown.";
@@ -587,6 +588,18 @@ export function ScanInsightsScreen() {
             </View>
           </View>
         )}
+
+        {/* Guideline 1.4.1 — the densest measurement surface in the app
+            (HRV, breathing rate, stress, BMI). See WellnessDisclaimer. */}
+        <WellnessDisclaimer
+          color={subtleText}
+          style={[
+            styles.disclaimer,
+            // In the app-open flow a 50pt advance button floats at
+            // bottom: insets.bottom + 16, which would sit over the last line.
+            fromAppOpen && styles.disclaimerAboveButton,
+          ]}
+        />
       </ScrollView>
 
       {fromAppOpen ? (
@@ -728,6 +741,18 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: K.white,
+  },
+  disclaimer: {
+    // `content` above already spaces its children with gap: 30, and ends with
+    // paddingBottom: insets.bottom + 40. Both are right for full-size sections
+    // but leave fine print stranded in the middle of a lot of empty space, so
+    // these pull it back to roughly 16 above / 44 below.
+    marginTop: -14,
+    marginBottom: -30,
+    paddingHorizontal: 20,
+  },
+  disclaimerAboveButton: {
+    marginBottom: 24,
   },
   // Header
   headerSafe: {

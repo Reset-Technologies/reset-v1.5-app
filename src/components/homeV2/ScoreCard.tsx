@@ -10,6 +10,7 @@ import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { ScoreRing } from "../survey/ScoreRing";
+import { WellnessDisclaimer } from "../WellnessDisclaimer";
 
 interface ScoreCardProps {
   score: number | null;
@@ -207,11 +208,18 @@ export function ScoreCard({
           </Text>
         </View>
       ) : null}
+
+      {/* Guideline 1.4.1 — the score's most-seen surface.
+          See WellnessDisclaimer. */}
+      <WellnessDisclaimer color={subtleText} style={styles.disclaimer} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  disclaimer: {
+    marginTop: -spacing.md,
+  },
   card: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
