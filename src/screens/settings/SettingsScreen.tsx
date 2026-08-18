@@ -518,6 +518,20 @@ export function SettingsScreen() {
               <Text style={styles.toggleLabel}>Preview Quick scan screen</Text>
               <Text style={{ color: K.ochre, fontWeight: "600" }}>Open</Text>
             </TouchableOpacity>
+            {/* RES-207's welcome-back screen. Normally unreachable from here:
+                it lives in OnboardingNavigator and only ever appears on the one
+                login that migrates a legacy account, so there is otherwise no
+                way to look at it without resetting a legacy test subject. */}
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() => {
+                (navigation as any).navigate("WelcomeBackPreview");
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.toggleLabel}>Preview Welcome back screen</Text>
+              <Text style={{ color: K.ochre, fontWeight: "600" }}>Open</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.toggleRow}
               onPress={() => {
