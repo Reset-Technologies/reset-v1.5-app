@@ -1,12 +1,26 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
-import { Button, Avatar } from "../../components";
+import { Button } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { logEvent } from "../../services/braze";
+
+// Ester's real mark, deliberately local to this screen rather than folded into
+// `Avatar`. Avatar is shared by ~10 other surfaces (the onboarding run, the
+// check-in reply, scan results) and its resting state is the "E" badge those
+// screens are designed around — changing it there would restyle the whole app
+// as a side effect of this one screen. The full-colour cut, not the silver
+// badge: with no tinted disc behind it, silver disappears against bone.
+const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
+
+// The box stays 92 so the surrounding layout is measured against a constant,
+// while the mark itself is inset — it is drawn bare here, with none of the
+// disc-and-shadow treatment Avatar gives its emoji states.
+const MARK_BOX = 92;
+const MARK_SIZE = MARK_BOX * 0.825;
 
 type Props = NativeStackScreenProps<any, "WelcomeBack">;
 
@@ -46,7 +60,13 @@ export function WelcomeBackScreen({ navigation }: Props) {
         <View style={styles.avatarWrap}>
           {/* Larger than the usual 56: this is the first screen a returning
               member sees, and Ester introduces herself on it. */}
-          <Avatar size={92} />
+          <View style={styles.markBox}>
+            <Image
+              source={ESTER_MARK}
+              style={styles.mark}
+              resizeMode="contain"
+            />
+          </View>
         </View>
 
         <Text style={styles.heading}>
@@ -82,6 +102,16 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "center",
     gap: 20,
+  },
+  markBox: {
+    width: MARK_BOX,
+    height: MARK_BOX,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mark: {
+    width: MARK_SIZE,
+    height: MARK_SIZE,
   },
   avatarWrap: {
     alignItems: "center",
