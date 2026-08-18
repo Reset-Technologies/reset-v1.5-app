@@ -11,6 +11,12 @@ import { RecipeDetailScreen } from "../screens/recipe";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ScanScreen } from "../screens/onboarding/ScanScreen";
 import { CalibrationScreen } from "../screens/onboarding/CalibrationScreen";
+// Preview-only. WelcomeBack's real home is OnboardingNavigator, which isn't
+// mounted once someone is in the app — so Settings ▸ EXPERIMENTAL has no way to
+// reach it. Registering it here as well gives that row a destination. Nothing
+// else navigates to this route, and the row that does is gated behind
+// shouldShowExperiments(), so the shipping build can't reach it.
+import { WelcomeBackScreen } from "../screens/onboarding";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
@@ -29,6 +35,8 @@ export type MainTabParamList = {
 export type MainStackParamList = {
   Tabs: undefined;
   AppOpenFlow: undefined;
+  // Preview-only route for Settings ▸ EXPERIMENTAL; see the import comment.
+  WelcomeBackPreview: undefined;
   EsterChat: {
     context?: "general" | "meal" | "score";
     meal?: Meal;
@@ -174,6 +182,21 @@ export function MainNavigator() {
           presentation: "fullScreenModal",
           animation: "slide_from_bottom",
           gestureEnabled: false,
+        }}
+      />
+      {/* Preview only — see the import comment. gestureEnabled stays ON here
+          (unlike the real onboarding mount) so it can be swiped away; its
+          Continue button leads into Calibration, which is registered above. */}
+      <Stack.Screen
+        name="WelcomeBackPreview"
+        // Cast because the screen types its props against its real route name
+        // ("WelcomeBack") and this preview mount uses a different one. Casting
+        // here keeps the change contained to the preview — the screen itself is
+        // untouched, so what renders is exactly what onboarding renders.
+        component={WelcomeBackScreen as React.ComponentType<any>}
+        options={{
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
         }}
       />
       <Stack.Screen
