@@ -44,7 +44,9 @@ export function WelcomeBackScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.content}>
         <View style={styles.avatarWrap}>
-          <Avatar size={56} />
+          {/* Larger than the usual 56: this is the first screen a returning
+              member sees, and Ester introduces herself on it. */}
+          <Avatar size={92} />
         </View>
 
         <Text style={styles.heading}>
@@ -83,7 +85,10 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     alignItems: "center",
-    marginBottom: 4,
+    // Pulls the heading up under the mark. `content` sets gap: 20 for every
+    // child, which is more air than this pairing wants, so this trims the
+    // avatar-to-heading gap to 12 without touching the rest of the screen.
+    marginBottom: -8,
   },
   heading: {
     fontFamily: fonts.playfairBold,
