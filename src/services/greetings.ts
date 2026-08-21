@@ -1,5 +1,8 @@
 import { MetabolicType } from "../constants/colors";
 import { TYPE_CONFIGS } from "../constants/types";
+// Greetings speak to the user, so they use the display name — TYPE_CONFIGS.name
+// is the archetype key, and for Ember that key is not what we call the type.
+import { TYPE_DISPLAY } from "../constants/metabolicProfile";
 import { stressBand } from "../utils/stress";
 
 // ---------- Types ----------
@@ -192,15 +195,15 @@ function getLapseGreeting(ctx: GreetingContext): GreetingResult {
 
   const tier1WithBand: Record<ScoreBand, string[]> = {
     low: [
-      `A couple days off — and today's read is on the low side. Your ${type.name.toLowerCase()} pattern wants softer fuel; meals are tuned for it.`,
+      `A couple days off — and today's read is on the low side. Your ${TYPE_DISPLAY[ctx.metabolicType].toLowerCase()} pattern wants softer fuel; meals are tuned for it.`,
       `Two days away. Today's score is low — recovery first, performance later.`,
     ],
     steady: [
-      `Missed a couple days. Your ${type.name.toLowerCase()} pattern is still steady; today's plan picks up where we left off.`,
+      `Missed a couple days. Your ${TYPE_DISPLAY[ctx.metabolicType].toLowerCase()} pattern is still steady; today's plan picks up where we left off.`,
       `Two days off. You're back at a steady read — let's hold the line.`,
     ],
     strong: [
-      `A couple days off — but today's read is strong. Your ${type.name.toLowerCase()} pattern came back ready.`,
+      `A couple days off — but today's read is strong. Your ${TYPE_DISPLAY[ctx.metabolicType].toLowerCase()} pattern came back ready.`,
       `Two days away, and you're back at a strong read. Today's plan rides that.`,
     ],
   };
@@ -210,7 +213,7 @@ function getLapseGreeting(ctx: GreetingContext): GreetingResult {
       ctx.scoreBand && ctx.score !== null
         ? tier1WithBand[ctx.scoreBand]
         : [
-            `Missed a couple days. Your ${type.name.toLowerCase()} pattern doesn't reset that fast — picking up where we left off.`,
+            `Missed a couple days. Your ${TYPE_DISPLAY[ctx.metabolicType].toLowerCase()} pattern doesn't reset that fast — picking up where we left off.`,
             `Two days off. Your rhythm is still there. Let's keep going.`,
           ],
     2: [
@@ -365,7 +368,7 @@ function getScanDay8to14Greeting(ctx: GreetingContext): GreetingResult {
 
 function getScanDay15PlusGreeting(ctx: GreetingContext): GreetingResult {
   const type = TYPE_CONFIGS[ctx.metabolicType];
-  const typeName = type.name.toLowerCase();
+  const typeName = TYPE_DISPLAY[ctx.metabolicType].toLowerCase();
 
   const byBand: Record<ScoreBand, string[]> = {
     low: [
@@ -425,7 +428,7 @@ function getSkipDay2to4Greeting(ctx: GreetingContext): GreetingResult {
 
 function getSkipDay5PlusGreeting(ctx: GreetingContext): GreetingResult {
   const type = TYPE_CONFIGS[ctx.metabolicType];
-  const typeName = type.name.toLowerCase();
+  const typeName = TYPE_DISPLAY[ctx.metabolicType].toLowerCase();
 
   const byBand: Record<ScoreBand, string[]> = {
     low: [
@@ -603,7 +606,7 @@ function getStaleDataGreeting(ctx: GreetingContext): GreetingResult {
   // nudge toward a scan to refresh the trustworthy signal.
   if (ctx.score !== null && ctx.scoreBand) {
     const byBand: Record<ScoreBand, string> = {
-      low: `Today's read landed low. Your ${type.name.toLowerCase()} pattern wants softer fuel — a quick scan would sharpen what I'm seeing.`,
+      low: `Today's read landed low. Your ${TYPE_DISPLAY[ctx.metabolicType].toLowerCase()} pattern wants softer fuel — a quick scan would sharpen what I'm seeing.`,
       steady: `You're in a steady zone today. A quick scan would let me push past the surface — right now I'm leaning on what you told me.`,
       strong: `Today's read is strong. A scan would lock that in — without one I'm working from your check-in alone.`,
     };
@@ -640,7 +643,7 @@ function getStaleDataGreeting(ctx: GreetingContext): GreetingResult {
 function getScoreAnchoredGreeting(ctx: GreetingContext): GreetingResult {
   const nameGreeting = ctx.userName ? `${ctx.userName}.` : "Hey.";
   const type = TYPE_CONFIGS[ctx.metabolicType];
-  const typeName = type.name.toLowerCase();
+  const typeName = TYPE_DISPLAY[ctx.metabolicType].toLowerCase();
   const delta = ctx.scoreDelta;
   const band = ctx.scoreBand!;
 

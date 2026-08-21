@@ -48,9 +48,12 @@ export const TYPE_CONFIGS: Record<MetabolicType, TypeConfig> = {
     },
   },
   Ember: {
+    // `name` is the archetype KEY (typed MetabolicType), not display copy —
+    // Ember's user-facing name is "Restorer" (TYPE_DISPLAY in
+    // constants/metabolicProfile.ts). Never render `name` directly.
     name: "Ember",
     internalBucket: "Depleted",
-    title: "The Ember",
+    title: "The Restorer",
     tagline: "Your body needs to rebuild what's been missing.",
     description: "Your system's been stretched thin. It needs consistent micronutrient support — never suggest eating less.",
     corePhilosophy: "Micronutrient restoration, never suggest eating less",
