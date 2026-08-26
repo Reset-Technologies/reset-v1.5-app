@@ -175,13 +175,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
-    // Amplitude client-side analytics. No default: with the key absent the SDK
-    // never initializes and every call no-ops, so a build made without it
-    // behaves exactly as it did before. Set AMPLITUDE_API_KEY in the EAS
-    // profile to turn it on.
+    // Amplitude client-side analytics. This is the PUBLIC ingestion key — it
+    // ships in the bundle by design, exactly like the Braze keys above and the
+    // RevenueCat public keys below — so it lives here as a default rather than
+    // only in an EAS secret. That is deliberate: the SDK fails SILENTLY when the
+    // key is missing, so a forgotten env var would look identical to working
+    // analytics. Overridable via AMPLITUDE_API_KEY.
+    // 📌 Verified against Amplitude 2026-08-25: this key is live and the project
+    // is on the US endpoint (api2.amplitude.com). An EU project would need
+    // api.eu.amplitude.com, and sending EU data to the US endpoint fails quietly.
     // ⚠️ Shipping this SDK changes what the app collects, so the App Store
     // privacy labels must be updated in the same submission.
-    amplitudeApiKey: process.env.AMPLITUDE_API_KEY ?? "",
+    amplitudeApiKey:
+      process.env.AMPLITUDE_API_KEY ?? "846e3b4ec7b0c669809a505831d22cb1",
     // Build-time flag that reveals the Settings > EXPERIMENTAL section on
     // ANDROID internal/testing builds. Android can't tell an internal-testing
     // install from a production install at runtime, so the internal EAS
