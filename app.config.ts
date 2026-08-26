@@ -175,6 +175,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
+    // Amplitude client-side analytics. No default: with the key absent the SDK
+    // never initializes and every call no-ops, so a build made without it
+    // behaves exactly as it did before. Set AMPLITUDE_API_KEY in the EAS
+    // profile to turn it on.
+    // ⚠️ Shipping this SDK changes what the app collects, so the App Store
+    // privacy labels must be updated in the same submission.
+    amplitudeApiKey: process.env.AMPLITUDE_API_KEY ?? "",
     // Build-time flag that reveals the Settings > EXPERIMENTAL section on
     // ANDROID internal/testing builds. Android can't tell an internal-testing
     // install from a production install at runtime, so the internal EAS
