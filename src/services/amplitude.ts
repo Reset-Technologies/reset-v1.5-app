@@ -38,10 +38,20 @@ function ready(): boolean {
 
   try {
     Amplitude.init(API_KEY, pendingUserId ?? undefined, {
-      // We are not an ad-attribution tool and have no ATT prompt, so never let
-      // the SDK reach for the advertising identifier. Collecting it without a
-      // prompt is an App Review rejection, and we do not need it.
-      trackingOptions: { adid: false, idfa: false },
+      trackingOptions: {
+        // The Android advertising ID — the one identifier the SDK can collect
+        // that would need an ATT-style disclosure. We have no ATT prompt and no
+        // ad attribution, so it stays off.
+        adid: false,
+        // 📌 There is deliberately NO `idfa` key here. ReactNativeTrackingOptions
+        // exposes only adid / appSetId / idfv / carrier / country / device* /
+        // ipAddress / language / os* / platform — this SDK never reaches for the
+        // iOS advertising identifier at all, so there is nothing to disable. An
+        // `idfa: false` would be silently ignored and create false confidence in
+        // exactly the place we'd cite it (a privacy-label or App Review answer).
+        // `idfv` and `appSetId` are left ON: both are vendor-scoped, need no ATT
+        // prompt, and Amplitude uses them to derive a stable device id.
+      },
     });
     initialized = true;
     return true;
@@ -67,11 +77,17 @@ export function logEvent(
 export function setUserProperties(
   attrs: Record<string, string | number | boolean>,
 ): void {
+  const entries = Object.entries(attrs).filter(
+    ([, value]) => value !== undefined && value !== null,
+  );
+  // Bail before touching the SDK when there is nothing to set. setUserAttributes()
+  // forwards only name/email, so a call carrying just a date of birth would
+  // otherwise send an empty $identify — a billable event that sets nothing.
+  if (entries.length === 0) return;
+
   if (!ready()) return;
   const identify = new Amplitude.Identify();
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined && value !== null) identify.set(key, value);
-  }
+  for (const [key, value] of entries) identify.set(key, value);
   Amplitude.identify(identify);
 }
 
