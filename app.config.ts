@@ -32,7 +32,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // Weight Loss", Apple ID 1478144712), whose 4.5-star / 2000+ reviews cannot
   // be transferred to another record. That app is live at 2.1.11, so the
   // marketing version has to climb past it — 3.0.0 marks the rebrand.
-  version: "3.0.0",
+  // 🔴 Must be HIGHER than any version already released. 3.0.0 went live on
+  // both stores 2026-09-01, and App Store Connect will not accept a new build
+  // for a version that is already "Ready for Sale" — the update needs its own
+  // version record. 3.0.1 is the first post-launch patch: app display name,
+  // the "Restorer" greeting fix, the Amplitude SDK, the legacy-member
+  // analytics tag, and a working support contact.
+  version: "3.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
