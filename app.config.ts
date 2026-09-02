@@ -13,7 +13,19 @@ const HAS_GOOGLE_SERVICES = fs.existsSync(GOOGLE_SERVICES_FILE);
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "reset-app",
+  // The HOME SCREEN name — what sits under the icon on the device. It was
+  // "reset-app", the scaffold's working title, which is what shipped in 3.0.0.
+  // The store listing name is a separate field in App Store Connect / Play
+  // ("Reset: Lasting Weight Loss") and is unaffected; the two are allowed to
+  // differ, and a short home-screen name is the norm.
+  name: "Reset",
+  // ⚠️ `slug` and `scheme` deliberately KEEP the old value.
+  //   * slug identifies the EAS project (alongside extra.eas.projectId) —
+  //     renaming it risks detaching the project and its build credentials.
+  //   * scheme is the deep-link protocol (resetapp://). Changing it breaks
+  //     every link already in the wild, including OAuth redirects.
+  // Neither is ever shown to a user, so there is nothing to gain by touching
+  // them and a working build to lose.
   slug: "reset-app",
   scheme: "resetapp",
   // Ships as a new version of the EXISTING App Store record ("Reset: Lasting
