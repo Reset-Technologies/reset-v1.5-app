@@ -58,6 +58,12 @@ export interface UserProfile {
   // RES-127 — account status, defaults to "pro" on the backend until paywall
   // ships. Drives Settings copy + Ester's biomarker access gating.
   subscriptionTier?: "free" | "pro";
+  // True when this account came from the legacy BetterWell app via the
+  // just-in-time migration bridge. Forwarded to analytics as a user property so
+  // returning members and first-time signups can be told apart — without it
+  // every funnel blends two completely different journeys. Optional because
+  // older backends won't send it.
+  isLegacyMember?: boolean;
 }
 
 export async function getProfile(): Promise<UserProfile> {
