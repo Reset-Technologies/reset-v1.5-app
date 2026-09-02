@@ -524,6 +524,17 @@ export function AppProvider({ children }: AppProviderProps) {
           payload: profile.subscriptionTier,
         });
       }
+      // Tag the analytics identity with where this account came from. Set on
+      // every profile sync rather than once at signup: user properties are
+      // idempotent, and this way accounts that existed before the flag shipped
+      // get tagged on their next app open instead of staying unknown forever.
+      // Goes to Amplitude AND Braze through the shared setCustomAttribute.
+      if (typeof profile.isLegacyMember === "boolean") {
+        BrazeService.setCustomAttribute(
+          "isLegacyMember",
+          profile.isLegacyMember,
+        );
+      }
     } catch {
       // Leave existing local value.
     }

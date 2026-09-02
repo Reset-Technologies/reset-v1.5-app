@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Linking,
+  Platform,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -23,6 +24,11 @@ import {
   PRIVACY_POLICY_URL,
   TERMS_OF_USE_URL,
 } from "../../constants/legal";
+import {
+  SUPPORT_EMAIL,
+  buildSupportMailto,
+} from "../../constants/support";
+import Constants from "expo-constants";
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { Pill } from "../../components";
 import { useApp } from "../../context/AppContext";
@@ -54,6 +60,28 @@ export function SettingsScreen() {
     setUseNewSurveyFlow,
     setAiConsent,
   } = useApp();
+
+  // Opens the user's mail app with the support address, subject and the
+  // diagnostic footer prefilled. Falls back to an alert showing the address if
+  // the device has no mail client configured — otherwise the tap would appear
+  // to do nothing, which is the exact failure this row is fixing.
+  const openSupportEmail = async () => {
+    const url = buildSupportMailto({
+      appVersion: Constants.expoConfig?.version ?? "unknown",
+      platform: Platform.OS,
+      userId: state.auth.authUser?.id,
+    });
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) throw new Error("no mail client");
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(
+        "Email us",
+        `We couldn't open your mail app. You can reach us at ${SUPPORT_EMAIL}.`,
+      );
+    }
+  };
 
   // Notification toggles — persisted via AsyncStorage
   const [notifications, setNotifications] = useState<Record<string, boolean>>(
@@ -440,16 +468,22 @@ export function SettingsScreen() {
           </View>
         </View>
 
-        {/* Support */}
+        {/* Support.
+            Both rows here used to be dead buttons — no onPress at all — so
+            there was no way to reach anyone from inside the app. The "Help
+            Center" row is gone rather than wired up because no help centre
+            exists to link to; a button that opens the marketing homepage is
+            the same bug wearing a different hat. Contact Us now opens a
+            prefilled email. */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SUPPORT</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.linkRow}>
-              <Text style={styles.linkText}>Help Center</Text>
-              <Text style={styles.linkArrow}>›</Text>
-            </TouchableOpacity>
-            <View style={styles.linkBorder} />
-            <TouchableOpacity style={styles.linkRow}>
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={openSupportEmail}
+              accessibilityRole="button"
+              accessibilityLabel={`Contact support at ${SUPPORT_EMAIL}`}
+            >
               <Text style={styles.linkText}>Contact Us</Text>
               <Text style={styles.linkArrow}>›</Text>
             </TouchableOpacity>
@@ -605,6 +639,20 @@ export function SettingsScreen() {
               This permanently deletes your account and all of your data —
               scans, meal plans, check-ins, chats, and profile. This cannot be
               undone.
+            </Text>
+            {/* Deleting an account does NOT cancel billing, and saying so is
+                the difference between a clean exit and someone paying for an
+                account that no longer exists. Store subscriptions the member
+                cancels themselves; a website (Stripe) subscription they
+                cannot — we have no self-serve path and our Stripe key is
+                read-only — so that one routes to support, who cancels it by
+                hand. The backend also raises an alert in that case, but this
+                tells the member before they commit rather than after. */}
+            <Text style={styles.modalBody}>
+              Deleting your account does not cancel a paid subscription. If you
+              subscribed through the App Store or Google Play, cancel it there.
+              If you subscribed on our website, email {SUPPORT_EMAIL} and we'll
+              cancel it for you.
             </Text>
             <Text style={styles.modalPrompt}>
               Type <Text style={styles.modalPromptBold}>DELETE</Text> to confirm.
