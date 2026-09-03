@@ -1,4 +1,5 @@
 import * as AmplitudeService from "./amplitude";
+import * as AdAttribution from "./adAttribution";
 
 let Braze: any;
 try {
@@ -21,6 +22,11 @@ try {
  *
  * 📌 Braze is NOT being replaced. Its events trigger the push/email campaigns,
  * so both destinations receive everything.
+ *
+ * 🔴 The ad-attribution destination is the ONE exception to "everything". It is
+ * default-deny: it receives only the commercial-funnel events named in
+ * services/adAttribution.ts, because ad vendors must never see health data.
+ * Add an advertising SDK THERE, never here — see that file for why.
  * 📌 Follow-up: rename this module to `analytics.ts` (109 import sites). Left
  * for a separate PR so this one stays reviewable.
  */
@@ -29,6 +35,7 @@ export function changeUser(userId: string): void {
   // Both vendors key on our database user id, so a user is the same person in
   // Braze, in Amplitude, and in anything we add server-side later.
   AmplitudeService.setUserId(userId);
+  AdAttribution.identify(userId);
   if (!Braze) return;
   Braze.changeUser(userId);
   Braze.requestImmediateDataFlush();
@@ -39,6 +46,8 @@ export function logEvent(
   properties?: Record<string, string | number | boolean>,
 ): void {
   AmplitudeService.logEvent(eventName, properties);
+  // Filtered: drops everything that isn't a commercial-funnel event.
+  AdAttribution.send(eventName, properties);
   if (!Braze) return;
   Braze.logCustomEvent(eventName, properties);
   Braze.requestImmediateDataFlush?.();
@@ -89,6 +98,7 @@ export function wipeData(): void {
   // as much as Braze's — without it the next person to sign in on this device
   // inherits the previous user's identity.
   AmplitudeService.reset();
+  AdAttribution.reset();
   if (!Braze) return;
   Braze.wipeData();
 }
