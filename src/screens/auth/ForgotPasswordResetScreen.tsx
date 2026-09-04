@@ -13,6 +13,7 @@ import Svg, { Path } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { resetPassword } from "../../services/auth";
 import { logEvent } from "../../services/braze";
+import { PasswordRules, usePasswordRules } from "../../components";
 import {
   AuthScaffold,
   EyeIcon,
@@ -23,17 +24,10 @@ import {
   ERROR_RED,
 } from "./authUi";
 
-// Mirror the backend's IsStrongPassword rule so we can guide the user before
-// the request round-trips (min 8, with upper, lower, number, and symbol).
-function isStrongPassword(p: string): boolean {
-  return (
-    p.length >= 8 &&
-    /[a-z]/.test(p) &&
-    /[A-Z]/.test(p) &&
-    /\d/.test(p) &&
-    /[^A-Za-z0-9]/.test(p)
-  );
-}
+// The rule + its explanation now live in components/PasswordRules, shared with
+// sign-up. This screen previously carried its own copy, which is how the two
+// drifted apart: reset demanded the full strength while sign-up asked for eight
+// characters of anything.
 
 function CheckCircle() {
   return (
@@ -68,14 +62,39 @@ export function ForgotPasswordResetScreen() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const strong = isStrongPassword(password);
+  const {
+    isValid: strong,
+    showError: showPasswordError,
+    shake,
+    flag: flagPassword,
+    failedKeys,
+  } = usePasswordRules(password);
   const matches = password.length > 0 && password === confirm;
-  const isValid = strong && matches;
+
+  // 🔑 Pressable while invalid, on purpose. This screen is the migration's
+  // critical path — a locked-out legacy member resets their password to get in
+  // — and a disabled button with no stated reason is exactly where that person
+  // gives up.
+  const canSubmit = password.length > 0 && confirm.length > 0;
 
   const handleReset = async () => {
-    if (!isValid || isLoading) return;
+    if (isLoading) return;
     logEvent("auth_forgotPassword_resetCTA");
     setError(null);
+
+    if (!strong) {
+      flagPassword();
+      // Rule keys only — never the password.
+      logEvent("auth_forgotPassword_passwordRejected", {
+        failed: failedKeys(),
+      });
+      return;
+    }
+    if (!matches) {
+      setError("Passwords don't match.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       await resetPassword(resetToken, password, confirm);
@@ -184,24 +203,25 @@ export function ForgotPasswordResetScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text
-              style={[
-                styles.hint,
-                password.length > 0 && !strong && styles.hintUnmet,
-              ]}
-            >
-              At least 8 characters, with an uppercase and lowercase letter, a
-              number, and a symbol.
-            </Text>
+            {/* Was one run-on sentence that reddened as a whole, so a user
+                could see that something was wrong but not which part. */}
+            <PasswordRules
+              password={password}
+              showError={showPasswordError}
+              shake={shake}
+              metColor={BONE}
+              unmetColor={TEXT_ALT}
+              errorColor={ERROR_RED}
+            />
             {confirm.length > 0 && !matches ? (
               <Text style={styles.errorText}>Passwords don't match.</Text>
             ) : null}
           </View>
 
           <TouchableOpacity
-            style={[styles.btn, (!isValid || isLoading) && styles.btnDisabled]}
+            style={[styles.btn, (!canSubmit || isLoading) && styles.btnDisabled]}
             onPress={handleReset}
-            disabled={!isValid || isLoading}
+            disabled={!canSubmit || isLoading}
             activeOpacity={0.85}
           >
             {isLoading ? (
