@@ -340,7 +340,11 @@ export function ScanInsightsScreen() {
     onAdvance: advanceToHome,
   });
   const handleScanAgain = () => {
-    navigation.navigate("Scan", { mode: "rescan", returnTo: "ScoreReveal" });
+    navigation.navigate("Scan", {
+      mode: "rescan",
+      returnTo: "ScoreReveal",
+      entry: "scan_insights",
+    });
   };
   const handleCheckIn = () => {
     (navigation as any).navigate("AppOpenFlow", { screen: "SurveyV2" });

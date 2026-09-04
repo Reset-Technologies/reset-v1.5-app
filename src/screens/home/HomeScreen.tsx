@@ -170,7 +170,11 @@ export function HomeScreen() {
 
   // Scan nudge
   const handleStartScan = useCallback(() => {
-    navigation.navigate("Scan", { mode: "rescan", returnTo: "ScoreReveal" });
+    navigation.navigate("Scan", {
+      mode: "rescan",
+      returnTo: "ScoreReveal",
+      entry: "home",
+    });
   }, [navigation]);
   const { nudge: scanNudge } = useScanNudge(
     handleStartScan,

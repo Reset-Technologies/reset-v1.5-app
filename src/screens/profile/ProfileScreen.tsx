@@ -371,10 +371,10 @@ export function ProfileScreen() {
     (navigation as any).navigate("Settings");
   };
 
+  // Both branches of the previous hasScan ternary navigated identically, so it
+  // is collapsed here rather than duplicated with the new entry param.
   const goScan = () =>
-    hasScan
-      ? navigation.navigate("Scan", { mode: "rescan" })
-      : navigation.navigate("Scan", { mode: "rescan" });
+    navigation.navigate("Scan", { mode: "rescan", entry: "profile" });
 
   // Once the user has a scan on file, the momentum CTA nudges a daily check-in
   // instead of another scan (matches the home-screen check-in entry point).
@@ -650,7 +650,10 @@ export function ProfileScreen() {
                 style={[styles.staleNudge, { backgroundColor: surfaces.card }]}
                 onPress={() =>
                   hasScan
-                    ? navigation.navigate("Scan", { mode: "rescan" })
+                    ? navigation.navigate("Scan", {
+                        mode: "rescan",
+                        entry: "profile",
+                      })
                     : runWithAiConsent(() =>
                         navigation.navigate("EsterChat", { context: "general" }),
                       )

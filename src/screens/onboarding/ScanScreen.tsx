@@ -43,11 +43,33 @@ const SCAN_PHASE_EVENTS = [
   "scan_phase_mapping",
 ] as const;
 
+/**
+ * Which control started this scan.
+ *
+ * 🔑 Passed explicitly rather than inferred. `source` (below) is derived from
+ * mode/returnTo and can only ever say onboarding / home / appopen — Profile,
+ * Weekly Review and Scan Insights all use the default returnTo and collapse
+ * into "home", so the question "where do re-scans actually come from?" was
+ * unanswerable. Every scan event now carries this, which also means it lands on
+ * `scan_completed` — so a drop-off is measurable per entry point, not just a
+ * tap count.
+ */
+type ScanEntry =
+  | "onboarding"
+  | "home"
+  | "profile"
+  | "weekly_review"
+  | "scan_insights"
+  | "score_reveal"
+  | "app_open_encourage"
+  | "app_open_data_gate";
+
 type Props = NativeStackScreenProps<any, "Scan"> & {
   route: {
     params?: {
       mode?: "onboarding" | "rescan";
       returnTo?: "ScanResults" | "ScoreReveal";
+      entry?: ScanEntry;
     };
   };
 };
@@ -170,6 +192,8 @@ function deriveBiometrics(results: ScanResults) {
 export function ScanScreen({ navigation, route }: Props) {
   const mode = route.params?.mode ?? "onboarding";
   const returnTo = route.params?.returnTo ?? "ScanResults";
+  const entry: ScanEntry | undefined =
+    route.params?.entry ?? (mode === "onboarding" ? "onboarding" : undefined);
   const scanSource: "onboarding" | "home" | "appopen" =
     mode === "onboarding"
       ? "onboarding"
@@ -198,6 +222,10 @@ export function ScanScreen({ navigation, route }: Props) {
   const logScanEvent = (name: string) =>
     logEvent(scanSource === "onboarding" ? `onboarding_${name}` : name, {
       source: scanSource,
+      // Absent when a caller was missed rather than defaulted to a plausible
+      // screen — "unknown" showing up in a report is a bug report; a wrong but
+      // believable entry point is not.
+      ...(entry ? { entry } : {}),
     });
 
   const { state, setBiometrics } = useApp();

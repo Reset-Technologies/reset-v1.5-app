@@ -54,6 +54,7 @@ export function ScoreRevealScreen() {
       (parent as any).navigate("Scan", {
         mode: "rescan",
         returnTo: "ScoreReveal",
+        entry: "score_reveal",
       });
     }
   };
