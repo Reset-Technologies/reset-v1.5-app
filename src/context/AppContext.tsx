@@ -7,6 +7,7 @@ import { fetchMe, AuthUser } from "../services/auth";
 import { getProfile } from "../services/profile";
 import { getAiConsent } from "../services/aiConsent";
 import * as BrazeService from "../services/braze";
+import * as AdAttribution from "../services/adAttribution";
 import {
   configureRevenueCat,
   loginRevenueCat,
@@ -534,6 +535,10 @@ export function AppProvider({ children }: AppProviderProps) {
           "isLegacyMember",
           profile.isLegacyMember,
         );
+        // Also tell the ad-attribution filter, which suppresses everything for
+        // a migrated member — they were already paying us, so an ad campaign
+        // must never be credited with them. See services/adAttribution.ts.
+        AdAttribution.setIsLegacyMember(profile.isLegacyMember);
       }
     } catch {
       // Leave existing local value.

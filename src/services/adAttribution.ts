@@ -78,6 +78,32 @@ const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set([
 export type EventProperties = Record<string, string | number | boolean>;
 
 /**
+ * Whether the signed-in account came from the legacy migration.
+ *
+ * 🔑 A migrated member is NOT an acquisition — they were already paying us,
+ * often for years. Crediting an ad campaign with them would understate cost per
+ * customer and push us to scale on a number that isn't real.
+ *
+ * In practice the allowlist already excludes most of that risk by construction:
+ * a legacy member signs IN rather than up, so they never reach the quiz or the
+ * account gate, and they never purchase because they skip the paywall on
+ * existing entitlement. The one that does leak is
+ * `onboarding_paywall_view` — it fires on mount, just before the legacy-skip
+ * effect redirects them. Blocking here rather than at that one call site keeps
+ * the guarantee true for anything added to the allowlist later.
+ *
+ * Null until the first profile sync. Unknown is treated as NOT legacy, because
+ * the top-of-funnel events we most need happen before an account exists at all
+ * — and a legacy member fires none of those.
+ */
+let isLegacyMember: boolean | null = null;
+
+/** Called on every profile sync, from AppContext. */
+export function setIsLegacyMember(value: boolean): void {
+  isLegacyMember = value;
+}
+
+/**
  * Returns the properties safe to forward, or null when the event itself is not
  * permitted. Exported so the policy can be exercised directly.
  */
@@ -106,6 +132,7 @@ function deliver(_eventName: string, _properties: EventProperties): void {
 
 /** Forward an event to the ad vendor if — and only if — policy allows it. */
 export function send(eventName: string, properties?: EventProperties): void {
+  if (isLegacyMember === true) return; // a migration, not an acquisition
   const safe = sanitize(eventName, properties);
   if (safe === null) return; // not a commercial-funnel event; dropped
   deliver(eventName, safe);
@@ -125,5 +152,8 @@ export function identify(_userId: string): void {
 
 /** Clear the ad vendor's identity on logout / account deletion. */
 export function reset(): void {
-  // No advertising vendor is installed. Intentionally a no-op.
+  // Clear the legacy flag too: the next person to sign in on this device must
+  // not inherit the previous account's status, in either direction.
+  isLegacyMember = null;
+  // No advertising vendor is installed beyond that. Intentionally a no-op.
 }
