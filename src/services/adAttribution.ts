@@ -37,8 +37,10 @@
  * carries, describe the user's BODY or BEHAVIOUR rather than their commercial
  * relationship with us? If yes, it does not belong in this list at any price.
  *
- * Deliberately excluded, for the avoidance of doubt: every `onboarding_scan_*`
- * and `onboarding_pre_scan*` (biometric capture), `onboarding_type_reveal` and
+ * Deliberately excluded, for the avoidance of doubt: every `scan*` /
+ * `onboarding_scan*` and `onboarding_pre_scan*` (biometric capture — note the
+ * scan events carry the `onboarding_` prefix only during onboarding, so BOTH
+ * spellings exist and neither belongs here), `onboarding_type_reveal` and
  * `onboarding_type_summary_*` (metabolic Type), every `home_checkin_*` (energy,
  * stress, sleep), `check_in_completed`, all meal/food events, all Ester/chat
  * events, and `onboarding_camera_permission*`.
