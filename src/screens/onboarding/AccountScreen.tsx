@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -36,6 +37,29 @@ if (GoogleSignin) {
   });
 }
 
+/**
+ * Password rules, stated once and checked live.
+ *
+ * 🔴 These used to live ONLY in the field's placeholder, which disappears on
+ * the first keystroke — so by the time a password could be wrong, the rules
+ * were gone. Worse, the gate was `password.length >= 8` while the placeholder
+ * promised uppercase/number/symbol, so the button could sit disabled with the
+ * requirements invisible and nothing explaining why. That is the whole of the
+ * "hard to tell why it failed" report.
+ *
+ * Matches the strength the backend enforces on the password RESET flow
+ * (`IsStrongPassword`, min 8 + lower + upper + number + symbol). Registration
+ * itself enforces nothing server-side, so this is currently the ONLY gate —
+ * see the note in handleCreateAccount.
+ */
+const PASSWORD_RULES: { key: string; label: string; test: (v: string) => boolean }[] = [
+  { key: "length", label: "At least 8 characters", test: (v) => v.length >= 8 },
+  { key: "upper", label: "One uppercase letter", test: (v) => /[A-Z]/.test(v) },
+  { key: "lower", label: "One lowercase letter", test: (v) => /[a-z]/.test(v) },
+  { key: "number", label: "One number", test: (v) => /[0-9]/.test(v) },
+  { key: "symbol", label: "One symbol", test: (v) => /[^A-Za-z0-9]/.test(v) },
+];
+
 type Props = NativeStackScreenProps<any, "Account">;
 
 export function AccountScreen({ navigation }: Props) {
@@ -55,7 +79,40 @@ export function AccountScreen({ navigation }: Props) {
     }
   }, []);
 
-  const isValid = email.includes("@") && password.length >= 8;
+  const failedRules = PASSWORD_RULES.filter((r) => !r.test(password));
+  const passwordOk = failedRules.length === 0;
+  const emailOk = email.includes("@");
+
+  // Whether to render the rules in the error colour. Only after a failed
+  // attempt — reddening rules a user has not had a chance to satisfy yet reads
+  // as being told off for typing.
+  const [showPasswordError, setShowPasswordError] = useState(false);
+  const shake = React.useRef(new Animated.Value(0)).current;
+
+  const flagPassword = () => {
+    setShowPasswordError(true);
+    shake.setValue(0);
+    Animated.sequence(
+      [1, -1, 1, 0].map((toValue) =>
+        Animated.timing(shake, {
+          toValue,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+      ),
+    ).start();
+  };
+
+  // Clear the red as soon as the password becomes valid, so the correction is
+  // acknowledged the moment it lands rather than on the next submit.
+  React.useEffect(() => {
+    if (passwordOk) setShowPasswordError(false);
+  }, [passwordOk]);
+
+  // 🔑 The button stays pressable while the password is invalid. A disabled
+  // button is exactly what made this undiagnosable — it gives no reason. Press
+  // now runs the check and shows one.
+  const canSubmit = emailOk && password.length > 0;
 
   // After the account is created: scanned users get the type reveal (the
   // payoff is gated behind making an account, per RES-119); declined-scan
@@ -75,6 +132,21 @@ export function AccountScreen({ navigation }: Props) {
   const handleCreateAccount = async () => {
     logEvent("onboarding_account_saveProfileCTA");
     setError(null);
+
+    // ⚠️ Client-side only. The register endpoint's DTO carries just @IsString()
+    // and there is no global ValidationPipe (RES-213), so the server accepts
+    // whatever it is sent — this check is the only thing standing between a
+    // weak password and a real account. Worth closing server-side.
+    if (!passwordOk) {
+      flagPassword();
+      // Which rules people actually trip, so the copy can be fixed rather than
+      // guessed at. Rule keys only — never the password itself.
+      logEvent("onboarding_account_passwordRejected", {
+        failed: failedRules.map((r) => r.key).join(","),
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -300,20 +372,68 @@ export function AccountScreen({ navigation }: Props) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Password</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  showPasswordError && styles.inputError,
+                ]}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min 8 chars, uppercase, number, symbol"
+                placeholder="Create a password"
                 placeholderTextColor={K.faded}
                 secureTextEntry
                 editable={!isLoading}
               />
+
+              {/* The rules live here, not in the placeholder, so they survive
+                  the first keystroke and are readable while the password is
+                  being fixed. */}
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      translateX: shake.interpolate({
+                        inputRange: [-1, 1],
+                        outputRange: [-6, 6],
+                      }),
+                    },
+                  ],
+                }}
+                accessibilityLiveRegion={
+                  showPasswordError ? "assertive" : "none"
+                }
+              >
+                {PASSWORD_RULES.map((rule) => {
+                  const met = rule.test(password);
+                  return (
+                    <View key={rule.key} style={styles.ruleRow}>
+                      <Text
+                        style={[
+                          styles.ruleMark,
+                          met && styles.ruleMarkMet,
+                          !met && showPasswordError && styles.ruleTextFailed,
+                        ]}
+                      >
+                        {met ? "✓" : "•"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.ruleText,
+                          met && styles.ruleTextMet,
+                          !met && showPasswordError && styles.ruleTextFailed,
+                        ]}
+                      >
+                        {rule.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </Animated.View>
             </View>
 
             <Button
               title={isLoading ? "Creating account..." : "Save profile"}
               onPress={handleCreateAccount}
-              disabled={!isValid || isLoading}
+              disabled={!canSubmit || isLoading}
             />
 
             <View style={styles.dividerContainer}>
@@ -431,6 +551,34 @@ const styles = StyleSheet.create({
     padding: 16,
     ...typography.body,
     color: K.text,
+  },
+  inputError: {
+    borderColor: K.err,
+  },
+  ruleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  ruleMark: {
+    ...typography.bodySmall,
+    color: K.faded,
+    width: 12,
+    textAlign: "center",
+  },
+  ruleMarkMet: {
+    color: K.text,
+  },
+  ruleText: {
+    ...typography.bodySmall,
+    color: K.sub,
+  },
+  ruleTextMet: {
+    color: K.text,
+  },
+  ruleTextFailed: {
+    color: K.err,
   },
   dividerContainer: {
     flexDirection: "row",
