@@ -20,6 +20,7 @@ import { fonts, typography, spacing, radius } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { getFavorites, removeFavorite } from "../../services/meals";
+import { logEvent } from "../../services/braze";
 import type { MealFavorite } from "../../services/meals";
 
 type MealTypeFilter = "all" | "breakfast" | "lunch" | "dinner";
@@ -64,6 +65,14 @@ export function SavedMealsScreen() {
     setLoading(true);
     loadFavorites();
   }, [loadFavorites]);
+
+  // Screen view. This screen had no instrumentation at all, so saved meals were
+  // a blind spot: we could see a meal favourited and never whether anyone came
+  // back to look at it. Paired with `home_savedMealsCTA` on the Home card, which
+  // counts the taps that get here.
+  useEffect(() => {
+    logEvent("saved_meals");
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);
