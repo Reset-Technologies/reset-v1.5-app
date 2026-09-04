@@ -384,6 +384,32 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
+/**
+ * Tag the analytics identity with where this account came from.
+ *
+ * 🔴 Must run on BOTH paths that establish a signed-in user — setAuth() (sign
+ * up / sign in) and loadState()'s session restore. It originally lived only in
+ * the restore path, which meant a brand-new account went through all of
+ * onboarding and the purchase untagged: at launch there is no session yet, so
+ * loadState() returns before reaching it, and the flag first appeared on the
+ * next cold start. Amplitude stamps user properties onto events at ingest, so
+ * every event from that first session was permanently missing the flag — the
+ * entire signup funnel, paywall included, for exactly the new users the flag
+ * exists to identify.
+ *
+ * Idempotent by design: user properties overwrite, so calling it on every
+ * profile sync also back-fills accounts that predate the flag.
+ */
+function tagAccountOrigin(isLegacyMember: unknown): void {
+  if (typeof isLegacyMember !== "boolean") return;
+  // Goes to Amplitude AND Braze through the shared setCustomAttribute.
+  BrazeService.setCustomAttribute("isLegacyMember", isLegacyMember);
+  // Also tell the ad-attribution filter, which suppresses everything for a
+  // migrated member — they were already paying us, so an ad campaign must never
+  // be credited with them. See services/adAttribution.ts.
+  AdAttribution.setIsLegacyMember(isLegacyMember);
+}
+
 // Provider
 interface AppProviderProps {
   children: ReactNode;
@@ -525,21 +551,7 @@ export function AppProvider({ children }: AppProviderProps) {
           payload: profile.subscriptionTier,
         });
       }
-      // Tag the analytics identity with where this account came from. Set on
-      // every profile sync rather than once at signup: user properties are
-      // idempotent, and this way accounts that existed before the flag shipped
-      // get tagged on their next app open instead of staying unknown forever.
-      // Goes to Amplitude AND Braze through the shared setCustomAttribute.
-      if (typeof profile.isLegacyMember === "boolean") {
-        BrazeService.setCustomAttribute(
-          "isLegacyMember",
-          profile.isLegacyMember,
-        );
-        // Also tell the ad-attribution filter, which suppresses everything for
-        // a migrated member — they were already paying us, so an ad campaign
-        // must never be credited with them. See services/adAttribution.ts.
-        AdAttribution.setIsLegacyMember(profile.isLegacyMember);
-      }
+      tagAccountOrigin(profile.isLegacyMember);
     } catch {
       // Leave existing local value.
     }
@@ -645,6 +657,10 @@ export function AppProvider({ children }: AppProviderProps) {
             payload: profile.subscriptionTier,
           });
         }
+        // Tag BEFORE the funnel continues. On a fresh signup this is the only
+        // chance to get the flag onto the session's events — loadState() ran at
+        // launch with no session and never reached its own call.
+        tagAccountOrigin(profile.isLegacyMember);
       })
       .catch(() => {});
     // RES-188 — hydrate third-party-AI consent for the user we just signed in
