@@ -134,16 +134,41 @@ export function HomeScreenV2() {
   );
 
   const handleScanAgain = useCallback(() => {
-    navigation.navigate("Scan", { mode: "rescan", returnTo: "ScoreReveal" });
+    logEvent("home_scanAgainCTA");
+    navigation.navigate("Scan", {
+      mode: "rescan",
+      returnTo: "ScoreReveal",
+      entry: "home",
+    });
   }, [navigation]);
 
   const handleExplainScore = useCallback(() => {
+    logEvent("home_score_insightsCTA");
     navigation.navigate("ScanInsights");
   }, [navigation]);
 
-  const handleStartCheckIn = useCallback(() => {
-    (navigation as any).navigate("AppOpenFlow", { screen: "SurveyV2" });
+  const handleSavedMeals = useCallback(() => {
+    logEvent("home_savedMealsCTA");
+    navigation.navigate("SavedMeals");
   }, [navigation]);
+
+  /**
+   * `entry` distinguishes the two check-in entry points on this screen: the
+   * ScoreCard button (shown only before a first score) and the CheckInCard at
+   * the bottom of the feed.
+   *
+   * 🔑 This is the TAP. The check-in screen itself fires `home_checkin` on
+   * mount, but that also fires when the app-open flow routes a user into the
+   * check-in without them choosing it — so `home_checkin` alone cannot answer
+   * "how many people started a check-in from Home".
+   */
+  const handleStartCheckIn = useCallback(
+    (entry: "score_card" | "feed_card") => {
+      logEvent("home_checkin_startCTA", { entry });
+      (navigation as any).navigate("AppOpenFlow", { screen: "SurveyV2" });
+    },
+    [navigation],
+  );
 
   const userName =
     state.auth.authUser?.firstName || state.user.name || undefined;
@@ -217,10 +242,30 @@ export function HomeScreenV2() {
       ? Math.round(resetScore.score - resetScore.previousDayScore)
       : null;
 
+  /**
+   * Resolve a meal's display name for analytics. The favorite callback carries
+   * only an id down through MealTabsSection → MealCardSlot → MealCard, and
+   * threading the name through would change four component signatures for one
+   * property — dailyPlan already holds every meal rendered on this screen.
+   */
+  const mealNameById = useCallback(
+    (mealId: string): string | undefined =>
+      [
+        ...(dailyPlan?.breakfast ?? []),
+        ...(dailyPlan?.lunch ?? []),
+        ...(dailyPlan?.dinner ?? []),
+      ].find((m) => m.id === mealId)?.name,
+    [dailyPlan],
+  );
+
   const handleFavoriteToggle = useCallback(async (mealId: string) => {
     const wasFavorited = favoritedMeals.has(mealId);
+    const mealName = mealNameById(mealId);
     logEvent("home_meal_favoriteCTA", {
       mealId,
+      // Omitted rather than sent empty when the meal isn't in today's plan —
+      // an absent property is honest, "" reads as a real meal called nothing.
+      ...(mealName ? { mealName } : {}),
       action: wasFavorited ? "unfavorite" : "favorite",
     });
     setFavoritedMeals((prev) => {
@@ -240,7 +285,7 @@ export function HomeScreenV2() {
         return next;
       });
     }
-  }, [favoritedMeals]);
+  }, [favoritedMeals, mealNameById]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: innerBg }]} edges={["top"]}>
@@ -268,7 +313,7 @@ export function HomeScreenV2() {
           trendDelta={trendDelta}
           onScanAgain={handleScanAgain}
           onExplain={handleExplainScore}
-          onCheckIn={handleStartCheckIn}
+          onCheckIn={() => handleStartCheckIn("score_card")}
         />
 
         <ConfidenceCard confidence={confidence} daysToFull={daysToFullConfidence} />
@@ -287,10 +332,10 @@ export function HomeScreenV2() {
           onDeepRead={handleDeepRead}
         />
 
-        <SavedMealsCard onPress={() => navigation.navigate("SavedMeals")} />
+        <SavedMealsCard onPress={handleSavedMeals} />
 
         {!checkedInToday ? (
-          <CheckInCard onPress={handleStartCheckIn} />
+          <CheckInCard onPress={() => handleStartCheckIn("feed_card")} />
         ) : null}
       </ScrollView>
     </SafeAreaView>

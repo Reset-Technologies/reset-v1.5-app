@@ -516,8 +516,25 @@ export function PaywallScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Revenue-bearing properties for the paywall outcome events. Read off the
+  // live RevenueCat package so the numbers are the localized store prices the
+  // user actually saw, not the hardcoded copy on this screen.
+  const packageProps = (pkg: PurchasesPackage | null) => ({
+    plan: selectedPlan,
+    ...(pkg
+      ? {
+          product_id: pkg.product.identifier,
+          price: pkg.product.price,
+          currency: pkg.product.currencyCode,
+        }
+      : {}),
+  });
+
   const handleSubscribe = async () => {
     if (purchasing || restoring) return;
+    // INTENT, not revenue: this fires on the tap, before the store sheet opens.
+    // "Cost per paid signup" must be built on onboarding_paywall_purchased
+    // below — counting this one includes every cancel and every failure.
     logEvent("onboarding_paywall_subscribe", { plan: selectedPlan });
 
     // Local/dev builds can't complete a real purchase (RevenueCat isn't wired
@@ -535,6 +552,9 @@ export function PaywallScreen({ navigation }: Props) {
         // Non-fatal: keep the local unblock working even if the backend is down.
       }
       setSubscriptionTier("pro");
+      // Deliberately NO purchase event here — no money moved. Dev-build events
+      // land in the real Amplitude project, so firing one would put fabricated
+      // revenue in the same funnel the ad spend is judged on.
       if (!isGate) proceedToApp();
       return;
     }
@@ -553,6 +573,7 @@ export function PaywallScreen({ navigation }: Props) {
     setPurchasing(true);
     const outcome = await purchasePackage(pkg);
     if (outcome.userCancelled) {
+      logEvent("onboarding_paywall_cancelled", packageProps(pkg));
       setPurchasing(false);
       return;
     }
@@ -565,9 +586,13 @@ export function PaywallScreen({ navigation }: Props) {
       const restored = await restorePurchases();
       setPurchasing(false);
       if (restored.isPro) {
+        // Recovered an EXISTING subscription — no new revenue. Kept distinct
+        // from onboarding_paywall_purchased so a reinstall never inflates CAC.
+        logEvent("onboarding_paywall_recovered", packageProps(pkg));
         setSubscriptionTier("pro");
         if (!isGate) proceedToApp();
       } else {
+        logEvent("onboarding_paywall_failed", packageProps(pkg));
         toast.show({
           message: "Purchase couldn't be completed. Please try again.",
         });
@@ -576,10 +601,19 @@ export function PaywallScreen({ navigation }: Props) {
     }
     setPurchasing(false);
     if (outcome.isPro) {
+      // THE revenue event. Fires only here: a completed purchase that actually
+      // granted the entitlement. This is the one to build cost-per-acquisition
+      // on, and the one to forward to the ad platforms.
+      logEvent("onboarding_paywall_purchased", packageProps(pkg));
       // Optimistic local flip; the backend reconciles via RevenueCat webhook
       // and getProfile() re-syncs the tier on next launch. In the gate, this
       // re-renders RootNavigator straight into Main (no proceedToApp needed).
       setSubscriptionTier("pro");
+    } else {
+      // Neither cancelled nor errored, yet no entitlement — the store reported
+      // success but pro didn't activate. Rare and invisible without an event,
+      // and it means someone may have paid and not been let in.
+      logEvent("onboarding_paywall_no_entitlement", packageProps(pkg));
     }
     if (!isGate) proceedToApp();
   };
@@ -591,10 +625,13 @@ export function PaywallScreen({ navigation }: Props) {
     const outcome = await restorePurchases();
     setRestoring(false);
     if (outcome.isPro) {
+      // A restore is never new revenue — it must not be counted as a purchase.
+      logEvent("onboarding_paywall_restore_success");
       setSubscriptionTier("pro");
       toast.show({ message: "Subscription restored", icon: "✓" });
       if (!isGate) proceedToApp();
     } else {
+      logEvent("onboarding_paywall_restore_none");
       toast.show({ message: "No active subscription found to restore." });
     }
   };

@@ -35,17 +35,41 @@ import {
 } from "../../services/shenai";
 import { logEvent } from "../../services/braze";
 
+// Unprefixed base names — logScanEvent() below adds `onboarding_` when, and
+// only when, the scan is actually part of onboarding.
 const SCAN_PHASE_EVENTS = [
-  "onboarding_scan_phase_aligning",
-  "onboarding_scan_phase_reading",
-  "onboarding_scan_phase_mapping",
+  "scan_phase_aligning",
+  "scan_phase_reading",
+  "scan_phase_mapping",
 ] as const;
+
+/**
+ * Which control started this scan.
+ *
+ * 🔑 Passed explicitly rather than inferred. `source` (below) is derived from
+ * mode/returnTo and can only ever say onboarding / home / appopen — Profile,
+ * Weekly Review and Scan Insights all use the default returnTo and collapse
+ * into "home", so the question "where do re-scans actually come from?" was
+ * unanswerable. Every scan event now carries this, which also means it lands on
+ * `scan_completed` — so a drop-off is measurable per entry point, not just a
+ * tap count.
+ */
+type ScanEntry =
+  | "onboarding"
+  | "home"
+  | "profile"
+  | "weekly_review"
+  | "scan_insights"
+  | "score_reveal"
+  | "app_open_encourage"
+  | "app_open_data_gate";
 
 type Props = NativeStackScreenProps<any, "Scan"> & {
   route: {
     params?: {
       mode?: "onboarding" | "rescan";
       returnTo?: "ScanResults" | "ScoreReveal";
+      entry?: ScanEntry;
     };
   };
 };
@@ -168,12 +192,42 @@ function deriveBiometrics(results: ScanResults) {
 export function ScanScreen({ navigation, route }: Props) {
   const mode = route.params?.mode ?? "onboarding";
   const returnTo = route.params?.returnTo ?? "ScanResults";
+  const entry: ScanEntry | undefined =
+    route.params?.entry ?? (mode === "onboarding" ? "onboarding" : undefined);
   const scanSource: "onboarding" | "home" | "appopen" =
     mode === "onboarding"
       ? "onboarding"
       : returnTo === "ScoreReveal"
         ? "appopen"
         : "home";
+
+  /**
+   * Log a scan event, prefixed `onboarding_` only when this really is an
+   * onboarding scan.
+   *
+   * This screen lives under screens/onboarding/ but is reused for every
+   * re-scan — Home, Profile, Weekly Review and the app-open flow all navigate
+   * here with `mode: "rescan"`. Naming those events `onboarding_*` reported
+   * routine re-scans as first-run activity, which inflates anything measuring
+   * onboarding. Mirrors CalibrationScreen, which already fires `rescan_weight`
+   * rather than `onboarding_calibration` on a re-scan.
+   *
+   * The `source` property stays on every event and is the finer split: the
+   * prefix answers "is this onboarding?", the property answers "which entry
+   * point?" (`onboarding` | `home` | `appopen`).
+   *
+   * Safe to close over: scanSource is derived from route params and is fixed
+   * for the lifetime of the screen, so a stale closure cannot mis-name.
+   */
+  const logScanEvent = (name: string) =>
+    logEvent(scanSource === "onboarding" ? `onboarding_${name}` : name, {
+      source: scanSource,
+      // Absent when a caller was missed rather than defaulted to a plausible
+      // screen — "unknown" showing up in a report is a bug report; a wrong but
+      // believable entry point is not.
+      ...(entry ? { entry } : {}),
+    });
+
   const { state, setBiometrics } = useApp();
   const calibration = state.user.calibration;
   const insets = useSafeAreaInsets();
@@ -251,8 +305,8 @@ export function ScanScreen({ navigation, route }: Props) {
   }, [heartRate]);
 
   useEffect(() => {
-    logEvent("onboarding_scan", { source: scanSource });
-    logEvent(SCAN_PHASE_EVENTS[0], { source: scanSource });
+    logScanEvent("scan");
+    logScanEvent(SCAN_PHASE_EVENTS[0]);
   }, []);
 
   // Where to go once a scan finishes — the next screen for whatever flow the
@@ -413,10 +467,10 @@ export function ScanScreen({ navigation, route }: Props) {
         // pass through so a single-tick jump from <16% to >=66% doesn't drop
         // the "reading" event.
         if (progress >= 66 && phase < 2) {
-          if (phase < 1) logEvent(SCAN_PHASE_EVENTS[1], { source: scanSource });
+          if (phase < 1) logScanEvent(SCAN_PHASE_EVENTS[1]);
           setPhase(2);
           setShowMarkers(true);
-          logEvent(SCAN_PHASE_EVENTS[2], { source: scanSource });
+          logScanEvent(SCAN_PHASE_EVENTS[2]);
           Animated.timing(markerFadeAnim, {
             toValue: 1,
             duration: 500,
@@ -424,7 +478,7 @@ export function ScanScreen({ navigation, route }: Props) {
           }).start();
         } else if (progress >= 16 && phase < 1) {
           setPhase(1);
-          logEvent(SCAN_PHASE_EVENTS[1], { source: scanSource });
+          logScanEvent(SCAN_PHASE_EVENTS[1]);
         }
 
         // Poll live heart rate
@@ -512,7 +566,7 @@ export function ScanScreen({ navigation, route }: Props) {
       console.log("[ShenAI] Biometrics derived, navigating...");
       setBiometrics(biometrics);
       setScreenState("complete");
-      logEvent("onboarding_scan_completed", { source: scanSource });
+      logScanEvent("scan_completed");
 
       setTimeout(async () => {
         await shutdownShenAI();

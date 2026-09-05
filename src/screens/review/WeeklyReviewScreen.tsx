@@ -280,7 +280,12 @@ export function WeeklyReviewScreen() {
         {data.scanPromptShown && (
           <TouchableOpacity
             style={styles.scanPrompt}
-            onPress={() => navigation.navigate("Scan", { mode: "rescan" })}
+            onPress={() =>
+              navigation.navigate("Scan", {
+                mode: "rescan",
+                entry: "weekly_review",
+              })
+            }
           >
             <Text style={styles.scanPromptText}>
               A scan would sharpen next week's picture.

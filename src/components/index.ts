@@ -14,3 +14,4 @@ export type { NudgeType } from "./NudgeSlot";
 export { TrendIcon } from "./TrendIcon";
 export type { TrendDirection } from "./TrendIcon";
 export { ConfidencePie } from "./ConfidencePie";
+export { PasswordRules, usePasswordRules, isStrongPassword, PASSWORD_RULES } from "./PasswordRules";

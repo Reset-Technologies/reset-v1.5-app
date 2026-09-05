@@ -465,6 +465,16 @@ export function RecipeDetailScreen() {
 
   const handleToggleFavorite = async () => {
     const next = !isFavorited;
+    // Favouriting from the recipe page fired nothing — only the bookmark on the
+    // Home meal card was instrumented, so saves made after opening a recipe
+    // were invisible. Named for this screen rather than reusing Home's
+    // `home_meal_favoriteCTA` so the two entry points stay countable apart;
+    // matches `home_recipe_detail` above.
+    logEvent("home_recipe_detail_favoriteCTA", {
+      mealId: meal.id,
+      ...(meal.name ? { mealName: meal.name } : {}),
+      action: next ? "favorite" : "unfavorite",
+    });
     setIsFavorited(next);
     try {
       if (next) await addFavorite(meal.id);

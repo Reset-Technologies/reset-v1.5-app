@@ -15,7 +15,12 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { K } from "../../constants/colors";
 import { typography } from "../../constants/typography";
-import { EsterBubble, Button } from "../../components";
+import {
+  EsterBubble,
+  Button,
+  PasswordRules,
+  usePasswordRules,
+} from "../../components";
 import { useApp } from "../../context/AppContext";
 import { registerWithEmail, loginWithApple, loginWithGoogle } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
@@ -55,7 +60,18 @@ export function AccountScreen({ navigation }: Props) {
     }
   }, []);
 
-  const isValid = email.includes("@") && password.length >= 8;
+  const {
+    isValid: passwordOk,
+    showError: showPasswordError,
+    shake,
+    flag: flagPassword,
+    failedKeys,
+  } = usePasswordRules(password);
+
+  // 🔑 The button stays pressable while the password is invalid. A disabled
+  // button is exactly what made this undiagnosable — it gives no reason. Press
+  // now runs the check and shows one.
+  const canSubmit = email.includes("@") && password.length > 0;
 
   // After the account is created: scanned users get the type reveal (the
   // payoff is gated behind making an account, per RES-119); declined-scan
@@ -75,6 +91,19 @@ export function AccountScreen({ navigation }: Props) {
   const handleCreateAccount = async () => {
     logEvent("onboarding_account_saveProfileCTA");
     setError(null);
+
+    // ⚠️ Client-side only. The register endpoint's DTO carries just @IsString()
+    // and there is no global ValidationPipe (RES-213), so the server accepts
+    // whatever it is sent — this check is the only thing standing between a
+    // weak password and a real account. Worth closing server-side.
+    if (!passwordOk) {
+      flagPassword();
+      // Which rules people actually trip, so the copy can be fixed rather than
+      // guessed at. Rule keys only — never the password itself.
+      logEvent("onboarding_account_passwordRejected", { failed: failedKeys() });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -300,20 +329,35 @@ export function AccountScreen({ navigation }: Props) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Password</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  showPasswordError && styles.inputError,
+                ]}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min 8 chars, uppercase, number, symbol"
+                placeholder="Create a password"
                 placeholderTextColor={K.faded}
                 secureTextEntry
                 editable={!isLoading}
+              />
+
+              {/* The rules live here, not in the placeholder, so they survive
+                  the first keystroke and are readable while the password is
+                  being fixed. */}
+              <PasswordRules
+                password={password}
+                showError={showPasswordError}
+                shake={shake}
+                metColor={K.text}
+                unmetColor={K.sub}
+                errorColor={K.err}
               />
             </View>
 
             <Button
               title={isLoading ? "Creating account..." : "Save profile"}
               onPress={handleCreateAccount}
-              disabled={!isValid || isLoading}
+              disabled={!canSubmit || isLoading}
             />
 
             <View style={styles.dividerContainer}>
@@ -431,6 +475,9 @@ const styles = StyleSheet.create({
     padding: 16,
     ...typography.body,
     color: K.text,
+  },
+  inputError: {
+    borderColor: K.err,
   },
   dividerContainer: {
     flexDirection: "row",

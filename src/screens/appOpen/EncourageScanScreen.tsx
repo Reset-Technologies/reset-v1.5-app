@@ -96,7 +96,11 @@ export function EncourageScanScreen() {
 
   const handleScan = () => {
     const parent = navigation.getParent();
-    parent?.navigate("Scan", { mode: "rescan", returnTo: "ScoreReveal" });
+    parent?.navigate("Scan", {
+      mode: "rescan",
+      returnTo: "ScoreReveal",
+      entry: "app_open_encourage",
+    });
   };
 
   const handleSkip = () => {

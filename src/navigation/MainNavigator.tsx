@@ -69,6 +69,18 @@ export type MainStackParamList = {
   Scan: {
     mode: "rescan";
     returnTo?: "ScanResults" | "ScoreReveal";
+    // Which control started the scan — carried onto every scan event so
+    // re-scans are attributable to an entry point. Kept in sync with ScanEntry
+    // in screens/onboarding/ScanScreen.tsx (minus "onboarding", which never
+    // routes through this stack).
+    entry?:
+      | "home"
+      | "profile"
+      | "weekly_review"
+      | "scan_insights"
+      | "score_reveal"
+      | "app_open_encourage"
+      | "app_open_data_gate";
   };
   ScanResults: undefined;
   ScanInsights: { fromAppOpen?: boolean } | undefined;
