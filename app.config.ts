@@ -38,7 +38,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // version record. 3.0.1 is the first post-launch patch: app display name,
   // the "Restorer" greeting fix, the Amplitude SDK, the legacy-member
   // analytics tag, and a working support contact.
-  version: "3.0.1",
+  // 3.0.2 is the analytics-correctness + auth patch — see the release commit.
+  // 🔴 There is no OTA channel (expo-updates is not installed), so EVERY fix,
+  // including a one-line analytics one, costs a store release. Batch them.
+  version: "3.0.2",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
