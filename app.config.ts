@@ -75,6 +75,34 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSPhotoLibraryUsageDescription:
         "Reset may request photo access if you choose to share or upload images.",
       UIBackgroundModes: ["remote-notification"],
+      // SKAdNetwork — Apple's privacy-preserving install attribution, and the
+      // ONLY way an ad network can be credited with an iOS install now that we
+      // ship no ATT prompt (Bryan, 2026-09-03) and therefore have no IDFA.
+      //
+      // 🔴 An ad network whose id is missing here cannot send us a postback at
+      // all — its iOS installs are simply invisible, and the spend looks like it
+      // produced nothing. There is no OTA, so ADDING ONE LATER COSTS A STORE
+      // RELEASE. Listing an id for a network we never buy from costs nothing:
+      // it is only ever exercised by a real postback from that network. So this
+      // list is deliberately wider than the channels booked today.
+      // ▶ Before iOS spend starts, confirm with Tas which networks he will
+      // actually run and add any that are missing IN THIS BUILD.
+      //
+      // 📌 Apple Search Ads deliberately absent — it attributes through
+      // AdServices/Apple's own API, not SKAdNetwork, and needs no id here.
+      // 📌 iOS postbacks stay aggregated and delayed by design; Android is
+      // always the cleaner read. Plan campaign decisions around the asymmetry.
+      SKAdNetworkItems: [
+        // Meta (Facebook/Instagram) — from Meta's own developer docs.
+        { SKAdNetworkIdentifier: "v9wttpbfk9.skadnetwork" },
+        { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" },
+        // Google (Google Ads / AdMob) — from Google's own developer docs.
+        { SKAdNetworkIdentifier: "cstr6suwn9.skadnetwork" },
+        // TikTok. ⚠️ Corroborated across secondary sources rather than read off
+        // TikTok's own docs — re-check these two if TikTok is actually booked.
+        { SKAdNetworkIdentifier: "238da6jt44.skadnetwork" },
+        { SKAdNetworkIdentifier: "22mmun2rn5.skadnetwork" },
+      ],
     },
   },
   android: {
@@ -172,6 +200,27 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     [
+      // AppsFlyer (the ad-attribution vendor). The plugin patches the Swift
+      // AppDelegate for OneLink/deferred deep links and writes two Podfile
+      // globals; it is a no-op on Android beyond the manifest.
+      //
+      // 📌 Both flags are OFF deliberately:
+      //   * shouldUsePurchaseConnector — AppsFlyer's own store-receipt reader.
+      //     Revenue reaches AppsFlyer through RevenueCat instead (Bryan,
+      //     2026-09-03), and running both would double-count every purchase.
+      //   * preferAppsFlyerBackupRules — would strip our Android backup rules.
+      //     Not ours to hand over to an analytics SDK.
+      // ⚠️ react-native-appsflyer 7.x REQUIRES the New Architecture. It is on
+      // for both platforms today (android newArchEnabled=true,
+      // RCT_NEW_ARCH_ENABLED=1 on iOS); turning it off means dropping to 6.x.
+      "react-native-appsflyer",
+      {
+        shouldUseStrictMode: false,
+        shouldUsePurchaseConnector: false,
+        preferAppsFlyerBackupRules: false,
+      },
+    ],
+    [
       "expo-speech-recognition",
       {
         microphonePermission:
@@ -180,6 +229,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Reset uses speech recognition to transcribe what you say to Ester.",
       },
     ],
+    // Pins the Kotlin stdlib react-native-appsflyer compiles against to RN's
+    // own (2.1.20). Without it the Android build dies in AppsFlyer's Kotlin
+    // compile with an "Internal compiler error" — see the plugin file.
+    "./plugins/withAppsFlyerKotlinStdlib",
     "./plugins/withRegisterPush",
     // Applies the Firebase google-services Gradle plugin so Braze can register
     // for FCM. Inert until a google-services.json is present. See RES-199.
@@ -229,6 +282,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     revenueCatAndroidApiKey:
       process.env.REVENUECAT_ANDROID_API_KEY ??
       "goog_BlNBidaCymvrJlRtCgTeutCmrAu",
+    // AppsFlyer — ad attribution. The dev key is account-wide and, like every
+    // MMP key, is designed to ship inside the app binary: it is what the SDK
+    // authenticates each install with. Same reasoning as the Braze / Amplitude
+    // / RevenueCat public keys above, so it lives here as a default rather than
+    // only as an env var — the SDK no-ops silently without one, which would
+    // make a forgotten variable indistinguishable from working attribution,
+    // and there is no OTA to fix that with.
+    // 🔑 Recovered from the 2025 Adtaxi implementation
+    // (Reset-Technologies/reset-app-v2, src/helpers/appsflyer.ts) — the same
+    // AppsFlyer account and the same two app entries we are reusing.
+    // ⚠️ NOT verifiable from outside: AppsFlyer's S2S Events API is disabled on
+    // this account, so a bad key looks identical to a good one until a real
+    // device reports an install. Confirm in the dashboard, or on the device
+    // test, BEFORE trusting a build's numbers.
+    appsFlyerDevKey: process.env.APPSFLYER_DEV_KEY ?? "oRhz9mtARQVhsMrNNCxkZi",
+    // iOS needs the App Store record's Apple ID; Android infers its own from
+    // the package name. This is the LEGACY record we migrated onto, which is
+    // also the entry the 2025 app reported to.
+    appsFlyerIosAppId: process.env.APPSFLYER_IOS_APP_ID ?? "id1478144712",
     eas: {
       projectId: "e1576fd6-3519-4c0f-95e8-abf43df86a02",
     },

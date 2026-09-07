@@ -10,6 +10,7 @@ import * as BrazeService from "../services/braze";
 import * as AdAttribution from "../services/adAttribution";
 import {
   configureRevenueCat,
+  linkAdAttribution,
   loginRevenueCat,
   logoutRevenueCat,
 } from "../services/revenuecat";
@@ -421,8 +422,21 @@ export function AppProvider({ children }: AppProviderProps) {
   // Configure RevenueCat as early as possible (anonymous). No-ops until the
   // dashboard + public key are in place. loginRevenueCat() later attaches the
   // backend user id once the user authenticates.
+  //
+  // AppsFlyer starts here too, and for a stronger reason than convenience:
+  // install attribution comes from the SDK reporting the launch itself, so it
+  // has to run on every cold start whether or not the user ever fires an event
+  // we forward. Nothing about it is gated on auth.
   useEffect(() => {
+    AdAttribution.init();
     configureRevenueCat();
+    // Hand RevenueCat the AppsFlyer device id once the SDK is up, so purchases
+    // reconcile against the install that produced them. Resolves null when
+    // there is no vendor (Expo Go, missing key), and linkAdAttribution() no-ops
+    // on an empty value — so this whole chain is inert rather than broken.
+    AdAttribution.getVendorId().then((id) => {
+      if (id) linkAdAttribution(id);
+    });
   }, []);
 
   // Load saved state on mount

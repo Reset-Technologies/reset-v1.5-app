@@ -76,6 +76,28 @@ export function configureRevenueCat(appUserID?: string): void {
   }
 }
 
+/**
+ * Tell RevenueCat which AppsFlyer device this customer is, so RevenueCat's
+ * AppsFlyer integration can forward purchases against the right install.
+ *
+ * 🔑 This is the piece that makes revenue attributable. Purchases are the one
+ * number we can trust — they are store-verified server-side — but a purchase
+ * that reaches AppsFlyer with no device id cannot be tied back to the ad that
+ * produced the install, so it lands as organic and understates every campaign.
+ *
+ * ⚠️ The integration also has to be switched on in the RevenueCat dashboard;
+ * this call alone does nothing. Deliberately chosen over AppsFlyer's own
+ * Purchase Connector — running both would count each purchase twice.
+ */
+export async function linkAdAttribution(appsflyerId: string): Promise<void> {
+  if (!configured || !appsflyerId) return;
+  try {
+    await Purchases.setAppsflyerID(appsflyerId);
+  } catch {
+    // Attribution is best-effort; a failure here must not affect purchasing.
+  }
+}
+
 /** Associate the current RevenueCat identity with the backend user id. */
 export async function loginRevenueCat(appUserID: string): Promise<void> {
   if (!configured || !appUserID) return;
