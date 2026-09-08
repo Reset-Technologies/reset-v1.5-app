@@ -63,6 +63,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // record (6760977260), which is retained only as a fallback.
     bundleIdentifier: "com.betterwell.reset",
     // usesAppleSignIn: true, // TODO: re-enable once added to paid dev team
+    // AppsFlyer OneLink (Universal Links). Without this entitlement an
+    // https://greset.onelink.me/... link opens SAFARI instead of the app, and
+    // the web-to-app handoff simply does not happen — the deep-link listener in
+    // services/adAttribution.ts never gets a chance to fire.
+    // 🔑 `greset.onelink.me` is the EXISTING OneLink subdomain (template DoLn),
+    // set up by Adtaxi in May 2025 — note the leading "g", it is not
+    // reset.onelink.me.
+    // ⚠️ Apple must also have the Associated Domains capability enabled on the
+    // App ID. EAS normally syncs that at build time from this key; if a build
+    // fails on a provisioning/capability error, that sync is the thing to check.
+    associatedDomains: ["applinks:greset.onelink.me"],
     entitlements: {
       "aps-environment": "production",
     },
@@ -113,6 +124,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // build must be signed with the upload key Google has registered for this
     // package (see the Android migration notes) or Play rejects the upload.
     package: "com.betterwell.reset",
+    // AppsFlyer OneLink (Android App Links) — the counterpart to iOS's
+    // associatedDomains above. Without it, a OneLink URL opens a browser.
+    // 🔴 `autoVerify` only takes effect if Google can fetch an assetlinks.json
+    // from https://greset.onelink.me/.well-known/ that lists THIS app's SHA-256
+    // signing fingerprint. AppsFlyer hosts that file, but it only contains what
+    // we put in the OneLink template's Android settings — so the fingerprint
+    // has to be registered there, and it must be the PLAY APP SIGNING key (what
+    // devices actually see after Play re-signs), not the upload key. Get it from
+    // Play Console → Test and release → Setup → App integrity.
+    // ⚠️ If the fingerprint is wrong or missing, verification fails SILENTLY:
+    // links keep opening in Chrome and nothing in the build looks broken.
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [{ scheme: "https", host: "greset.onelink.me" }],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
     // POST_NOTIFICATIONS is the Android 13+ runtime push permission; Braze's
     // requestPushPermission() drives the OS prompt. Safe to declare always.
     permissions: ["RECORD_AUDIO", "POST_NOTIFICATIONS"],
