@@ -178,6 +178,60 @@ let pendingUserId: string | null = null;
 /** Resolvers waiting on getVendorId() while the SDK is still starting. */
 let vendorIdWaiters: ((id: string | null) => void)[] = [];
 
+/** Subscriber for a resolved OneLink destination, and the buffer for one that
+ * arrives before anything is listening. */
+type DeepLinkHandler = (path: string) => void;
+let deepLinkHandler: DeepLinkHandler | null = null;
+let pendingDeepLink: string | null = null;
+
+/**
+ * Subscribe to OneLink destinations resolved by the ad vendor.
+ *
+ * 🔑 A deferred deep link (install from an ad, then first launch) arrives
+ * within a second or two of start-up, which is routinely BEFORE the navigator
+ * has mounted. So one is buffered and replayed to the first subscriber —
+ * otherwise the very case OneLink exists for is the case that silently drops.
+ *
+ * Returns an unsubscribe function.
+ */
+export function onDeepLink(handler: DeepLinkHandler): () => void {
+  deepLinkHandler = handler;
+  if (pendingDeepLink !== null) {
+    const path = pendingDeepLink;
+    pendingDeepLink = null;
+    handler(path);
+  }
+  return () => {
+    if (deepLinkHandler === handler) deepLinkHandler = null;
+  };
+}
+
+function emitDeepLink(path: string): void {
+  if (deepLinkHandler) deepLinkHandler(path);
+  else pendingDeepLink = path;
+}
+
+/**
+ * Pull the destination out of a OneLink payload.
+ *
+ * `deep_link_value` is AppsFlyer's modern, platform-neutral field and is what a
+ * OneLink template should be configured to send. `deep_link_sub1` and the
+ * legacy `af_dp` path are read as fallbacks so a link built the older way still
+ * works — a link that resolves to nothing is indistinguishable, to the person
+ * who tapped it, from the app being broken.
+ *
+ * The value is treated as a PATH into the existing `resetapp://` routing table,
+ * so new destinations are configured in the AppsFlyer dashboard rather than
+ * hardcoded here. Anything unrecognised is ignored by the router.
+ */
+function destinationFrom(deepLink: Record<string, unknown>): string | null {
+  const candidate =
+    deepLink.deep_link_value ?? deepLink.deep_link_sub1 ?? deepLink.af_dp;
+  if (typeof candidate !== "string" || !candidate) return null;
+  // Accept a bare path ("weekly-review") or a full resetapp:// URL.
+  return candidate.replace(/^\w+:\/\//, "").replace(/^\/+/, "");
+}
+
 /**
  * Swallow a rejected SDK promise. Every 7.x method returns a Promise, and an
  * unhandled rejection from analytics must never surface as a redbox or a crash
@@ -206,6 +260,19 @@ export function init(): void {
   initCalled = true;
 
   try {
+    // 🔴 BEFORE init(), and that ordering is not stylistic. Android delivers a
+    // deep-link result exactly once and DISCARDS it permanently if no listener
+    // is attached yet — there is no retry and no way to ask for it later. A
+    // listener registered after init() would work in testing (where the link is
+    // usually already resolved) and silently lose real deferred deep links.
+    AppsFlyer.registerDeepLinkListener({
+      onDeepLinking: (data) => {
+        if (data.status !== "FOUND" || !data.deepLink) return;
+        const path = destinationFrom(data.deepLink);
+        if (path) emitDeepLink(path);
+      },
+    });
+
     ignore(AppsFlyer.init({ devKey: DEV_KEY, appId: IOS_APP_ID }));
 
     // ⚠️ A dev build reports to the REAL AppsFlyer account — there is no

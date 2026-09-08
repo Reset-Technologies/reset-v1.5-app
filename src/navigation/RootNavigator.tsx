@@ -19,6 +19,7 @@ import {
   markAppOpenFlowShown,
 } from "../utils/appOpenFlowGate";
 import { rootNavigationRef } from "./rootNavigationRef";
+import * as AdAttribution from "../services/adAttribution";
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -51,6 +52,20 @@ const DEEP_LINK_ROUTES: Record<string, string> = {
   "weekly-review": "WeeklyReview",
 };
 
+/**
+ * Route a deep-link path, from wherever it came — a `resetapp://` URL, a push
+ * payload, or a OneLink destination resolved by AppsFlyer. Unknown paths are
+ * ignored rather than throwing: a link built in the AppsFlyer dashboard is
+ * outside this codebase's control, and a typo there must not crash the app on
+ * launch.
+ */
+function navigateToPath(path: string): void {
+  const route = DEEP_LINK_ROUTES[path];
+  if (route && rootNavigationRef.current) {
+    (rootNavigationRef.current as any).navigate(route);
+  }
+}
+
 export function RootNavigator() {
   const { state } = useApp();
   // Shared module-level ref so the Paywall (and other screens that may be
@@ -74,13 +89,20 @@ export function RootNavigator() {
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
       const path = url.replace(/^resetapp:\/\//, "").replace(/^.*:\/\//, "");
-      const route = DEEP_LINK_ROUTES[path];
-      if (route && navigationRef.current) {
-        (navigationRef.current as any).navigate(route);
-      }
+      navigateToPath(path);
     });
     return () => sub.remove();
   }, []);
+
+  // OneLink destinations from the ad vendor, which do NOT arrive as a
+  // `resetapp://` URL and so are invisible to the listener above. A deferred
+  // deep link (installed from an ad, opening for the first time) is delivered
+  // shortly after start-up, often before this effect runs — adAttribution
+  // buffers one and replays it on subscribe, so the ad-install case cannot be
+  // lost to a race. Routing goes through the same table as every other deep
+  // link, so a new OneLink destination is a dashboard change plus one entry
+  // here rather than a new mechanism.
+  useEffect(() => AdAttribution.onDeepLink(navigateToPath), []);
 
   // App-open flow trigger: first time today the app becomes active
   useEffect(() => {
