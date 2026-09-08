@@ -63,6 +63,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // record (6760977260), which is retained only as a fallback.
     bundleIdentifier: "com.betterwell.reset",
     // usesAppleSignIn: true, // TODO: re-enable once added to paid dev team
+    // AppsFlyer OneLink (Universal Links). Without this entitlement an
+    // https://greset.onelink.me/... link opens SAFARI instead of the app, and
+    // the web-to-app handoff simply does not happen — the deep-link listener in
+    // services/adAttribution.ts never gets a chance to fire.
+    // 🔑 `greset.onelink.me` is the EXISTING OneLink subdomain (template DoLn),
+    // set up by Adtaxi in May 2025 — note the leading "g", it is not
+    // reset.onelink.me.
+    // ⚠️ Apple must also have the Associated Domains capability enabled on the
+    // App ID. EAS normally syncs that at build time from this key; if a build
+    // fails on a provisioning/capability error, that sync is the thing to check.
+    associatedDomains: ["applinks:greset.onelink.me"],
     entitlements: {
       "aps-environment": "production",
     },
@@ -75,6 +86,42 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSPhotoLibraryUsageDescription:
         "Reset may request photo access if you choose to share or upload images.",
       UIBackgroundModes: ["remote-notification"],
+      // SKAdNetwork — Apple's privacy-preserving install attribution, and the
+      // ONLY way an ad network can be credited with an iOS install now that we
+      // ship no ATT prompt (Bryan, 2026-09-03) and therefore have no IDFA.
+      //
+      // 🔴 An ad network whose id is missing here cannot send us a postback at
+      // all — its iOS installs are simply invisible, and the spend looks like it
+      // produced nothing. There is no OTA, so ADDING ONE LATER COSTS A STORE
+      // RELEASE. Listing an id for a network we never buy from costs nothing:
+      // it is only ever exercised by a real postback from that network. So this
+      // list is deliberately wider than the channels booked today.
+      // ▶ Before iOS spend starts, confirm with Tas which networks he will
+      // actually run and add any that are missing IN THIS BUILD.
+      //
+      // 📌 Apple Search Ads deliberately absent — it attributes through
+      // AdServices/Apple's own API, not SKAdNetwork, and needs no id here.
+      // 📌 iOS postbacks stay aggregated and delayed by design; Android is
+      // always the cleaner read. Plan campaign decisions around the asymmetry.
+      SKAdNetworkItems: [
+        // Meta (Facebook/Instagram) — from Meta's own developer docs.
+        { SKAdNetworkIdentifier: "v9wttpbfk9.skadnetwork" },
+        { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" },
+        // Google (Google Ads / AdMob) — from Google's own developer docs.
+        { SKAdNetworkIdentifier: "cstr6suwn9.skadnetwork" },
+        // TikTok — third in Tas's order.
+        { SKAdNetworkIdentifier: "238da6jt44.skadnetwork" },
+        { SKAdNetworkIdentifier: "22mmun2rn5.skadnetwork" },
+        // AppLovin. Not booked — Tas named it as a "maybe explore in the
+        // future" (2026-09-08). Included precisely because of that: an unused
+        // id costs nothing, while a missing one costs a full store release,
+        // and "future" arrives sooner than a release cycle.
+        { SKAdNetworkIdentifier: "ludvb6z3bs.skadnetwork" },
+      ],
+      // 📌 All six verified against AppLovin's published list
+      // (skadnetwork-ids.applovin.com/v1/skadnetworkids.json, 152 networks) in
+      // addition to Meta's and Google's own docs. That endpoint is also the
+      // place to look up any network added later.
     },
   },
   android: {
@@ -85,6 +132,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // build must be signed with the upload key Google has registered for this
     // package (see the Android migration notes) or Play rejects the upload.
     package: "com.betterwell.reset",
+    // AppsFlyer OneLink (Android App Links) — the counterpart to iOS's
+    // associatedDomains above. Without it, a OneLink URL opens a browser.
+    // 🔴 `autoVerify` only takes effect if Google can fetch an assetlinks.json
+    // from https://greset.onelink.me/.well-known/ that lists THIS app's SHA-256
+    // signing fingerprint. AppsFlyer hosts that file, but it only contains what
+    // we put in the OneLink template's Android settings — so the fingerprint
+    // has to be registered there, and it must be the PLAY APP SIGNING key (what
+    // devices actually see after Play re-signs), not the upload key. Get it from
+    // Play Console → Test and release → Setup → App integrity.
+    // ⚠️ If the fingerprint is wrong or missing, verification fails SILENTLY:
+    // links keep opening in Chrome and nothing in the build looks broken.
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [{ scheme: "https", host: "greset.onelink.me" }],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
     // POST_NOTIFICATIONS is the Android 13+ runtime push permission; Braze's
     // requestPushPermission() drives the OS prompt. Safe to declare always.
     permissions: ["RECORD_AUDIO", "POST_NOTIFICATIONS"],
@@ -172,6 +238,27 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     [
+      // AppsFlyer (the ad-attribution vendor). The plugin patches the Swift
+      // AppDelegate for OneLink/deferred deep links and writes two Podfile
+      // globals; it is a no-op on Android beyond the manifest.
+      //
+      // 📌 Both flags are OFF deliberately:
+      //   * shouldUsePurchaseConnector — AppsFlyer's own store-receipt reader.
+      //     Revenue reaches AppsFlyer through RevenueCat instead (Bryan,
+      //     2026-09-03), and running both would double-count every purchase.
+      //   * preferAppsFlyerBackupRules — would strip our Android backup rules.
+      //     Not ours to hand over to an analytics SDK.
+      // ⚠️ react-native-appsflyer 7.x REQUIRES the New Architecture. It is on
+      // for both platforms today (android newArchEnabled=true,
+      // RCT_NEW_ARCH_ENABLED=1 on iOS); turning it off means dropping to 6.x.
+      "react-native-appsflyer",
+      {
+        shouldUseStrictMode: false,
+        shouldUsePurchaseConnector: false,
+        preferAppsFlyerBackupRules: false,
+      },
+    ],
+    [
       "expo-speech-recognition",
       {
         microphonePermission:
@@ -180,6 +267,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Reset uses speech recognition to transcribe what you say to Ester.",
       },
     ],
+    // Pins the Kotlin stdlib react-native-appsflyer compiles against to RN's
+    // own (2.1.20). Without it the Android build dies in AppsFlyer's Kotlin
+    // compile with an "Internal compiler error" — see the plugin file.
+    "./plugins/withAppsFlyerKotlinStdlib",
     "./plugins/withRegisterPush",
     // Applies the Firebase google-services Gradle plugin so Braze can register
     // for FCM. Inert until a google-services.json is present. See RES-199.
@@ -229,6 +320,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     revenueCatAndroidApiKey:
       process.env.REVENUECAT_ANDROID_API_KEY ??
       "goog_BlNBidaCymvrJlRtCgTeutCmrAu",
+    // AppsFlyer — ad attribution. The dev key is account-wide and, like every
+    // MMP key, is designed to ship inside the app binary: it is what the SDK
+    // authenticates each install with. Same reasoning as the Braze / Amplitude
+    // / RevenueCat public keys above, so it lives here as a default rather than
+    // only as an env var — the SDK no-ops silently without one, which would
+    // make a forgotten variable indistinguishable from working attribution,
+    // and there is no OTA to fix that with.
+    // 🔑 Recovered from the 2025 Adtaxi implementation
+    // (Reset-Technologies/reset-app-v2, src/helpers/appsflyer.ts) — the same
+    // AppsFlyer account and the same two app entries we are reusing.
+    // ⚠️ NOT verifiable from outside: AppsFlyer's S2S Events API is disabled on
+    // this account, so a bad key looks identical to a good one until a real
+    // device reports an install. Confirm in the dashboard, or on the device
+    // test, BEFORE trusting a build's numbers.
+    appsFlyerDevKey: process.env.APPSFLYER_DEV_KEY ?? "oRhz9mtARQVhsMrNNCxkZi",
+    // iOS needs the App Store record's Apple ID; Android infers its own from
+    // the package name. This is the LEGACY record we migrated onto, which is
+    // also the entry the 2025 app reported to.
+    appsFlyerIosAppId: process.env.APPSFLYER_IOS_APP_ID ?? "id1478144712",
     eas: {
       projectId: "e1576fd6-3519-4c0f-95e8-abf43df86a02",
     },
