@@ -109,11 +109,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" },
         // Google (Google Ads / AdMob) — from Google's own developer docs.
         { SKAdNetworkIdentifier: "cstr6suwn9.skadnetwork" },
-        // TikTok. ⚠️ Corroborated across secondary sources rather than read off
-        // TikTok's own docs — re-check these two if TikTok is actually booked.
+        // TikTok — third in Tas's order.
         { SKAdNetworkIdentifier: "238da6jt44.skadnetwork" },
         { SKAdNetworkIdentifier: "22mmun2rn5.skadnetwork" },
+        // AppLovin. Not booked — Tas named it as a "maybe explore in the
+        // future" (2026-09-08). Included precisely because of that: an unused
+        // id costs nothing, while a missing one costs a full store release,
+        // and "future" arrives sooner than a release cycle.
+        { SKAdNetworkIdentifier: "ludvb6z3bs.skadnetwork" },
       ],
+      // 📌 All six verified against AppLovin's published list
+      // (skadnetwork-ids.applovin.com/v1/skadnetworkids.json, 152 networks) in
+      // addition to Meta's and Google's own docs. That endpoint is also the
+      // place to look up any network added later.
     },
   },
   android: {
