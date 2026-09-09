@@ -39,9 +39,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // the "Restorer" greeting fix, the Amplitude SDK, the legacy-member
   // analytics tag, and a working support contact.
   // 3.0.2 is the analytics-correctness + auth patch — see the release commit.
+  // 3.1.0 is the ATTRIBUTION release: the AppsFlyer SDK behind the existing
+  // deny-by-default ad filter, SKAdNetwork ids for the networks Tas plans to
+  // run, RevenueCat→AppsFlyer revenue linking, and OneLink deep linking. A
+  // minor rather than a patch because it changes what the app COLLECTS — which
+  // is also why the store privacy declarations move in the same submission
+  // (Play Data safety submitted 2026-09-08; Apple labels still owed).
   // 🔴 There is no OTA channel (expo-updates is not installed), so EVERY fix,
   // including a one-line analytics one, costs a store release. Batch them.
-  version: "3.0.2",
+  version: "3.1.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
