@@ -386,7 +386,8 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 /**
- * Tag the analytics identity with where this account came from.
+ * Tag the analytics identity with the two facts every report segments on:
+ * where this account came from, and whether they pay us.
  *
  * 🔴 Must run on BOTH paths that establish a signed-in user — setAuth() (sign
  * up / sign in) and loadState()'s session restore. It originally lived only in
@@ -401,14 +402,36 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
  * Idempotent by design: user properties overwrite, so calling it on every
  * profile sync also back-fills accounts that predate the flag.
  */
-function tagAccountOrigin(isLegacyMember: unknown): void {
-  if (typeof isLegacyMember !== "boolean") return;
-  // Goes to Amplitude AND Braze through the shared setCustomAttribute.
-  BrazeService.setCustomAttribute("isLegacyMember", isLegacyMember);
-  // Also tell the ad-attribution filter, which suppresses everything for a
-  // migrated member — they were already paying us, so an ad campaign must never
-  // be credited with them. See services/adAttribution.ts.
-  AdAttribution.setIsLegacyMember(isLegacyMember);
+function tagAccountProperties(profile: {
+  isLegacyMember?: unknown;
+  subscriptionTier?: unknown;
+}): void {
+  if (typeof profile.isLegacyMember === "boolean") {
+    // Goes to Amplitude AND Braze through the shared setCustomAttribute.
+    BrazeService.setCustomAttribute("isLegacyMember", profile.isLegacyMember);
+    // Also tell the ad-attribution filter, which suppresses everything for a
+    // migrated member — they were already paying us, so an ad campaign must
+    // never be credited with them. See services/adAttribution.ts.
+    AdAttribution.setIsLegacyMember(profile.isLegacyMember);
+  }
+
+  // 🔴 `paid_user` is the flag every conversion report segments on, and until
+  // now it did not mean what its name says. It was set on ProfileScreen from a
+  // local variable derived from scan data, so it actually reported "has
+  // completed a scan" — 65 accounts would have been flagged paid against 15 who
+  // were — and it only fired for people who opened that one screen, so paying
+  // users who never visited Profile carried no flag at all.
+  //
+  // 📌 Legacy migrants ARE paid users: they bill through Stripe rather than the
+  // store, but they pay. Segmenting acquisition from migration is what
+  // isLegacyMember above is for — the two properties are meant to be used
+  // together, and conflating them here would just move the distortion.
+  if (typeof profile.subscriptionTier === "string") {
+    BrazeService.setCustomAttribute(
+      "paid_user",
+      profile.subscriptionTier === "pro",
+    );
+  }
 }
 
 // Provider
@@ -565,7 +588,7 @@ export function AppProvider({ children }: AppProviderProps) {
           payload: profile.subscriptionTier,
         });
       }
-      tagAccountOrigin(profile.isLegacyMember);
+      tagAccountProperties(profile);
     } catch {
       // Leave existing local value.
     }
@@ -674,7 +697,7 @@ export function AppProvider({ children }: AppProviderProps) {
         // Tag BEFORE the funnel continues. On a fresh signup this is the only
         // chance to get the flag onto the session's events — loadState() ran at
         // launch with no session and never reached its own call.
-        tagAccountOrigin(profile.isLegacyMember);
+        tagAccountProperties(profile);
       })
       .catch(() => {});
     // RES-188 — hydrate third-party-AI consent for the user we just signed in
