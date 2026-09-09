@@ -108,6 +108,17 @@ const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set([
   "product_id", // store product identifier
   "price", // number, localized store price
   "currency", // ISO currency code
+  // 🔑 AppsFlyer only reads revenue from these two RESERVED names. `price` and
+  // `currency` above are stored as ordinary custom parameters and are invisible
+  // as revenue — which is why they are not enough on their own. They stay
+  // because they are what the rest of our analytics reads.
+  // 🔴 This matters most for iOS SKAdNetwork: conversion values are computed
+  // ON-DEVICE by the SDK, so RevenueCat's server-side purchase event cannot
+  // drive them. Only what the app itself reports can, and until now the app
+  // reported nothing AppsFlyer recognised as money — so every revenue-based
+  // SKAN conversion value was unreachable no matter how it was configured.
+  "af_revenue", // number, same value as `price`
+  "af_currency", // ISO currency code, same value as `currency`
 ]);
 
 // ---------------------------------------------------------------------------
