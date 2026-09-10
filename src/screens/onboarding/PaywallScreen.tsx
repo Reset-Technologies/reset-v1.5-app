@@ -530,6 +530,35 @@ export function PaywallScreen({ navigation }: Props) {
       : {}),
   });
 
+  /**
+   * packageProps PLUS the revenue AppsFlyer can actually read.
+   *
+   * 🔑 AppsFlyer recognises money ONLY under the reserved names af_revenue /
+   * af_currency; `price` and `currency` above are ordinary custom parameters to
+   * it. Both are sent, deliberately — Braze and Amplitude read `price`, so
+   * renaming would silently break the two destinations that already work.
+   *
+   * 🔴 ONLY for onboarding_paywall_purchased. packageProps() is shared with
+   * `cancelled` and `failed`, and BOTH of those reach AppsFlyer through the
+   * allowlist — attaching revenue there would book money against purchases that
+   * never happened, and on iOS would fire a revenue SKAdNetwork conversion
+   * value on a failure. Same reason renewals must not share the initial
+   * purchase's event name in the RevenueCat→AppsFlyer mapping.
+   *
+   * 🔴 This is also what makes iOS SKAN revenue reachable at all: conversion
+   * values are computed ON-DEVICE by the SDK, so RevenueCat's server-side
+   * purchase event cannot drive them — only what the app itself reports can.
+   */
+  const purchaseProps = (pkg: PurchasesPackage | null) => ({
+    ...packageProps(pkg),
+    ...(pkg
+      ? {
+          af_revenue: pkg.product.price,
+          af_currency: pkg.product.currencyCode,
+        }
+      : {}),
+  });
+
   const handleSubscribe = async () => {
     if (purchasing || restoring) return;
     // INTENT, not revenue: this fires on the tap, before the store sheet opens.
@@ -604,7 +633,7 @@ export function PaywallScreen({ navigation }: Props) {
       // THE revenue event. Fires only here: a completed purchase that actually
       // granted the entitlement. This is the one to build cost-per-acquisition
       // on, and the one to forward to the ad platforms.
-      logEvent("onboarding_paywall_purchased", packageProps(pkg));
+      logEvent("onboarding_paywall_purchased", purchaseProps(pkg));
       // Optimistic local flip; the backend reconciles via RevenueCat webhook
       // and getProfile() re-syncs the tier on next launch. In the gate, this
       // re-renders RootNavigator straight into Main (no proceedToApp needed).
