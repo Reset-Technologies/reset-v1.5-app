@@ -48,6 +48,8 @@ import {
   GreetingBlock,
   SavedMealsCard,
 } from "../../components/homeV2";
+import { ResetWindowCard } from "../../components/resetWindow";
+import { useResetWindow } from "../../hooks/useResetWindow";
 import type { Meal } from "../../components";
 
 export function HomeScreenV2() {
@@ -56,6 +58,13 @@ export function HomeScreenV2() {
   const { state } = useApp();
   const { runWithAiConsent } = useAiConsentGate();
   const { innerBg, textColor } = useAppPalette();
+  const resetWindow = useResetWindow();
+  // During a Reset the Window leads Today; while the eating window is open the
+  // meals lead and the Window sits quietly below the score (handoff STATE
+  // MACHINE → "Today priority").
+  const windowLeads =
+    resetWindow.state?.status === "RESET_ACTIVE" ||
+    resetWindow.state?.status === "RESET_SHIFTED";
 
   const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
   const [favoritedMeals, setFavoritedMeals] = useState<Set<string>>(new Set());
@@ -306,17 +315,32 @@ export function HomeScreenV2() {
           message={greeting.message}
         />
 
-        <ScoreCard
-          score={score}
-          latestScanAt={latestScanAt}
-          latestCheckInAt={checkInHistory[0]?.createdAt ?? checkInHistory[0]?.date ?? null}
-          trendDelta={trendDelta}
-          onScanAgain={handleScanAgain}
-          onExplain={handleExplainScore}
-          onCheckIn={() => handleStartCheckIn("score_card")}
-        />
-
-        <ConfidenceCard confidence={confidence} daysToFull={daysToFullConfidence} />
+        {/* One keyed list, reordered rather than re-rendered in two places, so
+            the Window card keeps its state (Flip guard, open Payoff, notices)
+            when a Reset starts or ends and it changes position. */}
+        {(() => {
+          const windowCard = (
+            <ResetWindowCard key="reset-window" controller={resetWindow} />
+          );
+          const scoreCards = [
+            <ScoreCard
+              key="score"
+              score={score}
+              latestScanAt={latestScanAt}
+              latestCheckInAt={checkInHistory[0]?.createdAt ?? checkInHistory[0]?.date ?? null}
+              trendDelta={trendDelta}
+              onScanAgain={handleScanAgain}
+              onExplain={handleExplainScore}
+              onCheckIn={() => handleStartCheckIn("score_card")}
+            />,
+            <ConfidenceCard
+              key="confidence"
+              confidence={confidence}
+              daysToFull={daysToFullConfidence}
+            />,
+          ];
+          return windowLeads ? [windowCard, ...scoreCards] : [...scoreCards, windowCard];
+        })()}
 
         <Text style={[styles.sectionHeading, { color: textColor }]}>
           Based on your scan, here are meals for you
