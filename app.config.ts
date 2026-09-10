@@ -45,9 +45,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // minor rather than a patch because it changes what the app COLLECTS — which
   // is also why the store privacy declarations move in the same submission
   // (Play Data safety submitted 2026-09-08; Apple labels still owed).
+  // 3.1.1 fixes two analytics defects 3.1.0 shipped with: `paid_user` was set
+  // from scan data rather than payment (65 accounts would read paid against 15
+  // who are), and purchase revenue reached AppsFlyer under `price` rather than
+  // the reserved `af_revenue`, leaving every iOS SKAdNetwork conversion value
+  // unreachable. Deliberately NOT batched with Reset Window: these only have
+  // value while data is being collected, and paid acquisition starts this week.
   // 🔴 There is no OTA channel (expo-updates is not installed), so EVERY fix,
-  // including a one-line analytics one, costs a store release. Batch them.
-  version: "3.1.0",
+  // including a one-line analytics one, costs a store release. Batch them —
+  // unless, as with 3.1.1, the fix is worthless if it lands after the data.
+  version: "3.1.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
