@@ -87,8 +87,6 @@ function energyRank(word: string | null | undefined): number | null {
   return ENERGY_RANK[word.toLowerCase()] ?? null;
 }
 
-type SubscriptionTier = "pro" | "free" | "none";
-
 // Weekly "living pattern" timeline entries (weekday + MM.DD + Ester note),
 // derived from the user's check-ins. Falls back to an empty list handled by
 // the caller. Limited to the most recent 5 days.
@@ -222,15 +220,22 @@ export function ProfileScreen() {
     return unsubscribe;
   }, [navigation, loadProfile]);
 
-  const tier: SubscriptionTier =
-    state.biometrics || (profile?.layer3.scanCount ?? 0) > 0 ? "pro" : "free";
   const hasScan = !!state.biometrics || (profile?.layer3.scanCount ?? 0) > 0;
 
+  // 🔴 `paid_user` used to be set HERE, from a local `tier` that was derived
+  // from whether the user had scan data — not from what they pay us. It
+  // therefore reported "has completed a scan": 65 of our accounts would have
+  // been flagged paid against 15 who actually were. It also only ever fired for
+  // people who opened this screen, so genuinely paying users who never visited
+  // Profile carried no flag at all.
+  // ▶ It now lives in AppContext's tagAccountProperties(), set from the real
+  // subscriptionTier on both auth paths. Do not reintroduce it here: a screen
+  // is the wrong place for an identity property, because it only runs for the
+  // subset of users who happen to visit that screen.
   useEffect(() => {
     if (!profile) return;
     setCustomAttribute("metabolic_type", metabolicType);
-    setCustomAttribute("paid_user", tier === "pro");
-  }, [profile, metabolicType, tier]);
+  }, [profile, metabolicType]);
 
   const timeline =
     profile && profile.layer2.energyLog.length > 0 ? buildTimeline(profile) : [];
