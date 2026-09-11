@@ -13,6 +13,7 @@ import {
   getFavorites,
   addFavorite,
   removeFavorite,
+  toggleMealEaten,
 } from "../../services/meals";
 import type { DailyPlan } from "../../services/meals";
 import {
@@ -49,6 +50,11 @@ import {
   SavedMealsCard,
 } from "../../components/homeV2";
 import { ResetWindowCard } from "../../components/resetWindow";
+import {
+  NO_MEALS_EATEN,
+  type EatenMealIds,
+  type MealSlot,
+} from "../../components/resetWindow/WindowMealList";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import type { Meal } from "../../components";
 
@@ -68,6 +74,7 @@ export function HomeScreenV2() {
 
   const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
   const [favoritedMeals, setFavoritedMeals] = useState<Set<string>>(new Set());
+  const [eatenMeals, setEatenMeals] = useState<EatenMealIds>(NO_MEALS_EATEN);
   const [checkInHistory, setCheckInHistory] = useState<CheckInEntry[]>([]);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -80,11 +87,15 @@ export function HomeScreenV2() {
       getDailyPlan()
         .then((plan) => {
           setDailyPlan(plan);
+          setEatenMeals(plan.eatenMealIds ?? NO_MEALS_EATEN);
           cacheDailyPlan(plan);
         })
         .catch(async () => {
           const cached = await getCachedDailyPlan();
-          if (cached) setDailyPlan(cached);
+          if (cached) {
+            setDailyPlan(cached);
+            setEatenMeals(cached.eatenMealIds ?? NO_MEALS_EATEN);
+          }
         });
 
       getFavorites()
@@ -267,6 +278,32 @@ export function HomeScreenV2() {
     [dailyPlan],
   );
 
+  /**
+   * Marking a meal eaten from inside the Window card. Optimistic, and put back
+   * if the server rejects it — the same toggle the meal screens use.
+   */
+  const handleToggleEaten = useCallback(
+    async (slot: MealSlot, meal: Meal) => {
+      const planId = dailyPlan?.id;
+      if (!planId) return;
+      const was = eatenMeals[slot].includes(meal.id);
+      const next = {
+        ...eatenMeals,
+        [slot]: was
+          ? eatenMeals[slot].filter((id) => id !== meal.id)
+          : [...eatenMeals[slot], meal.id],
+      };
+      setEatenMeals(next);
+      logEvent("home_window_mealEatenCTA", { slot, action: was ? "uneaten" : "eaten" });
+      try {
+        await toggleMealEaten(planId, slot, meal.id);
+      } catch {
+        setEatenMeals(eatenMeals);
+      }
+    },
+    [dailyPlan?.id, eatenMeals],
+  );
+
   const handleFavoriteToggle = useCallback(async (mealId: string) => {
     const wasFavorited = favoritedMeals.has(mealId);
     const mealName = mealNameById(mealId);
@@ -320,7 +357,20 @@ export function HomeScreenV2() {
             when a Reset starts or ends and it changes position. */}
         {(() => {
           const windowCard = (
-            <ResetWindowCard key="reset-window" controller={resetWindow} />
+            <ResetWindowCard
+              key="reset-window"
+              controller={resetWindow}
+              meals={
+                dailyPlan
+                  ? {
+                      plan: dailyPlan,
+                      eaten: eatenMeals,
+                      onMealPress: handleMealPress,
+                      onToggleEaten: handleToggleEaten,
+                    }
+                  : undefined
+              }
+            />
           );
           const scoreCards = [
             <ScoreCard

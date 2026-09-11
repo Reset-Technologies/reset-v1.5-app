@@ -3,8 +3,10 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
+import { useApp } from "../../context/AppContext";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import type { ResetWindowController } from "../../hooks/useResetWindow";
+import type { DailyPlan, DailyPlanMeal } from "../../services/meals";
 import { logEvent } from "../../services/braze";
 import { markFlipShown } from "../../services/resetWindow";
 import {
@@ -16,8 +18,14 @@ import {
   windowLabel,
 } from "../../utils/resetWindow";
 import { WindowRing } from "./WindowRing";
+import { WindowMealList, type EatenMealIds, type MealSlot } from "./WindowMealList";
 import { WindowPlanSheet } from "./WindowPlanSheet";
 import { MorningPayoffSheet, type PendingPayoff } from "./MorningPayoffSheet";
+import { WindowIntroSheet } from "./WindowIntroSheet";
+import {
+  markWindowIntroShown,
+  shouldShowWindowIntro,
+} from "../../utils/windowIntroGate";
 import { ArrowIcon, PencilIcon } from "./icons";
 import { windowColors } from "./palette";
 
@@ -35,18 +43,35 @@ function useNow(active: boolean): number {
   return now;
 }
 
+export interface WindowMealsProps {
+  plan: DailyPlan;
+  eaten: EatenMealIds;
+  onMealPress: (meal: DailyPlanMeal) => void;
+  onToggleEaten: (slot: MealSlot, meal: DailyPlanMeal) => void;
+}
+
 /**
  * The Window on Today: one object, two lives. While the eating window is open
- * it is a quiet countdown to the next Reset; during the Reset it counts up and
- * shows the stage. Owns the Flip (one haptic + W_FLIP_01, once per Reset), the
- * plan picker and the Morning Payoff.
+ * it is a quiet countdown to the next Reset (holding today's meals); during the
+ * Reset it counts up and shows the stage. Owns the Flip (one haptic +
+ * W_FLIP_01, once per Reset), the plan picker and the Morning Payoff.
  */
-export function ResetWindowCard({ controller }: { controller: ResetWindowController }) {
+export function ResetWindowCard({
+  controller,
+  meals,
+}: {
+  controller: ResetWindowController;
+  // Today's meals live inside the card while the eating window is open.
+  meals?: WindowMealsProps;
+}) {
   const { state } = controller;
+  const { state: appState } = useApp();
+  const userId = appState.auth.authUser?.id;
   const { evening } = useAppPalette();
   const c = windowColors(evening);
 
   const [planOpen, setPlanOpen] = useState(false);
+  const [introOpen, setIntroOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [payoff, setPayoff] = useState<PendingPayoff | null>(null);
   const seenPayoffs = useRef(new Set<string>());
@@ -75,6 +100,19 @@ export function ResetWindowCard({ controller }: { controller: ResetWindowControl
     seenPayoffs.current.add(pending.id);
     setPayoff(pending);
   }, [state?.pendingPayoff]);
+
+  // The one-time introduction: only with no Window set, and only until the
+  // member has seen it once. Dismissing leaves the card's "Set Window" CTA.
+  useEffect(() => {
+    if (!userId || state?.status !== "UNASSIGNED") return;
+    let alive = true;
+    shouldShowWindowIntro(userId).then((show) => {
+      if (alive && show) setIntroOpen(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [userId, state?.status]);
 
   useEffect(() => {
     if (!notice) return;
@@ -220,6 +258,15 @@ export function ResetWindowCard({ controller }: { controller: ResetWindowControl
           pill={pill}
           colors={c}
         />
+        {meals ? (
+          <WindowMealList
+            plan={meals.plan}
+            eaten={meals.eaten}
+            colors={c}
+            onMealPress={meals.onMealPress}
+            onToggleEaten={meals.onToggleEaten}
+          />
+        ) : null}
         {startsLater && state.nextScheduledStartAt ? (
           // A new or changed plan whose first Reset is more than a window away.
           <Text style={[styles.body, { color: c.text }]}>
@@ -246,6 +293,21 @@ export function ResetWindowCard({ controller }: { controller: ResetWindowControl
       {notice ? <Text style={[styles.notice, { color: c.text }]}>{notice}</Text> : null}
       {body}
 
+      <WindowIntroSheet
+        visible={introOpen}
+        recommendation={state.recommendation}
+        onChoose={() => {
+          logEvent("window_intro_chooseCTA");
+          setIntroOpen(false);
+          if (userId) markWindowIntroShown(userId);
+          setPlanOpen(true);
+        }}
+        onDismiss={() => {
+          logEvent("window_intro_dismissed");
+          setIntroOpen(false);
+          if (userId) markWindowIntroShown(userId);
+        }}
+      />
       <WindowPlanSheet
         visible={planOpen}
         state={state}
