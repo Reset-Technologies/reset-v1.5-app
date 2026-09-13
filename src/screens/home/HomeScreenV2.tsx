@@ -13,7 +13,6 @@ import {
   getFavorites,
   addFavorite,
   removeFavorite,
-  toggleMealEaten,
 } from "../../services/meals";
 import type { DailyPlan } from "../../services/meals";
 import {
@@ -50,11 +49,7 @@ import {
   SavedMealsCard,
 } from "../../components/homeV2";
 import { ResetWindowCard } from "../../components/resetWindow";
-import {
-  NO_MEALS_EATEN,
-  type EatenMealIds,
-  type MealSlot,
-} from "../../components/resetWindow/WindowMealList";
+import type { Slot } from "../../utils/nextMeal";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import type { Meal } from "../../components";
 
@@ -74,7 +69,6 @@ export function HomeScreenV2() {
 
   const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
   const [favoritedMeals, setFavoritedMeals] = useState<Set<string>>(new Set());
-  const [eatenMeals, setEatenMeals] = useState<EatenMealIds>(NO_MEALS_EATEN);
   const [checkInHistory, setCheckInHistory] = useState<CheckInEntry[]>([]);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -87,14 +81,12 @@ export function HomeScreenV2() {
       getDailyPlan()
         .then((plan) => {
           setDailyPlan(plan);
-          setEatenMeals(plan.eatenMealIds ?? NO_MEALS_EATEN);
           cacheDailyPlan(plan);
         })
         .catch(async () => {
           const cached = await getCachedDailyPlan();
           if (cached) {
             setDailyPlan(cached);
-            setEatenMeals(cached.eatenMealIds ?? NO_MEALS_EATEN);
           }
         });
 
@@ -138,6 +130,16 @@ export function HomeScreenV2() {
   const handleMealPress = useCallback(
     (meal: Meal) => {
       logEvent("home_meal_recipeCTA", { mealId: meal.id });
+      navigation.navigate("RecipeDetail", { meal });
+    },
+    [navigation],
+  );
+
+  // The Window card hands back the slot as well, so the event says which meal
+  // the card actually surfaced. It opens the recipe — it never logs.
+  const handleWindowMealPress = useCallback(
+    (slot: Slot, meal: Meal) => {
+      logEvent("home_window_mealCTA", { slot, mealId: meal.id });
       navigation.navigate("RecipeDetail", { meal });
     },
     [navigation],
@@ -278,31 +280,6 @@ export function HomeScreenV2() {
     [dailyPlan],
   );
 
-  /**
-   * Marking a meal eaten from inside the Window card. Optimistic, and put back
-   * if the server rejects it — the same toggle the meal screens use.
-   */
-  const handleToggleEaten = useCallback(
-    async (slot: MealSlot, meal: Meal) => {
-      const planId = dailyPlan?.id;
-      if (!planId) return;
-      const was = eatenMeals[slot].includes(meal.id);
-      const next = {
-        ...eatenMeals,
-        [slot]: was
-          ? eatenMeals[slot].filter((id) => id !== meal.id)
-          : [...eatenMeals[slot], meal.id],
-      };
-      setEatenMeals(next);
-      logEvent("home_window_mealEatenCTA", { slot, action: was ? "uneaten" : "eaten" });
-      try {
-        await toggleMealEaten(planId, slot, meal.id);
-      } catch {
-        setEatenMeals(eatenMeals);
-      }
-    },
-    [dailyPlan?.id, eatenMeals],
-  );
 
   const handleFavoriteToggle = useCallback(async (mealId: string) => {
     const wasFavorited = favoritedMeals.has(mealId);
@@ -364,9 +341,7 @@ export function HomeScreenV2() {
                 dailyPlan
                   ? {
                       plan: dailyPlan,
-                      eaten: eatenMeals,
-                      onMealPress: handleMealPress,
-                      onToggleEaten: handleToggleEaten,
+                      onMealPress: handleWindowMealPress,
                     }
                   : undefined
               }

@@ -15,6 +15,7 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
+import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent } from "../../services/braze";
 import {
   getCurrentOffering,
@@ -448,6 +449,21 @@ export function PaywallScreen({ navigation }: Props) {
   // into the post-onboarding meal flow once the Main stack has mounted.
   const proceedToApp = () => {
     setHomeV2Enabled(true);
+    // Onboarding IS the Reset Window introduction for a new member (education
+    // card → the two survey questions → the recommendation on the score card),
+    // so consume the one-time intro here. Without this they finish onboarding
+    // and are immediately "introduced" to a feature they were just taught.
+    // The handoff STATE_MACHINE is explicit that the full-screen intro is for
+    // EXISTING members: "New users reach [UNASSIGNED] after paid unlock.
+    // Existing users see the full-screen Window intro once."
+    // Keyed on having actually ANSWERED the onboarding Window question, not
+    // merely on !isGate: a returning legacy member reaches here with
+    // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
+    // education carousel and the survey entirely. They never met the feature,
+    // so they must still get the intro.
+    const uid = state.auth.authUser?.id;
+    const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
+    if (!isGate && uid && sawWindowInOnboarding) markWindowIntroShown(uid);
     completeOnboarding();
     // Defer deep navigation until the Main stack has actually mounted —
     // completeOnboarding flips the root state, which triggers a re-render

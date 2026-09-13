@@ -20,6 +20,7 @@ import { PersonaIntroMedia } from "./PersonaIntroMedia";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
+import { FastingInfoSheet } from "./FastingInfoSheet";
 import { logEvent } from "../../services/braze";
 import {
   SURVEY_STEPS,
@@ -178,6 +179,8 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     return () => clearTimeout(t);
   }, [stepIndex]);
 
+  const [infoOpen, setInfoOpen] = useState(false);
+
   const finalizeAnswer = (ids: string[]) => {
     if (step.kind !== "question" || ids.length === 0) return;
     logEvent(step.eventName, { value: ids.join(",") });
@@ -197,6 +200,13 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       case "restrict":
         setDietaryRestrictions(ids);
         break;
+      // Window answers ride in quizAnswers: syncOnboardingToBackend forwards
+      // only {q1,q2,q3}, so these stay client-side. The durable record of a
+      // member's Window is the plan itself (window_assigned), not these.
+      case "fastingInterest":
+      case "fastingStart":
+        setQuizAnswer(step.key, ids[0]);
+        break;
     }
     goNext();
   };
@@ -205,6 +215,13 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
 
   const toggleOption = (id: string) => {
     if (step.kind !== "question") return;
+    // "Tell me more…" teaches and returns — it is not an answer, so the
+    // question stays on screen and nothing is written.
+    if (step.infoOptionId && id === step.infoOptionId) {
+      logEvent(`${step.eventName}_moreInfo`);
+      setInfoOpen(true);
+      return;
+    }
     if (!step.multiSelect) {
       setSelected([id]);
       // Auto-advance after a brief beat so the selection highlight reads.
@@ -348,6 +365,8 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
           </View>
         </SafeAreaView>
       )}
+
+      <FastingInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </View>
   );
 }

@@ -76,12 +76,17 @@ export function ChevronIcon({ color, size = 24 }: IconProps) {
   );
 }
 
-/** Tick in a circle — filled once the meal is marked eaten. */
+/**
+ * Tick in a circle. When `filled`, the disc takes `color` and the tick is
+ * knocked out of it — so `tickColor` must be the surface behind the icon, not
+ * the disc colour, or the tick vanishes into it.
+ */
 export function CheckCircleIcon({
   color,
   size = 24,
   filled = false,
-}: IconProps & { filled?: boolean }) {
+  tickColor = K.brown,
+}: IconProps & { filled?: boolean; tickColor?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle
@@ -96,7 +101,7 @@ export function CheckCircleIcon({
       {filled ? (
         <Path
           d="M7.5 12.5l3 3 6-6.5"
-          stroke={K.brown}
+          stroke={tickColor}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"

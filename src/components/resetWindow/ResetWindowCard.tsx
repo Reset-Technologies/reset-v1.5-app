@@ -18,7 +18,8 @@ import {
   windowLabel,
 } from "../../utils/resetWindow";
 import { WindowRing } from "./WindowRing";
-import { WindowMealList, type EatenMealIds, type MealSlot } from "./WindowMealList";
+import { WindowNextMeal } from "./WindowNextMeal";
+import { pickNextMeal, type Slot } from "../../utils/nextMeal";
 import { WindowPlanSheet } from "./WindowPlanSheet";
 import { MorningPayoffSheet, type PendingPayoff } from "./MorningPayoffSheet";
 import { WindowIntroSheet } from "./WindowIntroSheet";
@@ -27,7 +28,7 @@ import {
   shouldShowWindowIntro,
 } from "../../utils/windowIntroGate";
 import { ArrowIcon, PencilIcon } from "./icons";
-import { windowColors } from "./palette";
+import { windowColors, type WindowColors } from "./palette";
 
 const MINUTE_MS = 60_000;
 const NOTICE_MS = 6000;
@@ -45,9 +46,8 @@ function useNow(active: boolean): number {
 
 export interface WindowMealsProps {
   plan: DailyPlan;
-  eaten: EatenMealIds;
-  onMealPress: (meal: DailyPlanMeal) => void;
-  onToggleEaten: (slot: MealSlot, meal: DailyPlanMeal) => void;
+  /** Opens the meal in the Meals surface — the card never logs it here. */
+  onMealPress: (slot: Slot, meal: DailyPlanMeal) => void;
 }
 
 /**
@@ -258,15 +258,7 @@ export function ResetWindowCard({
           pill={pill}
           colors={c}
         />
-        {meals ? (
-          <WindowMealList
-            plan={meals.plan}
-            eaten={meals.eaten}
-            colors={c}
-            onMealPress={meals.onMealPress}
-            onToggleEaten={meals.onToggleEaten}
-          />
-        ) : null}
+        {meals ? <NextMeal meals={meals} colors={c} /> : null}
         {startsLater && state.nextScheduledStartAt ? (
           // A new or changed plan whose first Reset is more than a window away.
           <Text style={[styles.body, { color: c.text }]}>
@@ -361,6 +353,20 @@ function TimeCell({
       <Text style={[styles.timeLabel, { color: colors.textAlt }]}>{label}</Text>
       <Text style={[styles.timeValue, { color: colors.text }]}>{value}</Text>
     </View>
+  );
+}
+
+/** Resolve the relevant meal at render time so it follows the clock. */
+function NextMeal({ meals, colors }: { meals: WindowMealsProps; colors: WindowColors }) {
+  const next = pickNextMeal(meals.plan);
+  if (!next) return null;
+  return (
+    <WindowNextMeal
+      slot={next.slot}
+      meal={next.meal}
+      colors={colors}
+      onPress={meals.onMealPress}
+    />
   );
 }
 

@@ -24,10 +24,16 @@ export type SurveyStep =
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
-      key: "goal" | "q1" | "q2" | "q3" | "restrict";
+      key: "goal" | "q1" | "q2" | "q3" | "restrict" | "fastingInterest" | "fastingStart";
       question: string;
       options: SurveyOption[] | "_dietary";
       multiSelect?: boolean;
+      /**
+       * Option that opens the explainer sheet instead of answering, so
+       * "Tell me more…" can teach without forcing a choice (Figma 4328:13197).
+       * The question stays put until a real answer is picked.
+       */
+      infoOptionId?: string;
       progress: number;
       eventName: string;
     }
@@ -98,6 +104,41 @@ export const SURVEY_STEPS: SurveyStep[] = [
     multiSelect: true,
     progress: 0.88,
     eventName: "onboarding_survey_restrict",
+  },
+  // Reset Window (Figma 4328:9944 / 4329:53628). These sit after the typing
+  // questions so Ester has something to react to, and before "analyzing" so
+  // the recommendation can land on the first-reset-score card.
+  //
+  // 🔴 COPY IS A DRAFT. Lang's frames say "Most people start off with a 12:8
+  // fast" — Bryan retired 12:8 (the floor is now 14h, Rebounders 12:12), so the
+  // question itself has to be rewritten, not just renumbered. Bryan owes the
+  // final wording for both of these.
+  {
+    kind: "question",
+    key: "fastingInterest",
+    question: "Are you interested in intermittent fasting?",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "maybe_later", label: "Maybe later" },
+      { id: "more_info", label: "Tell me more...." },
+    ],
+    infoOptionId: "more_info",
+    progress: 0.9,
+    eventName: "onboarding_survey_fastingInterest",
+  },
+  {
+    kind: "question",
+    key: "fastingStart",
+    question:
+      "Most people start off with a 14:10 Reset — 14 hours of Reset, 10 hours of eating. Does this sound good to you?",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "pick_other", label: "No, pick something else" },
+      { id: "more_info", label: "Tell me more...." },
+    ],
+    infoOptionId: "more_info",
+    progress: 0.93,
+    eventName: "onboarding_survey_fastingStart",
   },
   {
     kind: "analyzing",
