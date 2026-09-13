@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { SHARE_HOST, shareWithLink } from "../../constants/links";
 import {
   View,
   Text,
@@ -56,12 +57,10 @@ export function ShareScreen({ navigation }: Props) {
     logEvent("onboarding_share_shareCTA");
     try {
       const message = biometricHeadline
-        ? `I just discovered I'm "${typeConfig.title}" on Reset! ${biometricHeadline}. Find your type → reset.app`
-        : `I just discovered I'm "${typeConfig.title}" on Reset! ${typeConfig.tagline} Find your type → reset.app`;
+        ? `I just discovered I'm "${typeConfig.title}" on Reset! ${biometricHeadline}. Find your type:`
+        : `I just discovered I'm "${typeConfig.title}" on Reset! ${typeConfig.tagline} Find your type:`;
 
-      await Share.share({
-        message,
-      });
+      await Share.share(shareWithLink(message));
     } catch (error) {
       console.error("Error sharing:", error);
     }
@@ -111,7 +110,7 @@ export function ShareScreen({ navigation }: Props) {
 
           {/* CTA */}
           <Text style={[styles.cardCta, { color: colors.text + "60" }]}>
-            Find your type → reset.app
+            Find your type → {SHARE_HOST}
           </Text>
         </View>
 
