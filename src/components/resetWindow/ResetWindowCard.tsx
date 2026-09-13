@@ -288,14 +288,16 @@ export function ResetWindowCard({
       <WindowIntroSheet
         visible={introOpen}
         recommendation={state.recommendation}
-        onChoose={() => {
-          logEvent("window_intro_chooseCTA");
+        // Event names are unchanged from the one-step intro so existing
+        // dashboards keep working; the properties are new.
+        onChoose={(button) => {
+          logEvent("window_intro_chooseCTA", { button });
           setIntroOpen(false);
           if (userId) markWindowIntroShown(userId);
           setPlanOpen(true);
         }}
-        onDismiss={() => {
-          logEvent("window_intro_dismissed");
+        onDismiss={(step) => {
+          logEvent("window_intro_dismissed", { step });
           setIntroOpen(false);
           if (userId) markWindowIntroShown(userId);
         }}

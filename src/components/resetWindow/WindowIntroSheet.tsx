@@ -13,6 +13,7 @@ import {
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import type { WindowState } from "../../services/resetWindow";
+import { logEvent } from "../../services/braze";
 import { CloseIcon } from "./icons";
 import { WindowRecPanel } from "./WindowRecPanel";
 
@@ -21,8 +22,10 @@ const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
 interface Props {
   visible: boolean;
   recommendation: WindowState["recommendation"];
-  onChoose: () => void;
-  onDismiss: () => void;
+  /** Which step-2 button was pressed — both open the picker. */
+  onChoose: (button: "choose_this" | "custom_window") => void;
+  /** The step the member left from, so drop-off shows per step. */
+  onDismiss: (step: 1 | 2) => void;
 }
 
 /**
@@ -49,10 +52,18 @@ interface Props {
 export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
 
-  // Always open on the education step, including a second showing.
+  // Reset on CLOSE, not on open: resetting on open would briefly render the
+  // old step on a second showing and log a stray step-2 view before snapping
+  // back to step 1.
   useEffect(() => {
-    if (visible) setStep(1);
+    if (!visible) setStep(1);
   }, [visible]);
+
+  // Funnel: window_intro_viewed {step:1} → {step:2} → window_intro_chooseCTA.
+  // Drop-off per step comes from window_intro_dismissed {step}.
+  useEffect(() => {
+    if (visible) logEvent("window_intro_viewed", { step });
+  }, [visible, step]);
 
   const durationMin = recommendation?.durationMin ?? 840;
 
@@ -61,12 +72,12 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
-      onRequestClose={onDismiss}
+      onRequestClose={() => onDismiss(step)}
     >
       <SafeAreaView style={styles.root}>
         <View style={styles.topBar}>
           <TouchableOpacity
-            onPress={onDismiss}
+            onPress={() => onDismiss(step)}
             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
           >
             <CloseIcon color={K.brown} />
@@ -125,7 +136,7 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
         <View style={styles.footer}>
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={step === 1 ? () => setStep(2) : onChoose}
+            onPress={step === 1 ? () => setStep(2) : () => onChoose("choose_this")}
             activeOpacity={0.85}
           >
             <Text style={styles.primaryBtnText}>
@@ -134,7 +145,7 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryBtn}
-            onPress={step === 1 ? onDismiss : onChoose}
+            onPress={step === 1 ? () => onDismiss(1) : () => onChoose("custom_window")}
           >
             <Text style={styles.secondaryBtnText}>
               {step === 1 ? "Not right now" : "Custom window"}
