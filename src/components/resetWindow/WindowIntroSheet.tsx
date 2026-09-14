@@ -172,9 +172,17 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
-  content: { paddingHorizontal: 39, paddingBottom: spacing.lg, gap: spacing.md },
+  // flexGrow lets the step-1 media block below take whatever height is left.
+  content: { paddingHorizontal: 39, paddingBottom: spacing.lg, gap: spacing.md, flexGrow: 1 },
+  // Fills the space the text doesn't need, up to Lang's 362. A FIXED 362 pushed
+  // the second paragraph under the buttons on a Galaxy S24 (780dp screen: ~567dp
+  // between the status bar and the buttons) — it ended "…without you having to
+  // do", with nothing hinting it scrolled. On a tall iPhone this still resolves
+  // to 362.
   media: {
-    height: 362,
+    flex: 1,
+    minHeight: 120,
+    maxHeight: 362,
     borderRadius: 8,
     backgroundColor: K.bone,
     marginHorizontal: -3,

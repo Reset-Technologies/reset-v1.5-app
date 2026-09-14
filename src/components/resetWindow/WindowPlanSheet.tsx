@@ -199,7 +199,15 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
               </TouchableOpacity>
             )}
 
-            <View style={[styles.stepperCard, { borderColor: c.divider }]}>
+          </ScrollView>
+
+          <View style={styles.footer}>
+            {/* Pinned, not scrolled: the handoff requires BOTH clock times to be
+                visible before confirming. Inside the scroll it sat below the
+                option tiles, and a Rebounder's fifth tile pushed it off screen on
+                a Galaxy S24 — Start my Window was tappable without the start time
+                ever showing. */}
+            <View style={[styles.stepperCard, styles.stepperCardPinned, { borderColor: c.divider }]}>
               <Text style={[styles.stepperEyebrow, { color: c.textAlt }]}>Your Reset starts</Text>
               <View style={styles.stepperRow}>
                 <Stepper icon="minus" color={c.text} bg={c.ghost} onPress={() => setStart((s) => shiftClock(s, -START_STEP))} />
@@ -212,9 +220,6 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
                 <Stepper icon="plus" color={c.text} bg={c.ghost} onPress={() => setStart((s) => shiftClock(s, START_STEP))} />
               </View>
             </View>
-          </ScrollView>
-
-          <View style={styles.footer}>
             {plan ? (
               <Text style={[styles.footerNote, { color: c.text }]}>
                 Changes apply from your next Reset
@@ -328,6 +333,7 @@ const styles = StyleSheet.create({
   stepperBig: { fontFamily: fonts.quadrant, fontSize: 32, letterSpacing: -0.32 },
   stepperSub: { fontFamily: fonts.catalogue, fontSize: 13, letterSpacing: -0.13, textAlign: "center" },
   footer: { gap: 12, alignItems: "center", paddingTop: 16 },
+  stepperCardPinned: { alignSelf: "stretch" },
   footerNote: { fontFamily: fonts.catalogue, fontSize: 14, letterSpacing: -0.14 },
   error: { fontFamily: fonts.catalogue, fontSize: 14, color: K.err, textAlign: "center" },
   primaryBtn: {

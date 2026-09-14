@@ -330,13 +330,17 @@ function Header({
   pill: React.ReactNode;
   colors: ReturnType<typeof windowColors>;
 }) {
+  // The pill shares a row with the TITLE only, so it centres on the title —
+  // including when the title wraps onto two lines on a narrow phone (Galaxy S24:
+  // "Eating Window / Open"). It used to centre on title + subtitle together,
+  // which sat it visibly below the middle of a two-line title.
   return (
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.caption, { color: colors.text }]}>{subtitle}</Text> : null}
+    <View style={styles.headerBlock}>
+      <View style={styles.header}>
+        <Text style={[styles.title, styles.titleFill, { color: colors.text }]}>{title}</Text>
+        {pill}
       </View>
-      {pill}
+      {subtitle ? <Text style={[styles.caption, { color: colors.text }]}>{subtitle}</Text> : null}
     </View>
   );
 }
@@ -400,8 +404,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.14,
   },
   header: { alignSelf: "stretch", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  headerText: { flex: 1, gap: 6 },
+  headerBlock: { alignSelf: "stretch", gap: 6 },
   title: { fontFamily: fonts.catalogue, fontSize: 20, letterSpacing: -0.2 },
+  titleFill: { flex: 1 },
   caption: { fontFamily: fonts.catalogue, fontSize: 12, letterSpacing: -0.12 },
   pill: {
     flexDirection: "row",
