@@ -20,7 +20,7 @@ export type SurveyOption = { id: string; label: string };
 
 export type SurveyStep =
   | { kind: "logo"; durationMs: number }
-  | { kind: "message"; lines: string[]; progress: number; durationMs: number }
+  | { kind: "message"; lines: string[]; durationMs: number }
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
@@ -34,11 +34,14 @@ export type SurveyStep =
        * The question stays put until a real answer is picked.
        */
       infoOptionId?: string;
-      progress: number;
       eventName: string;
     }
-  | { kind: "analyzing"; text: string; progress: number; durationMs: number };
+  | { kind: "analyzing"; text: string; durationMs: number };
 
+// No per-step `progress` here: OnboardingSurveyScreen derives the bar from
+// each step's position. It used to be hand-set, and adding the two Reset Window
+// questions made it crawl +2%/+3% after allergies while earlier questions
+// jumped +14% — the bar looked stuck just before the finish.
 export const SURVEY_STEPS: SurveyStep[] = [
   // Post-scan intro video is ~8.9s (the full-length Burner reveal clip). The
   // screen advances when the video actually finishes (playToEnd); durationMs is
@@ -52,7 +55,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
       "Your Reset guide. Thanks for completing the scan!",
       "I have just a few more questions, so I can give you the most accurate type.",
     ],
-    progress: 0.06,
     durationMs: 2800,
   },
   {
@@ -69,7 +71,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
           "Be healthy and better understand the impact of different food on my body",
       },
     ],
-    progress: 0.32,
     eventName: "onboarding_survey_goal",
   },
   {
@@ -77,7 +78,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
     key: "q1",
     question: QUIZ_Q1.esterPrompt,
     options: QUIZ_Q1.options.map((o) => ({ id: o.value, label: o.label })),
-    progress: 0.48,
     eventName: "onboarding_survey_q1",
   },
   {
@@ -85,7 +85,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
     key: "q2",
     question: QUIZ_Q2.esterPrompt,
     options: QUIZ_Q2.options.map((o) => ({ id: o.value, label: o.label })),
-    progress: 0.62,
     eventName: "onboarding_survey_q2",
   },
   {
@@ -93,7 +92,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
     key: "q3",
     question: QUIZ_Q3.esterPrompt,
     options: QUIZ_Q3.options.map((o) => ({ id: o.value, label: o.label })),
-    progress: 0.76,
     eventName: "onboarding_survey_q3",
   },
   {
@@ -102,7 +100,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
     question: "Any foods you can't eat? Pick all that apply.",
     options: "_dietary",
     multiSelect: true,
-    progress: 0.88,
     eventName: "onboarding_survey_restrict",
   },
   // Reset Window (Figma 4328:9944 / 4329:53628). These sit after the typing
@@ -123,7 +120,6 @@ export const SURVEY_STEPS: SurveyStep[] = [
       { id: "more_info", label: "Tell me more...." },
     ],
     infoOptionId: "more_info",
-    progress: 0.9,
     eventName: "onboarding_survey_fastingInterest",
   },
   {
@@ -137,13 +133,11 @@ export const SURVEY_STEPS: SurveyStep[] = [
       { id: "more_info", label: "Tell me more...." },
     ],
     infoOptionId: "more_info",
-    progress: 0.93,
     eventName: "onboarding_survey_fastingStart",
   },
   {
     kind: "analyzing",
     text: "Analyzing your responses",
-    progress: 0.96,
     // Same video as the post-scan intro (~8.9s). Advances on playToEnd;
     // durationMs is only the fallback cap (see the "logo" step above).
     durationMs: 9500,

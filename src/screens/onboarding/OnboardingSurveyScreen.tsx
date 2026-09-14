@@ -244,7 +244,12 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
 
   const showProgress = step.kind !== "logo" && step.kind !== "analyzing";
   const showClose = step.kind !== "analyzing";
-  const progress = (step as any).progress ?? 0;
+  // Derived, not hand-set: every step that shows the bar fills an equal share by
+  // its position, so adding or removing a question can't skew the pacing again.
+  // The denominator is one larger than the count so the last question reads just
+  // short of full — "analyzing" follows it, and shows no bar.
+  const barSteps = SURVEY_STEPS.filter((s) => s.kind !== "logo" && s.kind !== "analyzing");
+  const progress = showProgress ? (barSteps.indexOf(step) + 1) / (barSteps.length + 1) : 0;
 
   return (
     <View style={styles.container}>
