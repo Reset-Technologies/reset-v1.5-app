@@ -46,7 +46,12 @@ export function WindowNextMeal({ slot, meal, colors: c, onPress }: Props) {
 }
 
 const styles = StyleSheet.create({
+  // The card centres its content (header, ring). Without stretching, this row
+  // shrink-wraps: the divider becomes a stub, and the `flex: 1` text column
+  // gets ZERO width — hiding the slot and meal name and leaving an empty box
+  // with a chevron. Seen on the simulator, 13 Sep.
   wrap: {
+    alignSelf: "stretch",
     borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: spacing.md,
     paddingTop: spacing.md,

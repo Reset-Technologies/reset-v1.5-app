@@ -3,13 +3,17 @@ import {
   ActivityIndicator,
   Image,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+// react-native's own SafeAreaView is deprecated (it logged a warning on every bundle).
+// A Modal renders OUTSIDE the app root's SafeAreaProvider, so without a provider
+// of its own the library's SafeAreaView gets zero insets and the screen draws
+// under the status bar and Dynamic Island.
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import type { WindowState } from "../../services/resetWindow";
@@ -74,85 +78,87 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
       presentationStyle="fullScreen"
       onRequestClose={() => onDismiss(step)}
     >
-      <SafeAreaView style={styles.root}>
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() => onDismiss(step)}
-            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-          >
-            <CloseIcon color={K.brown} />
-          </TouchableOpacity>
-        </View>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.root}>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => onDismiss(step)}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            >
+              <CloseIcon color={K.brown} />
+            </TouchableOpacity>
+          </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {step === 1 ? (
-            <>
-              {/* Reserved for Lang's artwork (frame 4315:52650). */}
-              <View style={styles.media} />
-              <View style={styles.titleBlock}>
-                <Text style={styles.eyebrow}>Introducing:</Text>
-                <Text style={styles.title}>Reset Window</Text>
-              </View>
-              <Text style={styles.para}>
-                Your body has an optimal time to nourish itself. This is your eating window.
-              </Text>
-              <Text style={styles.para}>
-                Plan your intake around this window, and follow it with a Reset—a fasting
-                period that burns fat without you having to do anything.
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.title}>Set your window</Text>
-
-              <View style={styles.esterBlock}>
-                <View style={styles.eyebrowRow}>
-                  <View style={styles.dot} />
-                  <Text style={styles.eyebrow}>Message from Ester</Text>
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            {step === 1 ? (
+              <>
+                {/* Reserved for Lang's artwork (frame 4315:52650). */}
+                <View style={styles.media} />
+                <View style={styles.titleBlock}>
+                  <Text style={styles.eyebrow}>Introducing:</Text>
+                  <Text style={styles.title}>Reset Window</Text>
                 </View>
-                <View style={styles.bubble}>
-                  <Image source={ESTER_MARK} style={styles.mark} resizeMode="contain" />
-                  <View style={styles.bubbleText}>
-                    <Text style={styles.bubbleCopy}>
-                      Here's my recommendation, based on what I've learned about you.
-                    </Text>
+                <Text style={styles.para}>
+                  Your body has an optimal time to nourish itself. This is your eating window.
+                </Text>
+                <Text style={styles.para}>
+                  Plan your intake around this window, and follow it with a Reset—a fasting
+                  period that burns fat without you having to do anything.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.title}>Set your window</Text>
+
+                <View style={styles.esterBlock}>
+                  <View style={styles.eyebrowRow}>
+                    <View style={styles.dot} />
+                    <Text style={styles.eyebrow}>Message from Ester</Text>
+                  </View>
+                  <View style={styles.bubble}>
+                    <Image source={ESTER_MARK} style={styles.mark} resizeMode="contain" />
+                    <View style={styles.bubbleText}>
+                      <Text style={styles.bubbleCopy}>
+                        Here's my recommendation, based on what I've learned about you.
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              {recommendation ? (
-                <WindowRecPanel
-                  durationMin={durationMin}
-                  background={K.bone}
-                  tagBackground="rgba(54,20,22,0.12)"
-                />
-              ) : (
-                <ActivityIndicator color={K.brown} style={styles.loading} />
-              )}
-            </>
-          )}
-        </ScrollView>
+                {recommendation ? (
+                  <WindowRecPanel
+                    durationMin={durationMin}
+                    background={K.bone}
+                    tagBackground="rgba(54,20,22,0.12)"
+                  />
+                ) : (
+                  <ActivityIndicator color={K.brown} style={styles.loading} />
+                )}
+              </>
+            )}
+          </ScrollView>
 
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={step === 1 ? () => setStep(2) : () => onChoose("choose_this")}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.primaryBtnText}>
-              {step === 1 ? "Yes, set my window!" : "Choose this"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={step === 1 ? () => onDismiss(1) : () => onChoose("custom_window")}
-          >
-            <Text style={styles.secondaryBtnText}>
-              {step === 1 ? "Not right now" : "Custom window"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={step === 1 ? () => setStep(2) : () => onChoose("choose_this")}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                {step === 1 ? "Yes, set my window!" : "Choose this"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={step === 1 ? () => onDismiss(1) : () => onChoose("custom_window")}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {step === 1 ? "Not right now" : "Custom window"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
