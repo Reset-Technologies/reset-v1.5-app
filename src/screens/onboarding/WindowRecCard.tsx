@@ -25,22 +25,19 @@ const PANEL_BG = "#E9F0F2";
 const GHOST = "rgba(54,20,22,0.12)";
 
 /**
- * "Based on your scan results, here's the fasting pattern I recommend for you."
- * — the Reset Window card in the first-reset-score stack (Figma 4329:53370).
+ * The Reset Window card in the first-reset-score stack (Figma 4329:53370).
  *
- * Informational by design: it says what Ester suggests and where to change it.
- * There is no picker here — onboarding never asks them to commit (handoff
+ * Informational by design: it says where Ester would start and where to change
+ * it. There is no picker here — onboarding never asks anyone to commit (handoff
  * STATE_MACHINE: "New users reach [UNASSIGNED] after paid unlock").
  *
- * 🔑 Bryan, 12 Sep — someone who answered "Maybe later" still sees this, but it
- * must read as "here's what I'd recommend when you're ready", not as having
- * been opted in. Hence the softened lede.
+ * Copy is Bryan's (13 Sep): the lede, the ratio + descriptor + label (in
+ * WindowRecPanel, which switches to the 12:12 on-ramp for a Rebounder), and
+ * "You can change this in Settings."
  *
- * 🔴 Lang's frame shows 12:8 with the rows "Good for beginners / Aligns with
- * sleep schedules / No deep reset ✗". Bryan retired 12:8, and that ✗ row was an
- * argument AGAINST it, so it cannot survive the change. The duration comes from
- * the server (14:10, or 12:12 on a Rebounder's on-ramp); ROWS above are MY
- * DRAFT and need Bryan's copy. `pro: false` keeps the ✗ treatment available.
+ * 🔑 "Maybe later" (Bryan, 12 Sep) must read as "here's what I'd recommend when
+ * you're ready", not as having been opted in. His 13 Sep copy has no variant
+ * for that answer, so the softened lede below reuses his wording.
  */
 export function WindowRecCard({ width, height, typeLogo }: Props) {
   const { state: app } = useApp();
@@ -68,8 +65,8 @@ export function WindowRecCard({ width, height, typeLogo }: Props) {
 
       <Text style={styles.lede}>
         {deferred
-          ? "No rush. When you're ready to try it, here's the pattern I'd start you on."
-          : "Based on your scan results, here's the fasting pattern I recommend for you."}
+          ? "Whenever you're ready, here's where I'd start."
+          : "Based on what I've learned about you, here's where I'd start."}
       </Text>
 
       {!state && !failed ? (
@@ -77,16 +74,13 @@ export function WindowRecCard({ width, height, typeLogo }: Props) {
       ) : (
         <WindowRecPanel
           durationMin={durationMin}
+          rebounder={state?.recommendation?.copyId === "W_START_RB"}
           background={PANEL_BG}
           tagBackground={GHOST}
         />
       )}
 
-      <Text style={styles.footnote}>
-        {deferred
-          ? "Nothing is set up yet — you can start whenever you want, from settings."
-          : "You can change this in settings."}
-      </Text>
+      <Text style={styles.footnote}>You can change this in Settings.</Text>
     </View>
   );
 }
@@ -100,7 +94,10 @@ const styles = StyleSheet.create({
     borderRadius: 48,
     padding: spacing.lg,
     justifyContent: "center",
-    gap: spacing.lg,
+    // 20, not spacing.lg (24): the card is a fixed height, and with Bryan's
+    // four-to-five comparison rows a Rebounder on an iPhone SE (~577pt card)
+    // measured only ~6pt of room. With the tighter table rows this buys ~30pt.
+    gap: 20,
     boxShadow:
       "0 0 1px 0 rgba(0,0,0,0.07) inset, 0 2px 6px -1px rgba(34,10,10,0.38), 0 -9px 4px -8px rgba(54,20,22,0.44) inset, 0 -5px 10px -3px rgba(54,20,22,0.38) inset",
     elevation: 6,

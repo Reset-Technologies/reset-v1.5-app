@@ -204,7 +204,6 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       // only {q1,q2,q3}, so these stay client-side. The durable record of a
       // member's Window is the plan itself (window_assigned), not these.
       case "fastingInterest":
-      case "fastingStart":
         setQuizAnswer(step.key, ids[0]);
         break;
     }

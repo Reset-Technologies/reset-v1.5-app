@@ -128,6 +128,7 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
                 {recommendation ? (
                   <WindowRecPanel
                     durationMin={durationMin}
+                    rebounder={recommendation?.copyId === "W_START_RB"}
                     background={K.bone}
                     tagBackground="rgba(54,20,22,0.12)"
                   />

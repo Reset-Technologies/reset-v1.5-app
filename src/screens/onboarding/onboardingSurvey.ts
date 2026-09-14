@@ -24,7 +24,7 @@ export type SurveyStep =
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
-      key: "goal" | "q1" | "q2" | "q3" | "restrict" | "fastingInterest" | "fastingStart";
+      key: "goal" | "q1" | "q2" | "q3" | "restrict" | "fastingInterest";
       question: string;
       options: SurveyOption[] | "_dietary";
       multiSelect?: boolean;
@@ -102,38 +102,27 @@ export const SURVEY_STEPS: SurveyStep[] = [
     multiSelect: true,
     eventName: "onboarding_survey_restrict",
   },
-  // Reset Window (Figma 4328:9944 / 4329:53628). These sit after the typing
-  // questions so Ester has something to react to, and before "analyzing" so
-  // the recommendation can land on the first-reset-score card.
+  // Reset Window. Sits after the typing questions so Ester has something to
+  // react to, and before "analyzing" so the recommendation can land on the
+  // first-reset-score card.
   //
-  // 🔴 COPY IS A DRAFT. Lang's frames say "Most people start off with a 12:8
-  // fast" — Bryan retired 12:8 (the floor is now 14h, Rebounders 12:12), so the
-  // question itself has to be rewritten, not just renumbered. Bryan owes the
-  // final wording for both of these.
+  // Copy is Bryan's (13 Sep): ONE question, two answers. It replaces Lang's two
+  // questions ("Are you interested in intermittent fasting?" and "Most people
+  // start off with a 12:8 fast…") — the starting ratio now lives on the
+  // recommendation card, and "Tell me more" is gone, so FastingInfoSheet has no
+  // entry point (the `infoOptionId` plumbing stays, should it come back).
+  //
+  // Keep the `maybe_later` id: WindowRecCard reads it to soften its framing, and
+  // PaywallScreen reads this key to consume the existing-member intro gate.
   {
     kind: "question",
     key: "fastingInterest",
-    question: "Are you interested in intermittent fasting?",
+    question: "Would you like Reset to help with when you eat?",
     options: [
-      { id: "yes", label: "Yes" },
+      { id: "yes", label: "Yes, set up my Window" },
       { id: "maybe_later", label: "Maybe later" },
-      { id: "more_info", label: "Tell me more...." },
     ],
-    infoOptionId: "more_info",
     eventName: "onboarding_survey_fastingInterest",
-  },
-  {
-    kind: "question",
-    key: "fastingStart",
-    question:
-      "Most people start off with a 14:10 Reset — 14 hours of Reset, 10 hours of eating. Does this sound good to you?",
-    options: [
-      { id: "yes", label: "Yes" },
-      { id: "pick_other", label: "No, pick something else" },
-      { id: "more_info", label: "Tell me more...." },
-    ],
-    infoOptionId: "more_info",
-    eventName: "onboarding_survey_fastingStart",
   },
   {
     kind: "analyzing",
