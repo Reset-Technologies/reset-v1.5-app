@@ -22,6 +22,19 @@ interface Props {
 
 /** Blue-alt surface the recommendation panel sits on (Figma 4329:53584). */
 const PANEL_BG = "#E9F0F2";
+
+/**
+ * The card is a FIXED height (the stack sizes it from the safe area), so its
+ * density follows that height rather than the screen — each phone gets the most
+ * generous layout its card can actually hold. Measured 13 Sep on the simulator:
+ *   - iPhone SE card ~577pt  → compact  (gap 20, rows 4pt, text 14) ~38pt spare for a Rebounder
+ *   - 620–649pt              → regular  (gap 24, rows 6pt, text 14) — content 496pt standard
+ *   - iPhone 16 Pro 658pt+   → large    (gap 24, rows 9pt, text 15) ~50pt spare for a Rebounder
+ * "large" starts at 650, not 620: at a 620pt card a Rebounder in the large
+ * layout would have only ~11pt spare.
+ */
+const COMPACT_BELOW = 620;
+const LARGE_FROM = 650;
 const GHOST = "rgba(54,20,22,0.12)";
 
 /**
@@ -58,9 +71,10 @@ export function WindowRecCard({ width, height, typeLogo }: Props) {
   }, []);
 
   const durationMin = state?.recommendation?.durationMin ?? 840;
+  const density = height < COMPACT_BELOW ? "compact" : height >= LARGE_FROM ? "large" : "regular";
 
   return (
-    <View style={[styles.card, { width, height }]}>
+    <View style={[styles.card, { width, height, gap: density === "compact" ? 20 : spacing.lg }]}>
       <Image source={typeLogo} style={styles.mark} resizeMode="contain" />
 
       <Text style={styles.lede}>
@@ -75,6 +89,7 @@ export function WindowRecCard({ width, height, typeLogo }: Props) {
         <WindowRecPanel
           durationMin={durationMin}
           rebounder={state?.recommendation?.copyId === "W_START_RB"}
+          density={density}
           background={PANEL_BG}
           tagBackground={GHOST}
         />
@@ -94,10 +109,7 @@ const styles = StyleSheet.create({
     borderRadius: 48,
     padding: spacing.lg,
     justifyContent: "center",
-    // 20, not spacing.lg (24): the card is a fixed height, and with Bryan's
-    // four-to-five comparison rows a Rebounder on an iPhone SE (~577pt card)
-    // measured only ~6pt of room. With the tighter table rows this buys ~30pt.
-    gap: 20,
+    // `gap` is set inline from the card's height — see COMPACT_BELOW / LARGE_FROM.
     boxShadow:
       "0 0 1px 0 rgba(0,0,0,0.07) inset, 0 2px 6px -1px rgba(34,10,10,0.38), 0 -9px 4px -8px rgba(54,20,22,0.44) inset, 0 -5px 10px -3px rgba(54,20,22,0.38) inset",
     elevation: 6,

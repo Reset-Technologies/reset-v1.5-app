@@ -5,6 +5,21 @@ import { fonts, spacing } from "../../constants/typography";
 import { REBOUNDER_ONRAMP, WINDOW_PRESETS, windowLabel } from "../../utils/resetWindow";
 
 const TABLE_LINE = "#C5C5C5";
+/**
+ * Fixed, not a minWidth: the column's right edge IS the divider, so every row
+ * must put it at the same x. With minWidth, "14:10" at 15pt outgrew 52pt while
+ * "15:9" didn't, and the divider stepped sideways between rows.
+ */
+const RATIO_COL_WIDTH = 58;
+
+export type RecPanelDensity = "compact" | "regular" | "large";
+
+/** Comparison-table sizing per density — chosen by a fixed-height container. */
+const DENSITY: Record<RecPanelDensity, { rowPad: number; rowText: number }> = {
+  compact: { rowPad: 4, rowText: 14 },
+  regular: { rowPad: 6, rowText: 14 },
+  large: { rowPad: 9, rowText: 15 },
+};
 
 /** "14-hour Reset · 10-hour eating window" — Bryan's descriptor, 13 Sep. */
 function describe(durationMin: number): string {
@@ -16,6 +31,11 @@ interface Props {
   durationMin: number;
   /** A Rebounder on the two-week 12:12 on-ramp (recommendation copyId W_START_RB). */
   rebounder?: boolean;
+  /**
+   * Table sizing for a fixed-height container — the onboarding card picks it
+   * from its own height. The intro scrolls, so it keeps the default.
+   */
+  density?: RecPanelDensity;
   /** Surface behind the panel — differs per frame (see call sites). */
   background: string;
   tagBackground: string;
@@ -39,13 +59,20 @@ interface Props {
  * Shared by the onboarding score card (blue-alt #E9F0F2) and the existing-member
  * intro (K.bone) — identical apart from the surface, so they can't drift.
  */
-export function WindowRecPanel({ durationMin, rebounder = false, background, tagBackground }: Props) {
+export function WindowRecPanel({
+  durationMin,
+  rebounder = false,
+  density = "regular",
+  background,
+  tagBackground,
+}: Props) {
   const label = windowLabel(durationMin);
   // Lang drew the ratio at 80px around a four-character label; the real ones are
   // five characters ("14:10", "12:12"), so step down rather than crowd the panel.
   const labelSize = label.length <= 4 ? 80 : 64;
 
   const rows = rebounder ? [REBOUNDER_ONRAMP, ...WINDOW_PRESETS] : [...WINDOW_PRESETS];
+  const { rowPad, rowText } = DENSITY[density];
 
   return (
     <View style={[styles.panel, { backgroundColor: background }]}>
@@ -61,16 +88,18 @@ export function WindowRecPanel({ durationMin, rebounder = false, background, tag
       </Text>
 
       <View style={styles.table}>
-        {rows.map((row, i) => (
-          <View
-            key={row.label}
-            style={[styles.row, i === 0 && styles.rowFirst, i === rows.length - 1 && styles.rowLast]}
-          >
-            <View style={styles.ratioCell}>
-              <Text style={styles.ratioText}>{row.label}</Text>
+        {rows.map((row) => (
+          <View key={row.label} style={styles.row}>
+            <View style={[styles.ratioCell, { paddingVertical: rowPad }]}>
+              <Text style={[styles.ratioText, { fontSize: rowText }]}>{row.label}</Text>
             </View>
-            <View style={[styles.textCell, i === 0 && styles.textCellFirst]}>
-              <Text style={styles.rowText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+            <View style={[styles.textCell, { paddingVertical: rowPad }]}>
+              <Text
+                style={[styles.rowText, { fontSize: rowText }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
                 {describe(row.durationMin)}
               </Text>
             </View>
@@ -112,34 +141,34 @@ const styles = StyleSheet.create({
     color: "#000",
     marginBottom: spacing.md,
   },
-  table: { marginHorizontal: 8 },
+  // The outline is drawn ONCE, here, so the top line and the rounded corner are a
+  // single stroke. It used to be split across the rows (top/bottom borders) and
+  // the first row's text cell (the radius), and the row's straight top border
+  // ran on past where the cell's corner curved down.
+  table: {
+    marginHorizontal: 8,
+    borderWidth: 0.5,
+    borderColor: TABLE_LINE,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
   row: { flexDirection: "row", alignItems: "stretch" },
-  rowFirst: { borderTopWidth: 0.5, borderTopColor: TABLE_LINE },
-  rowLast: { borderBottomWidth: 0.5, borderBottomColor: TABLE_LINE },
   ratioCell: {
-    minWidth: 52,
+    width: RATIO_COL_WIDTH,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 4, // 4, not 6: keeps a Rebounder's 5 rows inside the fixed-height onboarding card on small phones
-    paddingHorizontal: spacing.sm,
-    borderLeftWidth: 0.5,
     borderRightWidth: 0.5,
     borderColor: TABLE_LINE,
   },
-  ratioText: { fontFamily: fonts.quadrant, fontSize: 14, letterSpacing: -0.14, color: K.brown },
+  ratioText: { fontFamily: fonts.quadrant, letterSpacing: -0.14, color: K.brown },
   textCell: {
     flex: 1,
     justifyContent: "center",
     paddingLeft: 8,
     paddingRight: 12,
-    paddingVertical: 4, // 4, not 6: keeps a Rebounder's 5 rows inside the fixed-height onboarding card on small phones
-    borderRightWidth: 0.5,
-    borderColor: TABLE_LINE,
   },
-  textCellFirst: { borderTopRightRadius: 24 },
   rowText: {
     fontFamily: fonts.catalogue,
-    fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
   },
