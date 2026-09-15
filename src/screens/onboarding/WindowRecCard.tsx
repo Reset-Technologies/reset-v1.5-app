@@ -46,7 +46,7 @@ const GHOST = "rgba(54,20,22,0.12)";
  *
  * Copy is Bryan's (13 Sep): the lede, the ratio + descriptor + label (in
  * WindowRecPanel, which switches to the 12:12 on-ramp for a Rebounder), and
- * "You can change this in Settings."
+ * "You can change this anytime." (Bryan, 14 Sep — was "in Settings")
  *
  * 🔑 "Maybe later" (Bryan, 12 Sep) must read as "here's what I'd recommend when
  * you're ready", not as having been opted in. His 13 Sep copy has no variant
@@ -95,7 +95,7 @@ export function WindowRecCard({ width, height, typeLogo }: Props) {
         />
       )}
 
-      <Text style={styles.footnote}>You can change this in Settings.</Text>
+      <Text style={styles.footnote}>You can change this anytime.</Text>
     </View>
   );
 }

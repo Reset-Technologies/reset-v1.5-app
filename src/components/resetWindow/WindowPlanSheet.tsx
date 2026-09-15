@@ -32,6 +32,17 @@ const CEILING = 1080;
 const CUSTOM_STEP = 15;
 const START_STEP = 30;
 
+// Tile sub-lines ("14-hour Reset" / "10-hour eating window"). The text size is
+// COMPUTED so the longest line fits one line on every tile — at a fixed 14pt
+// "10-hour eating window" wrapped to a third line on one tile of an iPhone 16
+// Pro and would on most tiles of a 360dp Android. `adjustsFontSizeToFit` isn't
+// used: Android ignores `minimumFontScale` and shrinks without limit.
+const TILE_PAD_H = 12;
+const TILE_BORDER = 2; // the selected tile's border; the unselected one is 1
+const TILE_TEXT = 14;
+const TILE_TEXT_FLOOR = 12.5; // below this, wrap instead of shrinking further
+const TILE_WIDTH_PCT = 0.485;
+
 function shiftClock(hhmm: string, deltaMin: number): string {
   const [h, m] = hhmm.split(":").map(Number);
   const total = (((h * 60 + m + deltaMin) % 1440) + 1440) % 1440;
@@ -41,7 +52,7 @@ function shiftClock(hhmm: string, deltaMin: number): string {
 function hoursLabel(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m ? `${h}h ${m}m` : `${h} hrs`;
+  return m ? `${h}h ${m}m` : `${h}-hour`;
 }
 
 interface Props {
@@ -78,6 +89,23 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
   const [custom, setCustom] = useState(!isPreset(initialDuration));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tile sub-line sizing: the grid's width and the longest line's width at
+  // TILE_TEXT, both measured, give one size that fits every tile.
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
+  const [longestAtBase, setLongestAtBase] = useState<number | null>(null);
+  const eatingLine = (d: number) => `${24 - d / 60}-hour eating window`;
+  const longestLine = presets
+    .map((p) => eatingLine(p.durationMin))
+    .reduce((a, b) => (b.length > a.length ? b : a));
+  const tileSized = gridWidth !== null && longestAtBase !== null;
+  let tileText = TILE_TEXT;
+  if (tileSized) {
+    const inner = (gridWidth as number) * TILE_WIDTH_PCT - 2 * TILE_PAD_H - 2 * TILE_BORDER;
+    const fit = Math.floor(((TILE_TEXT * (inner - 1)) / (longestAtBase as number)) * 10) / 10;
+    // Shrink to fit down to the floor; past it, keep TILE_TEXT and let lines wrap.
+    tileText = fit >= TILE_TEXT ? TILE_TEXT : fit >= TILE_TEXT_FLOOR ? fit : TILE_TEXT;
+  }
 
   // Reset the draft each time the sheet opens.
   useEffect(() => {
@@ -135,7 +163,21 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
               <Text style={[styles.subtitle, { color: c.textAlt }]}>{subtitle}</Text>
             </View>
 
-            <View style={styles.grid}>
+            {/* Invisible: the longest sub-line's one-line width at TILE_TEXT. */}
+            <Text
+              style={[styles.tileSub, styles.measure, { fontSize: TILE_TEXT }]}
+              onTextLayout={(e) =>
+                setLongestAtBase(Math.max(...e.nativeEvent.lines.map((l) => l.width)))
+              }
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {longestLine}
+            </Text>
+            <View
+              style={styles.grid}
+              onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+            >
               {presets.map((p) => {
                 const selected = !custom && duration === p.durationMin;
                 return (
@@ -155,8 +197,20 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
                     <Text style={[styles.tileLabel, { color: selected ? K.brown : c.text }]}>
                       {p.label}
                     </Text>
-                    <Text style={[styles.tileSub, { color: selected ? K.brown : c.text }]}>
-                      {`${p.durationMin / 60} hrs fasting\n${24 - p.durationMin / 60} hrs eating`}
+                    <Text
+                      style={[
+                        styles.tileSub,
+                        {
+                          color: selected ? K.brown : c.text,
+                          fontSize: tileText,
+                          lineHeight: Math.round(tileText * 1.2),
+                          // Hidden for the frame before it's measured, so the
+                          // text never visibly jumps size as the sheet opens.
+                          opacity: tileSized ? 1 : 0,
+                        },
+                      ]}
+                    >
+                      {`${p.durationMin / 60}-hour Reset\n${eatingLine(p.durationMin)}`}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -177,7 +231,7 @@ export function WindowPlanSheet({ visible, state, onClose, onSave }: Props) {
                   <View style={styles.stepperValue}>
                     <Text style={[styles.stepperBig, { color: c.text }]}>{windowLabel(duration)}</Text>
                     <Text style={[styles.stepperSub, { color: c.textAlt }]}>
-                      {`${hoursLabel(duration)} fasting · ${hoursLabel(1440 - duration)} eating`}
+                      {`${hoursLabel(duration)} Reset · ${hoursLabel(1440 - duration)} eating window`}
                     </Text>
                   </View>
                   <Stepper
@@ -303,10 +357,12 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.catalogue, fontSize: 32, letterSpacing: -0.32 },
   subtitle: { fontFamily: fonts.catalogue, fontSize: 14, lineHeight: 19, letterSpacing: -0.14 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  measure: { position: "absolute", left: 0, top: 0, width: 2000, opacity: 0 },
   tile: {
-    width: "48.5%",
+    width: `${TILE_WIDTH_PCT * 100}%`,
     borderWidth: 1,
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: TILE_PAD_H,
     gap: 16,
     borderTopLeftRadius: 4,
     borderBottomLeftRadius: 4,

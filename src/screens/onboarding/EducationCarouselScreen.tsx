@@ -61,21 +61,8 @@ const SLIDES: Slide[] = [
     ),
     video: INTRO_VIDEO,
   },
-  // Reset Window (Figma 4329:53237 "Info 5"). Lang parked this directly under
-  // the current 02 ("Scan your face"), which reads as an insert at slot 02 —
-  // but insert-vs-replace is unconfirmed. If it was meant to REPLACE the scan
-  // card, delete that one and drop this back to 4 slides.
-  //
-  // TODO(design): the frame's media block is an empty placeholder, so this card
-  // ships imageless until Lang delivers the asset.
   {
     index: "02",
-    variant: "card",
-    title: "Time to Reset",
-    subtitle: "Fasting that actually works.",
-  },
-  {
-    index: "03",
     variant: "card",
     title: "Scan your face",
     subtitle: "Thirty seconds. Thirty biometric markers.",
@@ -85,7 +72,7 @@ const SLIDES: Slide[] = [
     imageTopOffset: 0,
   },
   {
-    index: "04",
+    index: "03",
     variant: "card",
     title: "Find your type",
     subtitle: "The moment your pattern has a name.",
@@ -95,7 +82,7 @@ const SLIDES: Slide[] = [
     imageTopOffset: 0,
   },
   {
-    index: "05",
+    index: "04",
     variant: "card",
     title: "Finally lose the weight",
     subtitle: "A daily plan that knows what you're dealing with.",
@@ -109,14 +96,14 @@ const SLIDES: Slide[] = [
   // maroon). When momentum lands on this slide, we navigate to the real
   // PreScan and the swap is invisible because the visuals already match.
   {
-    index: "06",
+    index: "05",
     variant: "preview",
     title: "",
     subtitle: "",
   },
 ];
 
-const EDU_SLIDE_COUNT = 5;
+const EDU_SLIDE_COUNT = 4;
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // On iPad, keep the carousel's phone-tuned content in a centered column of at

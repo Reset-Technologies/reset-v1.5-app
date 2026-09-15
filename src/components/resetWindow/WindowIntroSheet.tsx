@@ -22,6 +22,11 @@ import { CloseIcon } from "./icons";
 import { WindowRecPanel } from "./WindowRecPanel";
 
 const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
+// A collage of the real Window screens, in the education carousel's style.
+// Temporary until Lang's asset lands (Bryan OK'd a stopgap for this release).
+const INTRO_ART = require("../../../assets/images/window-intro-art.png");
+const { width: ART_W, height: ART_H } = Image.resolveAssetSource(INTRO_ART);
+const INTRO_ART_RATIO = ART_W / ART_H;
 
 interface Props {
   visible: boolean;
@@ -45,8 +50,8 @@ interface Props {
  * PaywallScreen consumes this gate on their behalf.
  *
  * TODO(design): step 1 opens with a 331x362 media block that is an empty grey
- * placeholder in the frame. The space is reserved here so the artwork drops
- * straight in, but until Lang delivers it the screen carries a blank panel.
+ * placeholder in the frame. It carries a stopgap collage of the real Window
+ * screens (same style as the education carousel) until Lang delivers the art.
  *
  * ⚠️ Both step-2 buttons open the picker. Lang's "Choose this" implies a
  * one-tap accept, but the handoff requires the member to choose a start time
@@ -55,6 +60,7 @@ interface Props {
  */
 export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
+  const [artBox, setArtBox] = useState<{ w: number; h: number } | null>(null);
 
   // Reset on CLOSE, not on open: resetting on open would briefly render the
   // old step on a second showing and log a stray step-2 view before snapping
@@ -92,18 +98,38 @@ export function WindowIntroSheet({ visible, recommendation, onChoose, onDismiss 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {step === 1 ? (
               <>
-                {/* Reserved for Lang's artwork (frame 4315:52650). */}
-                <View style={styles.media} />
+                {/* Frame 4315:52650's media block. Stopgap art until Lang's lands. */}
+                <View
+                  style={styles.media}
+                  onLayout={(e) =>
+                    setArtBox({
+                      w: e.nativeEvent.layout.width,
+                      h: e.nativeEvent.layout.height,
+                    })
+                  }
+                >
+                  {/* Sized from the measured block rather than percentages: a
+                      percentage maxHeight inside this ScrollView resolved against
+                      nothing and pushed the art off the top of the screen. */}
+                  {artBox ? (
+                    <Image
+                      source={INTRO_ART}
+                      style={{
+                        width: Math.min(artBox.w, artBox.h * INTRO_ART_RATIO),
+                        height: Math.min(artBox.h, artBox.w / INTRO_ART_RATIO),
+                      }}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                </View>
                 <View style={styles.titleBlock}>
                   <Text style={styles.eyebrow}>Introducing:</Text>
                   <Text style={styles.title}>Reset Window</Text>
                 </View>
+                {/* Bryan (14 Sep): no "optimal time to nourish itself", no "burns fat". */}
                 <Text style={styles.para}>
-                  Your body has an optimal time to nourish itself. This is your eating window.
-                </Text>
-                <Text style={styles.para}>
-                  Plan your intake around this window, and follow it with a Reset—a fasting
-                  period that burns fat without you having to do anything.
+                  Choose when you want to eat. Your Reset starts automatically when those hours
+                  end.
                 </Text>
               </>
             ) : (
@@ -174,18 +200,23 @@ const styles = StyleSheet.create({
   },
   // flexGrow lets the step-1 media block below take whatever height is left.
   content: { paddingHorizontal: 39, paddingBottom: spacing.lg, gap: spacing.md, flexGrow: 1 },
-  // Fills the space the text doesn't need, up to Lang's 362. A FIXED 362 pushed
-  // the second paragraph under the buttons on a Galaxy S24 (780dp screen: ~567dp
-  // between the status bar and the buttons) — it ended "…without you having to
-  // do", with nothing hinting it scrolled. On a tall iPhone this still resolves
-  // to 362.
+  // Fills ALL the space the text doesn't need, so the copy always sits just
+  // above the pinned buttons (the art is bottom-anchored inside, so spare height
+  // lands above it). Lang's frame capped this at 362, but with Bryan's one-line
+  // copy that cap left a big gap between the text and the buttons. A FIXED
+  // height pushed the copy under the buttons on a Galaxy S24 (~567dp between the
+  // status bar and the buttons), so it must stay flexible with a floor.
   media: {
     flex: 1,
     minHeight: 120,
-    maxHeight: 362,
-    borderRadius: 8,
-    backgroundColor: K.bone,
-    marginHorizontal: -3,
+    // No panel of its own: the art's cards carry their own shadows, and it runs
+    // edge to edge (cancelling the content's 39pt side padding) so it reads at
+    // a useful size — the art's own shadow margin keeps the cards off the edges.
+    marginHorizontal: -39,
+    // Sit the art on the bottom of the block, so any spare height goes above it
+    // rather than between it and the title.
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
   titleBlock: { gap: 2 },
   eyebrow: { fontFamily: fonts.quadrant, fontSize: 12, letterSpacing: -0.12, color: "#000" },

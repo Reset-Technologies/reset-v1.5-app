@@ -128,7 +128,7 @@ export function ResetWindowCard({
   };
 
   const handleImEating = () => {
-    Alert.alert("I’m eating", "Let Ester know you’re eating now?", [
+    Alert.alert("End your Reset and open your eating window?", undefined, [
       { text: "Not yet", style: "cancel" },
       {
         text: "I’m eating",
@@ -166,7 +166,7 @@ export function ResetWindowCard({
       accessibilityLabel="Edit your Reset window"
     >
       <Text style={[styles.pillText, { color: c.text }]}>
-        {`${windowLabel(state.plan.assignedDurationMin)} Fast`}
+        {`${windowLabel(state.plan.assignedDurationMin)} Window`}
       </Text>
       <PencilIcon color={c.text} size={18} />
     </TouchableOpacity>
