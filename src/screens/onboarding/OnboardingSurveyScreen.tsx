@@ -20,6 +20,7 @@ import { PersonaIntroMedia } from "./PersonaIntroMedia";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
+import { FastingInfoSheet } from "./FastingInfoSheet";
 import { logEvent } from "../../services/braze";
 import {
   SURVEY_STEPS,
@@ -178,6 +179,8 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     return () => clearTimeout(t);
   }, [stepIndex]);
 
+  const [infoOpen, setInfoOpen] = useState(false);
+
   const finalizeAnswer = (ids: string[]) => {
     if (step.kind !== "question" || ids.length === 0) return;
     logEvent(step.eventName, { value: ids.join(",") });
@@ -197,6 +200,12 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       case "restrict":
         setDietaryRestrictions(ids);
         break;
+      // Window answers ride in quizAnswers: syncOnboardingToBackend forwards
+      // only {q1,q2,q3}, so these stay client-side. The durable record of a
+      // member's Window is the plan itself (window_assigned), not these.
+      case "fastingInterest":
+        setQuizAnswer(step.key, ids[0]);
+        break;
     }
     goNext();
   };
@@ -205,6 +214,13 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
 
   const toggleOption = (id: string) => {
     if (step.kind !== "question") return;
+    // "Tell me more…" teaches and returns — it is not an answer, so the
+    // question stays on screen and nothing is written.
+    if (step.infoOptionId && id === step.infoOptionId) {
+      logEvent(`${step.eventName}_moreInfo`);
+      setInfoOpen(true);
+      return;
+    }
     if (!step.multiSelect) {
       setSelected([id]);
       // Auto-advance after a brief beat so the selection highlight reads.
@@ -227,7 +243,12 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
 
   const showProgress = step.kind !== "logo" && step.kind !== "analyzing";
   const showClose = step.kind !== "analyzing";
-  const progress = (step as any).progress ?? 0;
+  // Derived, not hand-set: every step that shows the bar fills an equal share by
+  // its position, so adding or removing a question can't skew the pacing again.
+  // The denominator is one larger than the count so the last question reads just
+  // short of full — "analyzing" follows it, and shows no bar.
+  const barSteps = SURVEY_STEPS.filter((s) => s.kind !== "logo" && s.kind !== "analyzing");
+  const progress = showProgress ? (barSteps.indexOf(step) + 1) / (barSteps.length + 1) : 0;
 
   return (
     <View style={styles.container}>
@@ -348,6 +369,8 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
           </View>
         </SafeAreaView>
       )}
+
+      <FastingInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </View>
   );
 }

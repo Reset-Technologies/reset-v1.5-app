@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { shareWithLink } from "../../constants/links";
 import {
   View,
   Text,
@@ -455,9 +456,9 @@ export function RecipeDetailScreen() {
 
   const handleShare = async () => {
     try {
-      await Share.share({
-        message: `${meal.name} — recommended by Ester on Reset`,
-      });
+      await Share.share(
+        shareWithLink(`${meal.name} — recommended by Ester on Reset`),
+      );
     } catch {
       // Cancelled or share failed silently
     }

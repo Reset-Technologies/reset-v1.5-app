@@ -8,6 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Linking,
+  Alert,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { PurchasesPackage } from "react-native-purchases";
@@ -15,7 +16,9 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
+import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent } from "../../services/braze";
+import { logout } from "../../services/auth";
 import {
   getCurrentOffering,
   purchasePackage,
@@ -393,14 +396,53 @@ function PlanCard({
 }
 
 export function PaywallScreen({ navigation }: Props) {
-  const { state, setHomeV2Enabled, completeOnboarding, setSubscriptionTier } =
-    useApp();
+  const {
+    state,
+    setHomeV2Enabled,
+    completeOnboarding,
+    setSubscriptionTier,
+    clearAuth,
+  } = useApp();
   const toast = useToast();
   // Gate mode: the Paywall doubles as a hard wall for free users who have
   // already finished onboarding (RootNavigator routes them here instead of
   // Main). In that mode there is no "skip into the app" — subscribing flips the
   // tier to 'pro', which re-renders RootNavigator straight into Main.
   const isGate = state.user.hasCompletedOnboarding;
+
+  // Sign out — the only way off this screen for someone signed in to the WRONG
+  // account. A returning member who used "Continue with Apple" (Hide My Email)
+  // lands here in a brand-new free account while their real subscription sits
+  // on a different email, and "Restore Purchase" can't see a Stripe
+  // subscription. Before this link their only exit was deleting the app — and
+  // on Android even that fails, because Auto Backup restores the session.
+  // (Support case, 2026-09-13.)
+  //
+  // Same teardown as Settings: logout() then clearAuth(). NOT resetState(),
+  // which also clears hasCompletedOnboarding and would march a gate-mode member
+  // back through the whole education carousel instead of straight to sign-in.
+  //  - Gate mode: RootNavigator falls through to the Auth stack (Login) by
+  //    itself once isAuthenticated flips.
+  //  - Onboarding mode: RootNavigator checks the Onboarding branch before auth,
+  //    so the member would stay on this paywall with no session — replace to
+  //    the onboarding stack's Login route explicitly. Never in gate mode:
+  //    GateNavigator has no Login route and the call would throw.
+  // The event is logged BEFORE logout(), which wipes the Braze identity.
+  const handleSignOut = () => {
+    Alert.alert("Sign out?", "You can sign in with a different account.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          logEvent("onboarding_paywall_signOutCTA", { gate: isGate });
+          await logout();
+          clearAuth();
+          if (!isGate) navigation.replace("Login");
+        },
+      },
+    ]);
+  };
   // Yearly is the default per Figma (the highlighted card on first render).
   const [selectedPlan, setSelectedPlan] = React.useState<"monthly" | "yearly">(
     "yearly"
@@ -448,6 +490,21 @@ export function PaywallScreen({ navigation }: Props) {
   // into the post-onboarding meal flow once the Main stack has mounted.
   const proceedToApp = () => {
     setHomeV2Enabled(true);
+    // Onboarding IS the Reset Window introduction for a new member (education
+    // card → the two survey questions → the recommendation on the score card),
+    // so consume the one-time intro here. Without this they finish onboarding
+    // and are immediately "introduced" to a feature they were just taught.
+    // The handoff STATE_MACHINE is explicit that the full-screen intro is for
+    // EXISTING members: "New users reach [UNASSIGNED] after paid unlock.
+    // Existing users see the full-screen Window intro once."
+    // Keyed on having actually ANSWERED the onboarding Window question, not
+    // merely on !isGate: a returning legacy member reaches here with
+    // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
+    // education carousel and the survey entirely. They never met the feature,
+    // so they must still get the intro.
+    const uid = state.auth.authUser?.id;
+    const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
+    if (!isGate && uid && sawWindowInOnboarding) markWindowIntroShown(uid);
     completeOnboarding();
     // Defer deep navigation until the Main stack has actually mounted —
     // completeOnboarding flips the root state, which triggers a re-render
@@ -767,6 +824,19 @@ export function PaywallScreen({ navigation }: Props) {
               <Text style={styles.footerText}>Terms of Use</Text>
             </TouchableOpacity>
           </View>
+          {state.auth.authUser ? (
+            // Showing WHICH account is the point: "signed in as
+            // xk7…@privaterelay.appleid.com" tells a member at a glance they
+            // are in the wrong place.
+            <View style={styles.accountRow}>
+              <Text style={styles.accountText} numberOfLines={1} ellipsizeMode="middle">
+                Signed in as {state.auth.authUser.email ?? "this account"}
+              </Text>
+              <TouchableOpacity onPress={handleSignOut} hitSlop={8}>
+                <Text style={styles.signOutText}>Sign out</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
@@ -1140,5 +1210,27 @@ const styles = StyleSheet.create({
     width: 0.5,
     height: 12,
     backgroundColor: DIVIDER,
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingTop: 10,
+  },
+  accountText: {
+    flexShrink: 1,
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    color: BONE,
+    opacity: 0.7,
+    letterSpacing: -0.12,
+  },
+  signOutText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    color: BONE,
+    letterSpacing: -0.12,
+    textDecorationLine: "underline",
   },
 });

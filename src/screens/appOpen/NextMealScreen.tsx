@@ -34,6 +34,7 @@ import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { AiConsentNudge } from "../../components/AiConsentNudge";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 import { logEvent } from "../../services/braze";
+import { pickMealInSlot, pickNextMeal, type Slot } from "../../utils/nextMeal";
 
 // The user's metabolic-type mark (full-colour), shown centered in the top bar.
 // Ember maps to the "Restorer" asset (display name = Restorer, key = Ember).
@@ -44,41 +45,6 @@ const TYPE_LOGO = {
   Chameleon: require("../../../assets/images/type-logos/Chameleon.png"),
   Explorer: require("../../../assets/images/type-logos/Explorer.png"),
 };
-
-type Slot = "breakfast" | "lunch" | "dinner" | "snack";
-
-const SLOT_ORDER: Slot[] = ["breakfast", "lunch", "dinner", "snack"];
-
-function preferredSlot(): Slot {
-  const hour = new Date().getHours();
-  if (hour < 11) return "breakfast";
-  if (hour < 15) return "lunch";
-  if (hour < 20) return "dinner";
-  return "snack";
-}
-
-function mealsForSlot(plan: DailyPlan, slot: Slot): DailyPlanMeal[] {
-  if (slot === "snack") return plan.snack ? [plan.snack] : [];
-  return plan[slot] ?? [];
-}
-
-function pickMealInSlot(plan: DailyPlan, slot: Slot): DailyPlanMeal | null {
-  const meals = mealsForSlot(plan, slot);
-  if (meals.length === 0) return null;
-  const eaten = new Set(plan.eatenMealIds?.[slot] ?? []);
-  return meals.find((m) => !eaten.has(m.id)) ?? meals[0];
-}
-
-function pickNextMeal(plan: DailyPlan): { slot: Slot; meal: DailyPlanMeal } | null {
-  const preferred = preferredSlot();
-  const start = SLOT_ORDER.indexOf(preferred);
-  for (let i = 0; i < SLOT_ORDER.length; i++) {
-    const slot = SLOT_ORDER[(start + i) % SLOT_ORDER.length];
-    const meal = pickMealInSlot(plan, slot);
-    if (meal) return { slot, meal };
-  }
-  return null;
-}
 
 function formatPrep(meal: DailyPlanMeal): string {
   return meal.prepTime ? `${meal.prepTime} mins` : "";

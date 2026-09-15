@@ -30,6 +30,8 @@ import { TypeRevealHero } from "./TypeRevealHero";
 import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
 import { playRevealHaptics } from "../../utils/revealHaptics";
 import { TypeSummaryCard } from "./TypeSummaryCard";
+import { shareWithLink } from "../../constants/links";
+import { WindowRecCard } from "./WindowRecCard";
 import { StatDetailSheet, StatDetailData } from "../profile/StatDetailSheet";
 import { TYPE_PRIMARY } from "../../constants/metabolicProfile";
 
@@ -110,14 +112,14 @@ const CARD_SIDE_MARGIN = 12;
 // margins is already < CONTENT_MAX_WIDTH). The `left: (SCREEN_W - cardW)/2`
 // positioning below keeps the narrower card centered automatically.
 const CARD_W = Math.min(SCREEN_W - CARD_SIDE_MARGIN * 2, CONTENT_MAX_WIDTH);
-const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
+const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
 
-const TOTAL_CARDS = 5;
+const TOTAL_CARDS = 6;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
 // fetch fails outright (timeout, auth error, etc.). The normal "no scan"
@@ -149,7 +151,9 @@ const ENTRY_POSE = [
   { dx: SCREEN_W * 0.6, dy: -SCREEN_H * 0.45, rot: 13 },
   // idx 3 (insight)
   { dx: SCREEN_W * 0.42, dy: -SCREEN_H * 0.3, rot: 9 },
-  // idx 4 (back / meal teaser): subtle settle
+  // idx 4 (Reset Window recommendation)
+  { dx: SCREEN_W * 0.34, dy: -SCREEN_H * 0.25, rot: 7 },
+  // idx 5 (back / meal teaser): subtle settle
   { dx: SCREEN_W * 0.28, dy: -SCREEN_H * 0.2, rot: 6 },
 ];
 
@@ -661,7 +665,9 @@ export function TypeRevealScreen({ navigation }: Props) {
     // either one before snapping to the real text.
     Animated.stagger(
       140,
-      [4, 3, 2, 1, 0].map((i) =>
+      // Back-to-front, derived from TOTAL_CARDS — a hardcoded list here silently
+      // leaves any new card parked at its pre-entry pose.
+      Array.from({ length: TOTAL_CARDS }, (_, n) => TOTAL_CARDS - 1 - n).map((i) =>
         Animated.spring(slideIn[i], {
           toValue: 1,
           useNativeDriver: true,
@@ -737,7 +743,7 @@ export function TypeRevealScreen({ navigation }: Props) {
     [pan]
   );
 
-  const renderCard = (idx: 0 | 1 | 2 | 3 | 4) => {
+  const renderCard = (idx: 0 | 1 | 2 | 3 | 4 | 5) => {
     const isActive = idx === activeIdx;
     const isDismissed = idx < activeIdx;
     const pose = ENTRY_POSE[idx];
@@ -812,9 +818,11 @@ export function TypeRevealScreen({ navigation }: Props) {
           onShareResults={async () => {
             logEvent("onboarding_type_reveal_share");
             try {
-              await Share.share({
-                message: `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${TYPE_TAGLINE[metabolicType]}`,
-              });
+              await Share.share(
+                shareWithLink(
+                  `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${TYPE_TAGLINE[metabolicType]}`,
+                ),
+              );
             } catch {}
           }}
         />
@@ -850,6 +858,14 @@ export function TypeRevealScreen({ navigation }: Props) {
           // internally before the card can overflow. Derived from the
           // (responsive) card height so it adapts on Android's shorter card.
           bodyMaxHeight={Math.max(80, Math.floor((cardH - 340) / 2))}
+        />
+      );
+    } else if (idx === 4) {
+      content = (
+        <WindowRecCard
+          width={CARD_WIDTHS[4]}
+          height={cardH}
+          typeLogo={TYPE_LOGO[metabolicType]}
         />
       );
     } else {
@@ -919,6 +935,7 @@ export function TypeRevealScreen({ navigation }: Props) {
           state with just the spinner until both resolve. */}
       {loaded && (
         <>
+          {renderCard(5)}
           {renderCard(4)}
           {renderCard(3)}
           {renderCard(2)}
