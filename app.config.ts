@@ -54,7 +54,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 🔴 There is no OTA channel (expo-updates is not installed), so EVERY fix,
   // including a one-line analytics one, costs a store release. Batch them —
   // unless, as with 3.1.1, the fix is worthless if it lands after the data.
-  version: "3.1.1",
+  // 3.2.0: Reset Window (needs reset-api #123 deployed first).
+  version: "3.2.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
