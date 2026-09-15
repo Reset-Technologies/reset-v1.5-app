@@ -17,6 +17,8 @@ export type PayoffCopyId =
   | "W_PAYOFF_03"
   | "W_PAYOFF_04";
 
+export type WindowDifficulty = "easy" | "fine" | "rough";
+
 export interface WindowInstance {
   id: string;
   localDate: string;
@@ -30,6 +32,7 @@ export interface WindowInstance {
   earlyEnd: boolean;
   completion: boolean | null;
   flipShown: boolean;
+  difficulty: WindowDifficulty | null;
 }
 
 export interface WindowPlan {
@@ -50,6 +53,31 @@ export interface WindowProgress {
   totalFastingMin: number;
   longestResetMin: number | null;
   sevenDayAvgMin: number | null;
+  // Actual fasting minutes in the last 30 local days vs the 30 before.
+  last30DaysFastingMin: number;
+  prior30DaysFastingMin: number;
+}
+
+export type RecommendationAction =
+  | "hold"
+  | "gather"
+  | "change_timing"
+  | "shorten"
+  | "lengthen"
+  | "safety_ease";
+
+/** A weekly Window decision: an offer to accept or decline, or a note shown once. */
+export interface WeeklyUpdate {
+  id: string;
+  action: RecommendationAction;
+  reasonCode: string;
+  copyId: string;
+  needsDecision: boolean;
+  oldDurationMin: number;
+  newDurationMin: number | null;
+  oldStartLocalTime: string;
+  newStartLocalTime: string | null;
+  decidedAt: string;
 }
 
 export interface WindowState {
@@ -61,11 +89,28 @@ export interface WindowState {
   plan: WindowPlan | null;
   activeInstance: WindowInstance | null;
   nextScheduledStartAt: string | null;
+  // The next Reset has been moved "tonight only".
+  nextResetRescheduled: boolean;
   pendingPayoff: (WindowInstance & {
     copyId: PayoffCopyId;
     currentStreak: number;
+    // Ask Easy / Fine / Rough with this Payoff (the server keeps the weekly budget).
+    askDifficulty: boolean;
   }) | null;
   progress: WindowProgress;
+  weeklyUpdate: WeeklyUpdate | null;
+}
+
+export type WindowHistoryState = "complete" | "short" | "running" | "hold" | "none";
+
+export interface WindowHistoryDay {
+  date: string; // YYYY-MM-DD, the day the Reset started
+  state: WindowHistoryState;
+  instanceId: string | null;
+  actualDurationMin: number | null;
+  requiredElapsedMin: number | null;
+  actualStartAt: string | null;
+  actualEndAt: string | null;
 }
 
 const BASE = "/api/reset-window";
@@ -112,6 +157,23 @@ export function markPayoffShown(instanceId: string): Promise<{ success: true }> 
   });
 }
 
+/** Showing the Easy / Fine / Rough question spends the weekly budget. */
+export function markDifficultyPrompted(instanceId: string): Promise<{ success: true }> {
+  return apiClient(`${BASE}/instances/${instanceId}/difficulty-prompted`, {
+    method: "POST",
+  });
+}
+
+export function setDifficulty(
+  instanceId: string,
+  response: WindowDifficulty,
+): Promise<{ success: true }> {
+  return apiClient(`${BASE}/instances/${instanceId}/difficulty`, {
+    method: "POST",
+    body: JSON.stringify({ response }),
+  });
+}
+
 export function startHold(reason?: string): Promise<WindowState> {
   return apiClient<WindowState>(`${BASE}/hold`, {
     method: "POST",
@@ -121,4 +183,38 @@ export function startHold(reason?: string): Promise<WindowState> {
 
 export function endHold(): Promise<WindowState> {
   return apiClient<WindowState>(`${BASE}/resume`, { method: "POST" });
+}
+
+/** "Tonight only": move the next Reset's start without changing the plan. */
+export function setNextReset(startAt: string): Promise<WindowState> {
+  return apiClient<WindowState>(`${BASE}/next-reset`, {
+    method: "PUT",
+    body: JSON.stringify({ startAt }),
+  });
+}
+
+export function clearNextReset(): Promise<WindowState> {
+  return apiClient<WindowState>(`${BASE}/next-reset`, { method: "DELETE" });
+}
+
+export function getWindowHistory(
+  days = 35,
+): Promise<{ timezone: string; days: WindowHistoryDay[] }> {
+  return apiClient(`${BASE}/history?days=${days}`);
+}
+
+export function requestLongerWindow(): Promise<WindowState> {
+  return apiClient<WindowState>(`${BASE}/recommendations/longer`, { method: "POST" });
+}
+
+export function markRecommendationSeen(id: string): Promise<{ success: true }> {
+  return apiClient(`${BASE}/recommendations/${id}/seen`, { method: "POST" });
+}
+
+export function acceptRecommendation(id: string): Promise<WindowState> {
+  return apiClient<WindowState>(`${BASE}/recommendations/${id}/accept`, { method: "POST" });
+}
+
+export function declineRecommendation(id: string): Promise<WindowState> {
+  return apiClient<WindowState>(`${BASE}/recommendations/${id}/decline`, { method: "POST" });
 }

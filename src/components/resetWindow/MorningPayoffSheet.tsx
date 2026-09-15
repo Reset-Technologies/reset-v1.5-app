@@ -13,9 +13,10 @@ import { fonts } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent } from "../../services/braze";
 import {
+  markDifficultyPrompted,
   markPayoffShown,
-  type PayoffCopyId,
-  type WindowInstance,
+  setDifficulty,
+  type WindowDifficulty,
   type WindowState,
 } from "../../services/resetWindow";
 import {
@@ -31,7 +32,13 @@ import { windowColors } from "./palette";
 const MINUTE_MS = 60_000;
 const ADJUST_STEP_MIN = 15;
 
-export type PendingPayoff = WindowInstance & { copyId: PayoffCopyId; currentStreak: number };
+export type PendingPayoff = NonNullable<WindowState["pendingPayoff"]>;
+
+const DIFFICULTIES: { value: WindowDifficulty; label: string }[] = [
+  { value: "easy", label: "Easy" },
+  { value: "fine", label: "Fine" },
+  { value: "rough", label: "Rough" },
+];
 
 interface Props {
   payoff: PendingPayoff | null;
@@ -63,6 +70,7 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
   const [draft, setDraft] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [difficulty, setAnswer] = useState<WindowDifficulty | null>(null);
 
   // Mark it shown the moment it is on screen — "shown once" is about being
   // seen, not about the member pressing Done.
@@ -74,7 +82,10 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
     setAdjusted(false);
     setEditing(null);
     setError(null);
+    setAnswer(null);
     markPayoffShown(payoff.id).catch(() => {});
+    // The server keeps the question's weekly budget; showing it spends it.
+    if (payoff.askDifficulty) markDifficultyPrompted(payoff.id).catch(() => {});
     logEvent("morning_payoff_shown", {
       variant: payoff.copyId,
       actualDurationMin: payoff.actualDurationMin ?? 0,
@@ -90,6 +101,12 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
   const headline = adjusted
     ? `You reset for ${durationWords(durationMin)}.`
     : payoffLine(payoff.copyId, durationMin, streak);
+
+  const answer = (value: WindowDifficulty) => {
+    setAnswer(value);
+    logEvent("window_difficultyCTA", { response: value });
+    setDifficulty(payoff.id, value).catch(() => setAnswer(null));
+  };
 
   const beginEdit = (field: "start" | "end") => {
     setEditing(field);
@@ -112,7 +129,9 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
       setStreak(next.progress.currentStreak);
       setAdjusted(true);
       setEditing(null);
-      logEvent("window_adjusted", { field: editing });
+      // The server records the canonical `window_adjusted`; a client event of
+      // the same name would count every correction twice in Braze.
+      logEvent("window_adjustCTA", { field: editing, surface: "payoff" });
     } catch (err: any) {
       setError(err?.message || "Couldn’t save that time. Try again.");
     } finally {
@@ -134,7 +153,7 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
               <Text style={[styles.title, { color: c.text }]}>{headline}</Text>
               <Text style={[styles.subtitle, { color: c.textAlt }]}>
                 {adjusted
-                  ? "Updated."
+                  ? COPY.W_ADJUSTED_01
                   : short
                     ? COPY.W_EARLY_01
                     : [windowText ? `Your Window: ${windowText}` : null, nextStartText ? `Next Reset ${nextStartText}` : null]
@@ -205,6 +224,36 @@ export function MorningPayoffSheet({ payoff, windowText, nextStartText, onDone, 
                       <Text style={[styles.ghostBtnText, { color: K.brown }]}>Save</Text>
                     )}
                   </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
+            {/* PLACEHOLDER UI — no Lang design yet for Easy / Fine / Rough. */}
+            {payoff.askDifficulty ? (
+              <View style={styles.difficulty}>
+                <Text style={[styles.statLabel, { color: c.textAlt }]}>
+                  {difficulty ? COPY.W_DIFFICULTY_THANKS : COPY.W_DIFFICULTY_01}
+                </Text>
+                <View style={styles.difficultyRow}>
+                  {DIFFICULTIES.map(({ value, label }) => {
+                    const chosen = difficulty === value;
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={[
+                          styles.difficultyChip,
+                          { backgroundColor: chosen ? K.blue : c.ghost },
+                        ]}
+                        onPress={() => answer(value)}
+                        disabled={!!difficulty}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.ghostBtnText, { color: chosen ? K.brown : c.text }]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             ) : null}
@@ -284,6 +333,9 @@ const styles = StyleSheet.create({
   editRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   editValue: { fontFamily: fonts.quadrant, fontSize: 22, letterSpacing: -0.22, flex: 1, textAlign: "center" },
   editActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  difficulty: { gap: 8 },
+  difficultyRow: { flexDirection: "row", gap: 8 },
+  difficultyChip: { flex: 1, minHeight: 40, borderRadius: 4, alignItems: "center", justifyContent: "center" },
   stepperBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   ghostBtn: { minHeight: 32, minWidth: 72, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4, alignItems: "center", justifyContent: "center" },
   ghostBtnText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
