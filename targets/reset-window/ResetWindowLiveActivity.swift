@@ -101,7 +101,7 @@ struct ResetWindowLiveActivity: Widget {
         DynamicIslandExpandedRegion(.bottom) {
           VStack(alignment: .leading, spacing: 6) {
             if display.kind != .open {
-              HStack(alignment: .firstTextBaseline, spacing: 6) {
+              VStack(alignment: .leading, spacing: 0) {
                 TimerText(display: display)
                   .font(.system(size: 28, weight: .semibold, design: .rounded))
                 Text(display.timerCaption)
@@ -155,7 +155,10 @@ private struct LockScreenView: View {
       }
 
       if display.kind != .open {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        // Caption under the clock, not beside it: `Text(timerInterval:)` takes
+        // all the width it's offered, which pushed a same-row caption to the
+        // far edge.
+        VStack(alignment: .leading, spacing: 0) {
           TimerText(display: display)
             .font(.system(size: 34, weight: .semibold, design: .rounded))
           Text(display.timerCaption)
