@@ -9,6 +9,7 @@ import {
   setWindowPlan,
   type WindowState,
 } from "../services/resetWindow";
+import { syncWindowLiveActivity } from "../utils/liveActivity";
 
 // setTimeout overflows (and fires immediately) past ~24.8 days.
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -68,6 +69,13 @@ export function useResetWindow(): ResetWindowController {
     const timer = setTimeout(refresh, Math.max(1000, ms));
     return () => clearTimeout(timer);
   }, [state, refresh]);
+
+  // Keep the lock screen's Live Activity in step with the Window. `null` means
+  // not fetched yet — skip it, or every launch would end the activity before
+  // the first read.
+  useEffect(() => {
+    if (state) syncWindowLiveActivity(state);
+  }, [state]);
 
   const run = useCallback(async (action: () => Promise<WindowState>) => {
     const next = await action();

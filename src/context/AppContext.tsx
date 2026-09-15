@@ -16,6 +16,7 @@ import {
 } from "../services/revenuecat";
 import { requestPushPermission } from "../services/pushNotifications";
 import { notifyAppOpened } from "../services/notifications";
+import { clearWindowLiveActivity } from "../utils/liveActivity";
 
 // State types
 
@@ -734,6 +735,8 @@ export function AppProvider({ children }: AppProviderProps) {
     });
     // Drop the RevenueCat identity so the next user starts clean.
     logoutRevenueCat();
+    // Take the previous member's Reset off the lock screen.
+    clearWindowLiveActivity();
   };
 
   const setHomeV2Enabled = (enabled: boolean) => {

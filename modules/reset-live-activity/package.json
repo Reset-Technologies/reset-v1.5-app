@@ -1,0 +1,6 @@
+{
+  "name": "reset-live-activity",
+  "version": "1.0.0",
+  "description": "Starts, updates and ends the Reset Window Live Activity (iOS 16.2+)",
+  "main": "index.ts"
+}

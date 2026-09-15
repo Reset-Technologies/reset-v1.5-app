@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@amplitude/analytics-react-native": "^1.7.0",
+    "@bacons/apple-targets": "^5.0.0",
     "@braze/expo-plugin": "^4.0.0",
     "@braze/react-native-sdk": "^19.1.0",
     "@expo-google-fonts/dm-sans": "^0.4.2",

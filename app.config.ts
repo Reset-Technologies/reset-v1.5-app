@@ -76,6 +76,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // The previous `.dev`-suffixed id belonged to a separate, never-released
     // record (6760977260), which is retained only as a fallback.
     bundleIdentifier: "com.betterwell.reset",
+    // Reset Technologies, LLC. @bacons/apple-targets signs the widget
+    // extension (targets/reset-window) with the same team.
+    appleTeamId: "CCL5FAK3ZA",
     // usesAppleSignIn: true, // TODO: re-enable once added to paid dev team
     // AppsFlyer OneLink (Universal Links). Without this entitlement an
     // https://greset.onelink.me/... link opens SAFARI instead of the app, and
@@ -100,6 +103,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSPhotoLibraryUsageDescription:
         "Reset may request photo access if you choose to share or upload images.",
       UIBackgroundModes: ["remote-notification"],
+      // Reset Window Live Activity (targets/reset-window). Without this the
+      // app can't start one: ActivityKit refuses every request.
+      NSSupportsLiveActivities: true,
       // SKAdNetwork — Apple's privacy-preserving install attribution, and the
       // ONLY way an ad network can be credited with an iOS install now that we
       // ship no ATT prompt (Bryan, 2026-09-03) and therefore have no IDFA.
@@ -293,6 +299,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // AppCheckCore can be integrated as a static library (broke after adding
     // expo-image's SDWebImage stack). See plugins/withModularHeaders.js.
     "./plugins/withModularHeaders",
+    // Generates native targets from targets/ — today the Reset Window Live
+    // Activity widget extension (targets/reset-window).
+    "@bacons/apple-targets",
     // Strips unused `audio`/`voip` UIBackgroundModes from the final plist
     // (Apple Guideline 2.5.4). Runs last as a safety net. See the plugin file.
     "./plugins/withCleanBackgroundModes",
