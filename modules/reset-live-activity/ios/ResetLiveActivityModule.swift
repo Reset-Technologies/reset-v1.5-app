@@ -24,8 +24,8 @@ public class ResetLiveActivityModule: Module {
       guard #available(iOS 16.2, *) else { return "unavailable" }
       let state = ResetWindowAttributes.ContentState(
         phase: phase,
-        startAt: Date(timeIntervalSince1970: startAtMs / 1000),
-        openAt: Date(timeIntervalSince1970: openAtMs / 1000),
+        startAtMs: startAtMs,
+        openAtMs: openAtMs,
         windowLabel: windowLabel
       )
       return await ResetLiveActivityController.sync(state)
@@ -66,7 +66,7 @@ enum ResetLiveActivityController {
 
     do {
       _ = try Activity.request(
-        attributes: ResetWindowAttributes(),
+        attributes: ResetWindowAttributes(brazeActivityId: nil),
         content: content,
         pushType: nil
       )

@@ -22,6 +22,8 @@ export type WindowDifficulty = "easy" | "fine" | "rough";
 export interface WindowInstance {
   id: string;
   localDate: string;
+  /** The night's immutable identity — its originally scheduled start. */
+  opportunityAt: string;
   scheduledStartAt: string;
   scheduledOpenAt: string;
   requiredElapsedMin: number;
@@ -80,6 +82,15 @@ export interface WeeklyUpdate {
   decidedAt: string;
 }
 
+export type AchievementFamily = "completed" | "streak" | "duration";
+
+export interface EarnedAchievement {
+  id: string;
+  family: AchievementFamily;
+  metricValue: number;
+  earnedAt: string;
+}
+
 export interface WindowState {
   status: WindowStatus;
   recommendation: {
@@ -89,6 +100,8 @@ export interface WindowState {
   plan: WindowPlan | null;
   activeInstance: WindowInstance | null;
   nextScheduledStartAt: string | null;
+  /** That night's identity, which is what a Live Activity is filed under. */
+  nextOpportunityAt: string | null;
   // The next Reset has been moved "tonight only".
   nextResetRescheduled: boolean;
   pendingPayoff: (WindowInstance & {
@@ -98,6 +111,8 @@ export interface WindowState {
     askDifficulty: boolean;
   }) | null;
   progress: WindowProgress;
+  /** Badges earned, oldest first (handoff CONFIG triggers). */
+  achievements: EarnedAchievement[];
   weeklyUpdate: WeeklyUpdate | null;
 }
 
@@ -217,4 +232,19 @@ export function acceptRecommendation(id: string): Promise<WindowState> {
 
 export function declineRecommendation(id: string): Promise<WindowState> {
   return apiClient<WindowState>(`${BASE}/recommendations/${id}/decline`, { method: "POST" });
+}
+
+/**
+ * Tell the server the app just put a Live Activity on the lock screen itself.
+ * The server pushes its own when the app has been closed all evening; without
+ * this it cannot tell, and the member would get two cards for one Reset.
+ */
+export function reportLiveActivity(
+  opportunityAt: string,
+  phase: "eating" | "reset",
+): Promise<{ success: true }> {
+  return apiClient(`${BASE}/live-activity`, {
+    method: "POST",
+    body: JSON.stringify({ opportunityAt, phase }),
+  });
 }

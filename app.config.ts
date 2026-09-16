@@ -292,6 +292,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // compile with an "Internal compiler error" — see the plugin file.
     "./plugins/withAppsFlyerKotlinStdlib",
     "./plugins/withRegisterPush",
+    "./plugins/withBrazeLiveActivities",
     // Applies the Firebase google-services Gradle plugin so Braze can register
     // for FCM. Inert until a google-services.json is present. See RES-199.
     "./plugins/withAndroidGoogleServices",

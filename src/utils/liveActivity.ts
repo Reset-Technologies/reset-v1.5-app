@@ -4,7 +4,7 @@ import {
   type LiveActivityContent,
 } from "../../modules/reset-live-activity";
 import { logEvent } from "../services/braze";
-import type { WindowState } from "../services/resetWindow";
+import { reportLiveActivity, type WindowState } from "../services/resetWindow";
 import { windowLabel } from "./resetWindow";
 
 /**
@@ -82,6 +82,21 @@ export async function syncWindowLiveActivity(state: WindowState): Promise<void> 
   const result = await syncLiveActivity(content);
   if (result === "started" || result === "updated") {
     logEvent(`live_activity_${result}`, { phase: content?.phase ?? "none" });
+  }
+
+  // Claim the lock screen with the server, or its scheduler will push a second
+  // card onto it. Keyed by the night, not by the time shown: a late shift or a
+  // "tonight only" move changes the time but never the night's identity.
+  if (result === "started" && content) {
+    const opportunityAt =
+      content.phase === "reset"
+        ? state.activeInstance?.opportunityAt
+        : state.nextOpportunityAt ?? null;
+    if (opportunityAt) {
+      reportLiveActivity(opportunityAt, content.phase).catch(() => {
+        // Best effort: a missed claim costs a duplicate card, never a crash.
+      });
+    }
   }
 }
 
