@@ -15,6 +15,7 @@ import { useAppPalette } from "../../hooks/useAppPalette";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import { logEvent } from "../../services/braze";
 import {
+  correctInstance,
   getWindowHistory,
   type WeeklyUpdate,
   type WindowHistoryDay,
@@ -22,7 +23,13 @@ import {
 import { ArrowIcon } from "../../components/resetWindow/icons";
 import { windowColors, type WindowColors } from "../../components/resetWindow/palette";
 import { WindowUpdateSheet } from "../../components/resetWindow/WindowUpdateSheet";
-import { durationShort, hoursTotal, windowLabel } from "../../utils/resetWindow";
+import { WindowTimeSheet } from "../../components/resetWindow/WindowTimeSheet";
+import {
+  achievementLabel,
+  durationShort,
+  hoursTotal,
+  windowLabel,
+} from "../../utils/resetWindow";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -47,6 +54,9 @@ export function WindowProgressScreen() {
   const [update, setUpdate] = useState<WeeklyUpdate | null>(null);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Correcting a Reset the member already saw the Payoff for — until now the
+  // only way to fix a wrong time was the Payoff sheet, which is gone by morning.
+  const [editing, setEditing] = useState<"start" | "end" | null>(null);
 
   const loadHistory = useCallback(() => {
     getWindowHistory()
@@ -127,6 +137,25 @@ export function WindowProgressScreen() {
             </Text>
           </View>
 
+          {/* PLACEHOLDER UI — no Lang design for badges yet. */}
+          {(state.achievements ?? []).length > 0 ? (
+            <View style={[styles.card, { borderColor: c.divider }]}>
+              <Text style={[styles.eyebrow, { color: c.textAlt }]}>Milestones</Text>
+              <View style={styles.badges}>
+                {(state.achievements ?? []).map((achievement) => (
+                  <View
+                    key={achievement.id}
+                    style={[styles.badge, { backgroundColor: c.ghost }]}
+                  >
+                    <Text style={[styles.badgeText, { color: c.text }]}>
+                      {achievementLabel(achievement)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View style={[styles.card, { borderColor: c.divider }]}>
             <Text style={[styles.eyebrow, { color: c.textAlt }]}>Your Resets</Text>
             {days === null ? (
@@ -142,6 +171,25 @@ export function WindowProgressScreen() {
             <Text style={[styles.caption, { color: c.text }]}>
               {selected ? dayDetail(selected) : "Tap a day to see that Reset."}
             </Text>
+            {/* PLACEHOLDER UI — no Lang design for correcting a past Reset. */}
+            {selected && selected.instanceId && selected.actualEndAt ? (
+              <View style={styles.adjustRow}>
+                <TouchableOpacity
+                  style={[styles.ghostBtn, styles.adjustBtn, { backgroundColor: c.ghost }]}
+                  onPress={() => setEditing("start")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.ghostBtnText, { color: c.text }]}>Adjust start</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.ghostBtn, styles.adjustBtn, { backgroundColor: c.ghost }]}
+                  onPress={() => setEditing("end")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.ghostBtnText, { color: c.text }]}>Adjust end</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <Legend colors={c} />
           </View>
 
@@ -165,6 +213,31 @@ export function WindowProgressScreen() {
         </ScrollView>
       )}
 
+      {/* Correcting a finished Reset recomputes its duration, completion,
+          streak and every total — the server does that, we just reload. */}
+      <WindowTimeSheet
+        visible={!!editing && !!selected}
+        title={editing === "end" ? "When did that Reset end?" : "When did that Reset start?"}
+        subtitle={selected ? dayDetail(selected) : null}
+        initial={
+          editing === "end"
+            ? selected?.actualEndAt ?? null
+            : selected?.actualStartAt ?? null
+        }
+        saveLabel="Save"
+        onClose={() => setEditing(null)}
+        onSave={async (iso) => {
+          if (!selected?.instanceId || !editing) return;
+          logEvent("window_adjustCTA", { field: editing, surface: "progress" });
+          await correctInstance(
+            selected.instanceId,
+            editing === "end" ? { actualEndAt: iso } : { actualStartAt: iso },
+          );
+          await controller.refresh();
+          loadHistory();
+          setSelected(null);
+        }}
+      />
       <WindowUpdateSheet
         update={update}
         onAccept={async (id) => {
@@ -350,5 +423,10 @@ const styles = StyleSheet.create({
   legendDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1 },
   error: { fontFamily: fonts.catalogue, fontSize: 14, color: K.err },
   ghostBtn: { minHeight: 48, borderRadius: 4, alignItems: "center", justifyContent: "center" },
+  adjustRow: { flexDirection: "row", gap: 8 },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  badge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4 },
+  badgeText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
+  adjustBtn: { flex: 1, minHeight: 40 },
   ghostBtnText: { fontFamily: fonts.catalogueMedium, fontSize: 16 },
 });

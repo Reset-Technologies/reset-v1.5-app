@@ -1,4 +1,8 @@
-import type { PayoffCopyId, WeeklyUpdate } from "../services/resetWindow";
+import type {
+  EarnedAchievement,
+  PayoffCopyId,
+  WeeklyUpdate,
+} from "../services/resetWindow";
 
 // Presentation helpers for Reset Window. Rules and copy come from the Reset
 // Window Product + Engineering Handoff v1.0 (ESTER COPY / FLIP + PAYOFF sheets);
@@ -196,4 +200,27 @@ export function payoffLine(
       // streak change on a short night stays quiet.
       return base;
   }
+}
+
+/**
+ * The label for a badge. PLACEHOLDER COPY — the handoff puts achievement copy
+ * and art outside the core logic ("copy/art external to core logic"), and Lang
+ * hasn't designed these yet.
+ */
+export function achievementLabel(achievement: EarnedAchievement): string {
+  const n = achievement.metricValue;
+  switch (achievement.family) {
+    case "completed":
+      return n === 1 ? "First Reset" : `${thresholdOf(achievement)} Resets`;
+    case "streak":
+      return `${thresholdOf(achievement)} in a row`;
+    default:
+      return `${thresholdOf(achievement)}-hour Reset`;
+  }
+}
+
+/** The trigger this badge is for, read back from its id. */
+function thresholdOf(achievement: EarnedAchievement): number {
+  const match = achievement.id.match(/(\d+)/);
+  return match ? Number(match[1]) : achievement.metricValue;
 }
