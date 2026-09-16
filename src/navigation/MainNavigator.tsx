@@ -22,6 +22,7 @@ import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
 import { SavedMealsScreen } from "../screens/favorites/SavedMealsScreen";
 import { WeeklyReviewScreen } from "../screens/review/WeeklyReviewScreen";
+import { WindowProgressScreen } from "../screens/window/WindowProgressScreen";
 import { TabBar } from "../components";
 import type { Meal } from "../components";
 
@@ -60,6 +61,7 @@ export type MainStackParamList = {
   };
   SavedMeals: undefined;
   WeeklyReview: undefined;
+  WindowProgress: undefined;
   Settings: undefined;
   // Weight-entry step shown before every re-scan (weight-only; reuses stored
   // height/age). Forwards its params on to Scan.
@@ -177,6 +179,13 @@ export function MainNavigator() {
         options={{
           presentation: "modal",
           animation: "slide_from_bottom",
+        }}
+      />
+      <Stack.Screen
+        name="WindowProgress"
+        component={WindowProgressScreen}
+        options={{
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

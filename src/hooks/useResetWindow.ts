@@ -2,11 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import {
+  acceptRecommendation,
+  clearNextReset,
   correctInstance,
+  declineRecommendation,
   endHold,
   getResetWindow,
   imEating as postImEating,
+  requestLongerWindow,
+  setNextReset,
   setWindowPlan,
+  startHold,
   type WindowState,
 } from "../services/resetWindow";
 import { syncWindowLiveActivity } from "../utils/liveActivity";
@@ -24,6 +30,13 @@ export interface ResetWindowController {
     times: { actualStartAt?: string; actualEndAt?: string },
   ) => Promise<WindowState>;
   resume: () => Promise<WindowState>;
+  pause: () => Promise<WindowState>;
+  /** "Tonight only" — moves the next Reset without changing the plan. */
+  moveNextReset: (startAt: string) => Promise<WindowState>;
+  restoreNextReset: () => Promise<WindowState>;
+  askLonger: () => Promise<WindowState>;
+  acceptUpdate: (id: string) => Promise<WindowState>;
+  declineUpdate: (id: string) => Promise<WindowState>;
 }
 
 /**
@@ -91,5 +104,11 @@ export function useResetWindow(): ResetWindowController {
     imEating: () => run(postImEating),
     correct: (instanceId, times) => run(() => correctInstance(instanceId, times)),
     resume: () => run(endHold),
+    pause: () => run(() => startHold()),
+    moveNextReset: (startAt) => run(() => setNextReset(startAt)),
+    restoreNextReset: () => run(clearNextReset),
+    askLonger: () => run(requestLongerWindow),
+    acceptUpdate: (id) => run(() => acceptRecommendation(id)),
+    declineUpdate: (id) => run(() => declineRecommendation(id)),
   };
 }

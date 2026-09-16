@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
@@ -8,7 +11,7 @@ import { useAppPalette } from "../../hooks/useAppPalette";
 import type { ResetWindowController } from "../../hooks/useResetWindow";
 import type { DailyPlan, DailyPlanMeal } from "../../services/meals";
 import { logEvent } from "../../services/braze";
-import { markFlipShown } from "../../services/resetWindow";
+import { markFlipShown, type WeeklyUpdate } from "../../services/resetWindow";
 import {
   COPY,
   clockFace,
@@ -23,6 +26,8 @@ import { pickNextMeal, type Slot } from "../../utils/nextMeal";
 import { WindowPlanSheet } from "./WindowPlanSheet";
 import { MorningPayoffSheet, type PendingPayoff } from "./MorningPayoffSheet";
 import { WindowIntroSheet } from "./WindowIntroSheet";
+import { WindowUpdateSheet } from "./WindowUpdateSheet";
+import { WindowTimeSheet } from "./WindowTimeSheet";
 import {
   markWindowIntroShown,
   shouldShowWindowIntro,
@@ -69,12 +74,17 @@ export function ResetWindowCard({
   const userId = appState.auth.authUser?.id;
   const { evening } = useAppPalette();
   const c = windowColors(evening);
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
   const [planOpen, setPlanOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
+  const [tonightOpen, setTonightOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [payoff, setPayoff] = useState<PendingPayoff | null>(null);
+  const [update, setUpdate] = useState<WeeklyUpdate | null>(null);
   const seenPayoffs = useRef(new Set<string>());
+  const seenUpdates = useRef(new Set<string>());
   const flipped = useRef(new Set<string>());
 
   const status = state?.status;
@@ -100,6 +110,16 @@ export function ResetWindowCard({
     seenPayoffs.current.add(pending.id);
     setPayoff(pending);
   }, [state?.pendingPayoff]);
+
+  // The weekly Window decision waits its turn behind the Payoff and the intro,
+  // so the member never gets two sheets at once. Once per session; the server
+  // keeps an offer open until it is answered or expires.
+  useEffect(() => {
+    const pending = state?.weeklyUpdate;
+    if (!pending || payoff || introOpen || seenUpdates.current.has(pending.id)) return;
+    seenUpdates.current.add(pending.id);
+    setUpdate(pending);
+  }, [state?.weeklyUpdate, payoff, introOpen]);
 
   // The one-time introduction: only with no Window set, and only until the
   // member has seen it once. Dismissing leaves the card's "Set Window" CTA.
@@ -158,6 +178,43 @@ export function ResetWindowCard({
     }
   };
 
+  // PLACEHOLDER COPY for the pause confirmation — not in the copy library yet.
+  const handlePause = () => {
+    Alert.alert(
+      "Pause your Window?",
+      "For travel or illness. Your streak won’t break while it’s paused.",
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Pause",
+          onPress: async () => {
+            logEvent("window_pauseCTA");
+            try {
+              await controller.pause();
+            } catch {
+              setNotice("Couldn’t reach Reset. Try again in a moment.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const openProgress = () => {
+    logEvent("window_progressCTA", { status: state.status });
+    navigation.navigate("WindowProgress");
+  };
+
+  const links = (items: { label: string; onPress: () => void }[]) => (
+    <View style={styles.links}>
+      {items.map((item) => (
+        <TouchableOpacity key={item.label} onPress={item.onPress} hitSlop={8}>
+          <Text style={[styles.link, { color: c.text }]}>{item.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   const pill = state.plan ? (
     <TouchableOpacity
       style={[styles.pill, { backgroundColor: c.ghost }]}
@@ -199,6 +256,7 @@ export function ResetWindowCard({
         <TouchableOpacity style={[styles.ghostBtn, { backgroundColor: c.ghost }]} onPress={handleResume}>
           <Text style={[styles.ghostBtnText, { color: c.text }]}>Resume</Text>
         </TouchableOpacity>
+        {links([{ label: "Progress", onPress: openProgress }])}
       </>
     );
   } else if ((status === "RESET_ACTIVE" || status === "RESET_SHIFTED") && active) {
@@ -234,6 +292,16 @@ export function ResetWindowCard({
         <TouchableOpacity style={[styles.ghostBtn, { backgroundColor: c.ghost }]} onPress={handleImEating}>
           <Text style={[styles.ghostBtnText, { color: c.text }]}>I’m eating</Text>
         </TouchableOpacity>
+        {links([
+          {
+            label: "Adjust start",
+            onPress: () => {
+              logEvent("window_adjust_openCTA", { surface: "active" });
+              setAdjustOpen(true);
+            },
+          },
+          { label: "Progress", onPress: openProgress },
+        ])}
       </>
     );
   } else {
@@ -252,7 +320,12 @@ export function ResetWindowCard({
             streak > 0
               ? `${streak} Reset streak`
               : plan
-                ? `Your Reset starts at ${localTimeLabel(plan.startLocalTime)}`
+                ? // A "tonight only" move changes the next start, not the plan.
+                  `Your Reset starts at ${
+                    state.nextResetRescheduled && state.nextScheduledStartAt
+                      ? relativeDayTime(state.nextScheduledStartAt).split(", ")[1]
+                      : localTimeLabel(plan.startLocalTime)
+                  }`
                 : null
           }
           pill={pill}
@@ -276,6 +349,27 @@ export function ResetWindowCard({
             <Text style={[styles.timerSub, { color: c.textAlt }]}>until your Reset</Text>
           </WindowRing>
         )}
+        {state.nextResetRescheduled && state.nextScheduledStartAt ? (
+          // PLACEHOLDER COPY — the "tonight only" moment has no library line yet.
+          <Text style={[styles.body, { color: c.text }]}>
+            {`Moved for tonight: your Reset starts ${relativeDayTime(state.nextScheduledStartAt)}.`}
+          </Text>
+        ) : null}
+        {links([
+          ...(state.nextScheduledStartAt
+            ? [
+                {
+                  label: "Move tonight’s Reset",
+                  onPress: () => {
+                    logEvent("window_tonight_openCTA");
+                    setTonightOpen(true);
+                  },
+                },
+              ]
+            : []),
+          { label: "Pause", onPress: handlePause },
+          { label: "Progress", onPress: openProgress },
+        ])}
       </>
     );
   }
@@ -314,6 +408,54 @@ export function ResetWindowCard({
         nextStartText={state.nextScheduledStartAt ? relativeDayTime(state.nextScheduledStartAt) : null}
         onDone={() => setPayoff(null)}
         onCorrect={controller.correct}
+      />
+      <WindowUpdateSheet
+        update={payoff ? null : update}
+        onAccept={controller.acceptUpdate}
+        onDecline={controller.declineUpdate}
+        onClose={() => setUpdate(null)}
+      />
+      {/* PLACEHOLDER COPY in both time sheets — no library lines yet. */}
+      <WindowTimeSheet
+        visible={tonightOpen}
+        title="Move tonight’s Reset"
+        subtitle={
+          state.plan
+            ? `Just this once. Your ${windowLabel(state.plan.assignedDurationMin)} Window goes back to ${localTimeLabel(state.plan.startLocalTime)} after that.`
+            : null
+        }
+        initial={state.nextScheduledStartAt}
+        saveLabel="Move it"
+        onClose={() => setTonightOpen(false)}
+        onSave={async (startAt) => {
+          logEvent("window_tonight_saveCTA");
+          await controller.moveNextReset(startAt);
+        }}
+        secondary={
+          state.nextResetRescheduled
+            ? { label: "Use my usual time", onPress: controller.restoreNextReset }
+            : null
+        }
+      />
+      <WindowTimeSheet
+        visible={adjustOpen}
+        title="When did your Reset start?"
+        // A start correction changes the Reset's duration only; the eating
+        // window stays on the schedule (handoff TIMER + EDITS → Actual start).
+        subtitle={
+          active
+            ? `Your eating window still opens at ${relativeDayTime(active.scheduledOpenAt).split(", ")[1]}.`
+            : null
+        }
+        initial={active?.actualStartAt ?? null}
+        saveLabel="Save"
+        onClose={() => setAdjustOpen(false)}
+        onSave={async (startAt) => {
+          if (!active) return;
+          logEvent("window_adjustCTA", { field: "start", surface: "active" });
+          await controller.correct(active.id, { actualStartAt: startAt });
+          setNotice(COPY.W_ADJUSTED_01);
+        }}
       />
     </View>
   );
@@ -451,4 +593,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ghostBtnText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
+  links: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: 20, rowGap: 8 },
+  link: { fontFamily: fonts.catalogueMedium, fontSize: 14, textDecorationLine: "underline" },
 });

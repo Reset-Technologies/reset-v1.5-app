@@ -1,4 +1,4 @@
-import type { PayoffCopyId } from "../services/resetWindow";
+import type { PayoffCopyId, WeeklyUpdate } from "../services/resetWindow";
 
 // Presentation helpers for Reset Window. Rules and copy come from the Reset
 // Window Product + Engineering Handoff v1.0 (ESTER COPY / FLIP + PAYOFF sheets);
@@ -107,7 +107,78 @@ export const COPY = {
     "I’ve paused your Window while you’re away. We’ll pick it back up when you’re ready.",
   W_RESUME_01:
     "You’re back. I’m keeping the Window where it was while I get a few clean days again.",
+  W_ADJUSTED_01: "Updated.",
+
+  // Weekly Window decisions (ESTER COPY, WEEKLY DECISION tab).
+  W_HOLD_02: (window: string) =>
+    `Your Window is fitting well. I’m keeping it at ${window} this week.`,
+  W_HOLD_03: (window: string) => `I’m keeping your Window at ${window} this week.`,
+  W_GATHER_01: (window: string) =>
+    `I don’t have enough clean evidence to change your Window yet. I’m keeping ${window} this week.`,
+  W_LENGTHEN_01: (window: string, newWindow: string) =>
+    `You’ve been holding ${window} well. I want to test one small timing change: ${newWindow} this week.`,
+  W_SHORTEN_01: (newWindow: string) =>
+    `This Window is creating too much friction. I’d bring it back to ${newWindow} this week.`,
+  W_TIMING_01: (newStart: string, window: string) =>
+    `Your Reset keeps starting later than the schedule. I’d move it to ${newStart} and keep the same ${window}.`,
+  W_RB_RAMP_01:
+    "Two weeks in, and this Window has been fitting well. I’d move you to 14:10.",
+  W_RB_HOLD_01:
+    "I’m keeping 12:12 for now. I want a cleaner read before I make it longer.",
+
+  // Not in the copy library: the Easy / Fine / Rough question and its thanks.
+  W_DIFFICULTY_01: "How did that Reset feel?",
+  W_DIFFICULTY_THANKS: "Thanks — that helps me fit your Window.",
 } as const;
+
+/**
+ * Ester's line and buttons for a weekly Window decision (ESTER COPY). An offer
+ * has two buttons — accept first — and a note has one, "Continue".
+ */
+export function weeklyUpdateCopy(update: WeeklyUpdate): {
+  line: string;
+  accept: string;
+  decline: string | null;
+} {
+  const window = windowLabel(update.oldDurationMin);
+  const newWindow = windowLabel(update.newDurationMin ?? update.oldDurationMin);
+  const keep = { accept: `Use ${newWindow}`, decline: `Keep ${window}` };
+  const note = { accept: "Continue", decline: null };
+  switch (update.copyId) {
+    case "W_LENGTHEN_01":
+      return { line: COPY.W_LENGTHEN_01(window, newWindow), ...keep };
+    case "W_SHORTEN_01":
+      return { line: COPY.W_SHORTEN_01(newWindow), ...keep };
+    case "W_RB_RAMP_01":
+      return { line: COPY.W_RB_RAMP_01, ...keep };
+    case "W_TIMING_01":
+      return {
+        line: COPY.W_TIMING_01(
+          localTimeLabel(update.newStartLocalTime ?? update.oldStartLocalTime),
+          window,
+        ),
+        accept: "Move it",
+        decline: "Keep current time",
+      };
+    case "W_HOLD_01":
+      return { line: COPY.W_HOLD_01, ...note };
+    case "W_RESUME_01":
+      return { line: COPY.W_RESUME_01, ...note };
+    case "W_HOLD_02":
+      return { line: COPY.W_HOLD_02(window), ...note };
+    case "W_GATHER_01":
+      return { line: COPY.W_GATHER_01(window), ...note };
+    case "W_RB_HOLD_01":
+      return { line: COPY.W_RB_HOLD_01, ...note };
+    default:
+      return { line: COPY.W_HOLD_03(window), ...note };
+  }
+}
+
+/** "1,248h" — whole hours for lifetime totals. */
+export function hoursTotal(minutes: number): string {
+  return `${Math.floor(minutes / 60).toLocaleString("en-US")}h`;
+}
 
 export function payoffLine(
   copyId: PayoffCopyId,
