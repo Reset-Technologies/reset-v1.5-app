@@ -10,6 +10,13 @@ export interface AuthUser {
   avatarUrl?: string | null;
   timezone?: string | null;
   createdAt?: string;
+  /**
+   * True only when this call CREATED the account. Apple and Google use one
+   * endpoint for both sign-up and sign-in, so without this the app cannot tell
+   * a brand-new member from a returning one — and would report every returning
+   * member to Meta as a fresh registration.
+   */
+  isNewUser?: boolean;
 }
 
 export async function registerWithEmail(
@@ -44,6 +51,8 @@ export async function registerWithEmail(
     email: data.email,
     firstName: data.firstName,
     lastName: data.lastName,
+    // This endpoint only ever mints an account; an existing email is an error.
+    isNewUser: true,
   };
 }
 
@@ -111,6 +120,7 @@ export async function loginWithApple(idToken: string): Promise<AuthUser> {
     firstName: data.user.name ?? null,
     lastName: null,
     avatarUrl: data.user.avatarUrl ?? null,
+    isNewUser: data.isNewUser === true,
   };
 }
 
@@ -132,6 +142,7 @@ export async function loginWithGoogle(idToken: string): Promise<AuthUser> {
     firstName: data.user.name ?? null,
     lastName: null,
     avatarUrl: data.user.avatarUrl ?? null,
+    isNewUser: data.isNewUser === true,
   };
 }
 

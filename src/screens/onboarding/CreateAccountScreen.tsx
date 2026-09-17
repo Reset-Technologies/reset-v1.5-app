@@ -131,6 +131,11 @@ export function CreateAccountScreen({ navigation }: Props) {
       );
       setAuth(user);
 
+      // The account now exists. `onboarding_create_account_submitCTA` above
+      // fires on the tap and therefore counts failures too, so this is the
+      // event any acquisition reporting should be built on.
+      logEvent("signup_completed", { method: "email" });
+
       // RES-121: submit scan results FIRST so the backend has biomarkers
       // when the typing function runs on the behaviorAnswers below.
       if (state.biometrics?.raw) {
