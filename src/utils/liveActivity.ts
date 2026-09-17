@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import {
   endLiveActivity,
   syncLiveActivity,
@@ -87,7 +89,12 @@ export async function syncWindowLiveActivity(state: WindowState): Promise<void> 
   // Claim the lock screen with the server, or its scheduler will push a second
   // card onto it. Keyed by the night, not by the time shown: a late shift or a
   // "tonight only" move changes the time but never the night's identity.
-  if (result === "started" && content) {
+  //
+  // 🔑 iOS only, because only iOS has a server-driven card to collide with:
+  // Braze's Live Activity API is an ActivityKit feature. Claiming on Android
+  // would write `source: 'app'` rows the scheduler can never act on. Revisit
+  // if the server ever drives the Android card too.
+  if (result === "started" && content && Platform.OS === "ios") {
     const opportunityAt =
       content.phase === "reset"
         ? state.activeInstance?.opportunityAt

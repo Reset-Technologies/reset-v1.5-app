@@ -33,11 +33,13 @@ type NativeModule = {
   end(): Promise<void>;
 };
 
-// iOS-only, and only in binaries built after this module was added. Load it
-// defensively (same pattern as modules/build-env) so importing never throws on
-// Android, in Expo Go, or in an older dev client — every call becomes a no-op.
+// Both platforms implement the same native surface — iOS with ActivityKit,
+// Android with a promoted ongoing notification. Load it defensively (same
+// pattern as modules/build-env) so importing never throws in Expo Go, on the
+// web, or in an older dev client built before this module existed: every call
+// just becomes a no-op.
 let native: NativeModule | null = null;
-if (Platform.OS === "ios") {
+if (Platform.OS === "ios" || Platform.OS === "android") {
   try {
     native = requireNativeModule<NativeModule>("ResetLiveActivity");
   } catch {
@@ -45,7 +47,11 @@ if (Platform.OS === "ios") {
   }
 }
 
-/** True when this device can show Live Activities and the member allows them. */
+/**
+ * True when this device can show the card and the member allows it. On iOS
+ * that is ActivityKit's own switch; on Android it is the notification
+ * permission, which Android 13+ requires before anything appears at all.
+ */
 export function isLiveActivitySupported(): boolean {
   try {
     return native?.isSupported() === true;
