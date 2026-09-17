@@ -85,9 +85,17 @@ try {
 const ALLOWED_EVENTS: ReadonlySet<string> = new Set([
   // Top of funnel — Tas's "quiz started".
   "onboarding_quiz",
-  // Sign-up started / completed.
+  // Sign-up started / attempted / completed.
   "onboarding_account_gate",
+  // 🔴 Fires on the TAP, before the server answers, and only on the email
+  // screen — so it counts failed attempts and misses Apple/Google entirely.
+  // Kept for continuity with the existing Meta mapping; optimise on
+  // `signup_completed` instead.
   "onboarding_create_account_submitCTA",
+  // The real registration: fired only after an account actually exists, on all
+  // three paths (email, Apple, Google). This is the one to map to Meta's
+  // fb_mobile_complete_registration.
+  "signup_completed",
   // Paywall and the purchase decision.
   "onboarding_paywall_view",
   "onboarding_paywall_subscribe", // intent (tap), not revenue
@@ -104,6 +112,7 @@ const ALLOWED_EVENTS: ReadonlySet<string> = new Set([
  * 🔴 `metabolic_type` must never appear here.
  */
 const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set([
+  "method", // "email" | "apple" | "google" — which sign-up path was used
   "plan", // "monthly" | "annual"
   "product_id", // store product identifier
   "price", // number, localized store price

@@ -221,6 +221,12 @@ export function AccountGateScreen({ navigation }: Props) {
       );
       setAuth(user);
 
+      // 🔑 ONLY when the server says this login created the account. Apple and
+      // Google use one endpoint for sign-up and sign-in, so firing
+      // unconditionally would report every returning member as a new
+      // registration and inflate every cost-per-signup we report.
+      if (user.isNewUser) logEvent("signup_completed", { method: "apple" });
+
       await syncOnboardingData();
 
       finishAccount();
@@ -245,6 +251,12 @@ export function AccountGateScreen({ navigation }: Props) {
       const user = await loginWithGoogle(idToken);
       setUserAccount(user.email ?? "google-user", user.firstName ?? undefined);
       setAuth(user);
+
+      // 🔑 ONLY when the server says this login created the account. Apple and
+      // Google use one endpoint for sign-up and sign-in, so firing
+      // unconditionally would report every returning member as a new
+      // registration and inflate every cost-per-signup we report.
+      if (user.isNewUser) logEvent("signup_completed", { method: "google" });
 
       await syncOnboardingData();
 
