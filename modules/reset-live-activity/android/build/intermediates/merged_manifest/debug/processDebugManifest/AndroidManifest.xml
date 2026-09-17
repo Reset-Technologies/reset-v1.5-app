@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="expo.modules.resetliveactivity" >
+
+    <uses-sdk android:minSdkVersion="26" />
+    <!--
+       Android 13+ gates every notification; 16 gates the promoted (lock screen
+       + status bar chip) treatment separately. Neither is dangerous-at-runtime
+       for us beyond the standard POST_NOTIFICATIONS prompt the app already
+       shows for push.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+    <!--
+       Lets the phase flip land on the second instead of within ~9 minutes.
+       🔴 Auto-granted on Android 12/13, DENIED BY DEFAULT on 14+ (only
+       alarm/clock/calendar apps get the auto-granted USE_EXACT_ALARM, and Play
+       policy would reject us for claiming it). So this is an opportunistic
+       upgrade, never a requirement: we always check canScheduleExactAlarms()
+       and fall back to an inexact alarm. We deliberately do NOT prompt for it
+       — sending a member into system settings to make a label change four
+       minutes sooner is a bad trade.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <application>
+        <receiver
+            android:name="expo.modules.resetliveactivity.ResetWindowAlarmReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>
