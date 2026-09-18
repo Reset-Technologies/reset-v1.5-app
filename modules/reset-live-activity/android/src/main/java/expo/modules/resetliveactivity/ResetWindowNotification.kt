@@ -51,7 +51,7 @@ object ResetWindowNotification {
   ) {
     ensureChannel(context)
     val manager = context.getSystemService(NotificationManager::class.java) ?: return
-    manager.notify(NOTIFICATION_ID, build(context, phase, startAtMs, openAtMs, windowLabel))
+    manager.notify(NOTIFICATION_ID, build(context, phase, startAtMs, openAtMs))
     scheduleBoundary(context, phase, startAtMs, openAtMs, windowLabel)
   }
 
@@ -65,16 +65,19 @@ object ResetWindowNotification {
     phase: String,
     startAtMs: Long,
     openAtMs: Long,
-    windowLabel: String,
   ): Notification {
     val reset = phase == PHASE_RESET
     // Counting UP from the start once the Reset is running, DOWN to it while
     // the eating window is still open — mirrors the iOS card exactly.
     val base = startAtMs
-    val title = if (reset) "You're in your Reset" else "Eating window open"
+    // Bryan's wording, 2026-09-17 — the same language as the iOS push alert, so
+    // a member meets one voice across platforms. 🔑 The Window label ("14:10")
+    // is deliberately NOT here: the time and the progress bar already say it,
+    // and the line is read at a glance.
+    val title = if (reset) "Your Reset is on" else "Reset starts soon"
     val text =
-      if (reset) "$windowLabel Window · Eating window opens at ${clock(openAtMs)}"
-      else "$windowLabel Window · Your Reset starts at ${clock(startAtMs)}"
+      if (reset) "Eating window opens at ${clock(openAtMs)}."
+      else "Your eating window closes at ${clock(startAtMs)}."
 
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(smallIcon(context))
