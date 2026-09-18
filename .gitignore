@@ -47,6 +47,10 @@ yarn-error.*
 /ios
 /android
 
+# Local Expo modules compile in place; their gradle output is not source.
+modules/*/android/build/
+modules/*/android/.gradle/
+
 # local Claude Code session/memory data
 .claude/
 
