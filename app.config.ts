@@ -205,6 +205,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: "./assets/favicon.png",
   },
   plugins: [
+    // Google Sign-In. On iOS the native SDK completes its flow through a URL
+    // scheme that is the iOS client id with its dot-separated parts reversed,
+    // so the plugin needs it at prebuild — the JS `configure()` call cannot add
+    // it. Omitted entirely when unset so an incomplete setup cannot produce a
+    // build that claims a scheme it does not have.
+    ...(process.env.GOOGLE_IOS_REVERSED_CLIENT_ID
+      ? [
+          [
+            "@react-native-google-signin/google-signin",
+            { iosUrlScheme: process.env.GOOGLE_IOS_REVERSED_CLIENT_ID },
+          ] as [string, Record<string, unknown>],
+        ]
+      : []),
     "expo-font",
     "expo-video",
     [
@@ -311,6 +324,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
+    // Google sign-in on iOS. Empty until the iOS OAuth client exists in Google
+    // Cloud — the screens gate the Google button on this being set, so an unset
+    // value leaves iOS exactly as it is today (Apple only) rather than showing
+    // a button that cannot work.
+    googleIosClientId: process.env.GOOGLE_IOS_CLIENT_ID ?? "",
     // Amplitude client-side analytics. This is the PUBLIC ingestion key — it
     // ships in the bundle by design, exactly like the Braze keys above and the
     // RevenueCat public keys below — so it lives here as a default rather than
@@ -336,9 +354,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // bundle — these are the *public* client keys, not a secret key — so they
     // live here as defaults (same as the Braze keys above), overridable via
     // env. Both platforms point at the same RevenueCat project (same `pro`
-    // entitlement + webhook). Android's offering stays empty until the Play
-    // subscriptions are created (gated on the Play payments profile), so the
-    // paywall falls back to static prices on Android until then.
+    // entitlement + webhook). Android's `default` offering is live and
+    // populated (verified 2026-09-21): $rc_annual -> pro_yearly and
+    // $rc_monthly -> pro_monthly, so the paywall reads real store prices on
+    // both platforms. It fell back to static prices on Android only while the
+    // Play subscriptions did not yet exist.
     revenueCatIosApiKey:
       process.env.REVENUECAT_IOS_API_KEY ?? "appl_fFSqzbabmCIEVvADlYAwdtHxhMv",
     revenueCatAndroidApiKey:

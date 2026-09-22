@@ -18,6 +18,45 @@ export class AuthExpiredError extends Error {
   }
 }
 
+/**
+ * A non-2xx response, carrying the server's whole body rather than just its
+ * message.
+ *
+ * Previously every failed request was flattened to `new Error(error.message)`,
+ * which threw away the status and any structured fields. That was fine while
+ * the app only ever displayed the text, but the account-linking flow needs to
+ * BRANCH on what went wrong — "this email already has an account, send them to
+ * the connect screen" reads nothing like "your password is wrong", and the two
+ * are only distinguishable by `code`.
+ *
+ * `message` is still set, so every existing `catch (err) { setError(err.message) }`
+ * keeps working unchanged.
+ *
+ * ⚠️ `code` here is the SERVER's code. The Apple/Google sign-in screens also
+ * test `err.code` against their SDKs' cancellation strings
+ * ("ERR_REQUEST_CANCELED" / "SIGN_IN_CANCELLED"), but those errors come from the
+ * provider SDKs and never pass through here, and both sides compare specific
+ * literals — so the two namespaces cannot be confused.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  /** The parsed response body, for fields beyond `code` (e.g. `authProvider`). */
+  readonly body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    super(
+      typeof body?.message === "string"
+        ? body.message
+        : `Request failed: ${status}`,
+    );
+    this.name = "ApiError";
+    this.status = status;
+    this.code = typeof body?.code === "string" ? body.code : undefined;
+    this.body = body ?? {};
+  }
+}
+
 // Token storage helpers
 export async function storeTokens(
   accessToken: string,
@@ -124,7 +163,7 @@ export async function apiClient<T = any>(
 
       if (!retryRes.ok) {
         const error = await retryRes.json().catch(() => ({}));
-        throw new Error(error.message || `Request failed: ${retryRes.status}`);
+        throw new ApiError(retryRes.status, error);
       }
       return retryRes.json();
     } catch (err) {
@@ -136,7 +175,7 @@ export async function apiClient<T = any>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
-    throw new Error(error.message || `Request failed: ${res.status}`);
+    throw new ApiError(res.status, error);
   }
 
   return res.json();

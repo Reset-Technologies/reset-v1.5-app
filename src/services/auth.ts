@@ -146,6 +146,36 @@ export async function loginWithGoogle(idToken: string): Promise<AuthUser> {
   };
 }
 
+/**
+ * Connect an additional sign-in method to the account we are ALREADY signed in
+ * as. Requires a valid session — ownership of the existing account is proved by
+ * the token, not by matching an email.
+ *
+ * This is what makes "I already have a Reset account" work for members Apple
+ * hides behind a relay address: their Apple email matches nothing, so the
+ * server cannot link them on sign-in, but once they are in they can attach the
+ * method themselves.
+ *
+ * Returns the account's sign-in methods after linking.
+ */
+export async function linkAppleToAccount(
+  idToken: string,
+): Promise<{ authProvider: string[] }> {
+  return apiClient("/api/auth/apple/link", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+}
+
+export async function linkGoogleToAccount(
+  idToken: string,
+): Promise<{ authProvider: string[] }> {
+  return apiClient("/api/auth/google/link", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+}
+
 export async function fetchMe(): Promise<AuthUser> {
   const data = await apiClient("/api/auth/me");
 

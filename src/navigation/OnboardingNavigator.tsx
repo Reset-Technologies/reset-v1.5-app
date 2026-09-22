@@ -17,6 +17,7 @@ import {
   WelcomeBackScreen,
 } from "../screens/onboarding";
 import { LoginScreen } from "../screens/auth/LoginScreen";
+import { LinkAccountScreen } from "../screens/auth/LinkAccountScreen";
 import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
 import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
 import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
@@ -44,6 +45,15 @@ export type OnboardingStackParamList = {
   Survey: { step?: number } | undefined;
   AccountGate: undefined;
   CreateAccount: undefined;
+  /** Connect a second sign-in method to an account the member already owns. */
+  LinkAccount: {
+    email: string;
+    authProvider: string[];
+    hasPassword: boolean;
+    provider: "apple" | "google";
+    idToken: string;
+    continueTo?: string;
+  };
   AiConsent: undefined;
   TypeReveal: undefined;
   Paywall: undefined;
@@ -150,6 +160,13 @@ export function OnboardingNavigator() {
       <Stack.Screen
         name="CreateAccount"
         component={CreateAccountScreen}
+        options={{
+          contentStyle: { backgroundColor: K.brown },
+        }}
+      />
+      <Stack.Screen
+        name="LinkAccount"
+        component={LinkAccountScreen}
         options={{
           contentStyle: { backgroundColor: K.brown },
         }}
