@@ -420,7 +420,7 @@ export function AccountGateScreen({ navigation }: Props) {
               style={styles.existingAccountBtn}
             >
               <Text style={styles.existingAccountText}>
-                I already have a Reset account
+                Already have a Reset account? Sign in.
               </Text>
             </TouchableOpacity>
           </View>

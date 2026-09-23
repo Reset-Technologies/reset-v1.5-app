@@ -17,7 +17,12 @@ import {
   linkGoogleToAccount,
   loginWithApple,
   loginWithEmail,
+  loginWithGoogle,
 } from "../../services/auth";
+import {
+  GoogleSignin,
+  isGoogleSignInAvailable,
+} from "../../services/googleSignin";
 import { logEvent } from "../../services/braze";
 import {
   AuthScaffold,
@@ -88,12 +93,37 @@ export function LinkAccountScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const label = PROVIDER_LABEL[provider] ?? "this method";
-  // Offer the OTHER provider only when the account actually has it — the point
-  // of this screen is the ways in that already work.
+
+  // Offer the OTHER methods this account actually has — the point of this
+  // screen is the ways in that already work. Anything not on the account, or
+  // unusable on this device, must not be offered.
   const canUseApple =
     Platform.OS === "ios" &&
     provider !== "apple" &&
-    authProvider?.includes("apple");
+    Boolean(authProvider?.includes("apple"));
+  const canUseGoogle =
+    isGoogleSignInAvailable &&
+    provider !== "google" &&
+    Boolean(authProvider?.includes("google"));
+
+  /**
+   * The copy has to name what the member can actually do here.
+   *
+   * "Sign in the way you normally do" is only true if their way is on this
+   * screen — and it is not always password. An account reached through Apple
+   * or Google has no password at all, so a generic instruction would leave
+   * them looking for a field that isn't there.
+   */
+  const methods: string[] = [];
+  if (hasPassword) methods.push("your password");
+  if (canUseApple) methods.push("Apple");
+  if (canUseGoogle) methods.push("Google");
+  const methodList =
+    methods.length === 0
+      ? null
+      : methods.length === 1
+        ? methods[0]
+        : `${methods.slice(0, -1).join(", ")} or ${methods[methods.length - 1]}`;
 
   React.useEffect(() => {
     logEvent("auth_linkAccount_start");
@@ -148,6 +178,25 @@ export function LinkAccountScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    logEvent("auth_linkAccount_googleCTA");
+    setError(null);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      const idToken = response.data?.idToken;
+      if (!idToken) throw new Error("No ID token from Google");
+      setIsLoading(true);
+      await loginWithGoogle(idToken);
+      await connectPending();
+    } catch (err: any) {
+      if (err.code === "SIGN_IN_CANCELLED") return;
+      setError(err?.message || "Google sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const canSubmit = password.trim().length > 0 && !isLoading;
 
   return (
@@ -159,8 +208,9 @@ export function LinkAccountScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>You already have a Reset account</Text>
           <Text style={styles.subtitle}>
-            {email} is already registered. Sign in the way you normally do and
-            we&rsquo;ll connect {label} to that account.
+            {methodList
+              ? `${email} is already registered. Sign in with ${methodList} and we'll connect ${label} to that account.`
+              : `${email} is already registered, but we can't connect ${label} to it automatically. Email hello@reset.com and we'll sort it out.`}
           </Text>
         </View>
 
@@ -202,6 +252,15 @@ export function LinkAccountScreen() {
           {canUseApple && (
             <TouchableOpacity style={styles.ghostBtn} onPress={handleAppleSignIn}>
               <Text style={styles.ghostBtnText}>Continue with Apple</Text>
+            </TouchableOpacity>
+          )}
+
+          {canUseGoogle && (
+            <TouchableOpacity
+              style={styles.ghostBtn}
+              onPress={handleGoogleSignIn}
+            >
+              <Text style={styles.ghostBtnText}>Continue with Google</Text>
             </TouchableOpacity>
           )}
         </View>
