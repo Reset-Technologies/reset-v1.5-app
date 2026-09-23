@@ -57,3 +57,8 @@ modules/*/android/.gradle/
 # Firebase FCM config (provided via EAS GOOGLE_SERVICES_JSON secret; contains the
 # Android Firebase config — kept out of git). See RES-199.
 google-services.json
+
+# Local debug signing key, preserved across `expo prebuild --clean`.
+# Its SHA-1 is registered with Google's Android OAuth client, so losing it
+# breaks Google sign-in in dev builds until a new fingerprint is registered.
+.keystores/

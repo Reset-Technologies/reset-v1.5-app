@@ -32,19 +32,10 @@ import {
   GHOST,
 } from "./authUi";
 
-import Constants from "expo-constants";
-
-// Google Sign-In is Android-only; importing on iOS crashes in Expo Go
-const GoogleSignin =
-  Platform.OS === "android"
-    ? require("@react-native-google-signin/google-signin").GoogleSignin
-    : null;
-
-if (GoogleSignin) {
-  GoogleSignin.configure({
-    webClientId: Constants.expoConfig?.extra?.googleWebClientId,
-  });
-}
+import {
+  GoogleSignin,
+  isGoogleSignInAvailable,
+} from "../../services/googleSignin";
 
 export function LoginScreen() {
   const navigation = useNavigation<any>();
@@ -142,6 +133,7 @@ export function LoginScreen() {
     logEvent("auth_login_appleSignInCTA");
     setError(null);
     setIsLoading(true);
+    let appleIdToken = "";
     try {
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -153,20 +145,49 @@ export function LoginScreen() {
       if (!credential.identityToken) {
         throw new Error("No identity token from Apple");
       }
+      appleIdToken = credential.identityToken;
 
       const user = await loginWithApple(credential.identityToken);
       finishLogin(user);
     } catch (err: any) {
       if (err.code === "ERR_REQUEST_CANCELED") return;
+      if (routeIfLinkRequired(err, "apple", appleIdToken)) return;
       setError(err.message || "Apple sign-in failed");
     } finally {
       setIsLoading(false);
     }
   };
 
+
+  /**
+   * A refusal to link is a route, not an error message: send the member to
+   * connect the method to the account they already own, carrying the provider
+   * token so they need not repeat the prompt.
+   *
+   * No `continueTo` — this screen is reachable from the signed-out stack, which
+   * has no onboarding routes. RootNavigator moves the user on once the session
+   * exists.
+   */
+  const routeIfLinkRequired = (
+    err: any,
+    provider: "apple" | "google",
+    idToken: string,
+  ): boolean => {
+    if (err?.code !== "ACCOUNT_EXISTS_LINK_REQUIRED") return false;
+    navigation.navigate("LinkAccount", {
+      email: String(err.body?.email ?? ""),
+      authProvider: (err.body?.authProvider as string[]) ?? [],
+      hasPassword: err.body?.hasPassword === true,
+      provider,
+      idToken,
+    });
+    return true;
+  };
+
   const handleGoogleSignIn = async () => {
     setError(null);
     setIsLoading(true);
+    let googleIdToken = "";
     try {
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
@@ -175,11 +196,13 @@ export function LoginScreen() {
       if (!idToken) {
         throw new Error("No ID token from Google");
       }
+      googleIdToken = idToken;
 
       const user = await loginWithGoogle(idToken);
       finishLogin(user);
     } catch (err: any) {
       if (err.code === "SIGN_IN_CANCELLED") return;
+      if (routeIfLinkRequired(err, "google", googleIdToken)) return;
       setError(err.message || "Google sign-in failed");
     } finally {
       setIsLoading(false);
@@ -319,7 +342,7 @@ export function LoginScreen() {
                 />
               )}
 
-              {Platform.OS === "android" && (
+              {isGoogleSignInAvailable && (
                 <TouchableOpacity
                   style={styles.ghostBtn}
                   onPress={handleGoogleSignIn}

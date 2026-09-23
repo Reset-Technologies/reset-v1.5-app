@@ -4,12 +4,22 @@ import { LoginScreen } from "../screens/auth/LoginScreen";
 import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
 import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
 import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
+import { LinkAccountScreen } from "../screens/auth/LinkAccountScreen";
 
 export type AuthStackParamList = {
   Login: undefined;
   ForgotPassword: undefined;
   ForgotPasswordCode: { email: string };
   ForgotPasswordReset: { email: string; resetToken: string };
+  /** Connect a second sign-in method to an account the member already owns. */
+  LinkAccount: {
+    email: string;
+    authProvider: string[];
+    hasPassword: boolean;
+    provider: "apple" | "google";
+    idToken: string;
+    continueTo?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -38,6 +48,7 @@ export function AuthNavigator() {
         name="ForgotPasswordReset"
         component={ForgotPasswordResetScreen}
       />
+      <Stack.Screen name="LinkAccount" component={LinkAccountScreen} />
     </Stack.Navigator>
   );
 }

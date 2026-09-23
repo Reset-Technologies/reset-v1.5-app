@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as AppleAuthentication from "expo-apple-authentication";
-import Constants from "expo-constants";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
@@ -22,17 +21,10 @@ import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
 
-// Google Sign-In is Android-only; importing on iOS crashes in Expo Go.
-const GoogleSignin =
-  Platform.OS === "android"
-    ? require("@react-native-google-signin/google-signin").GoogleSignin
-    : null;
-
-if (GoogleSignin) {
-  GoogleSignin.configure({
-    webClientId: Constants.expoConfig?.extra?.googleWebClientId,
-  });
-}
+import {
+  GoogleSignin,
+  isGoogleSignInAvailable,
+} from "../../services/googleSignin";
 
 type Props = NativeStackScreenProps<any, "AccountGate">;
 
@@ -200,11 +192,40 @@ export function AccountGateScreen({ navigation }: Props) {
     navigation.reset({ index: 0, routes: [{ name: "AiConsent" }] });
   };
 
+
+  /**
+   * The server refuses to link a provider into an account it cannot prove the
+   * signer owns (one holding a password, or an address the provider did not
+   * verify). That is not an error to display — it is a route: send the member
+   * to sign in the way they already can, carrying the provider token so they
+   * do not have to repeat the prompt.
+   *
+   * Returns true if the error was handled as a redirect.
+   */
+  const routeIfLinkRequired = (
+    err: any,
+    provider: "apple" | "google",
+    idToken: string,
+  ): boolean => {
+    if (err?.code !== "ACCOUNT_EXISTS_LINK_REQUIRED") return false;
+    logEvent("onboarding_account_gate_linkRequired", { method: provider });
+    navigation.navigate("LinkAccount", {
+      email: String(err.body?.email ?? ""),
+      authProvider: (err.body?.authProvider as string[]) ?? [],
+      hasPassword: err.body?.hasPassword === true,
+      provider,
+      idToken,
+      continueTo: "AiConsent",
+    });
+    return true;
+  };
+
   const handleAppleSignIn = async () => {
     if (isLoading) return;
     logEvent("onboarding_account_gate_appleCTA");
     setError(null);
     setIsLoading(true);
+    let appleIdToken = "";
     try {
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -213,6 +234,7 @@ export function AccountGateScreen({ navigation }: Props) {
         ],
       });
       if (!credential.identityToken) throw new Error("No identity token from Apple");
+      appleIdToken = credential.identityToken;
 
       const user = await loginWithApple(credential.identityToken);
       setUserAccount(
@@ -232,6 +254,7 @@ export function AccountGateScreen({ navigation }: Props) {
       finishAccount();
     } catch (err: any) {
       if (err.code === "ERR_REQUEST_CANCELED") return;
+      if (routeIfLinkRequired(err, "apple", appleIdToken)) return;
       setError(err.message || "Apple sign-in failed");
     } finally {
       setIsLoading(false);
@@ -242,11 +265,13 @@ export function AccountGateScreen({ navigation }: Props) {
     logEvent("onboarding_account_gate_googleCTA");
     setError(null);
     setIsLoading(true);
+    let googleIdToken = "";
     try {
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
       const idToken = response.data?.idToken;
       if (!idToken) throw new Error("No ID token from Google");
+      googleIdToken = idToken;
 
       const user = await loginWithGoogle(idToken);
       setUserAccount(user.email ?? "google-user", user.firstName ?? undefined);
@@ -263,10 +288,28 @@ export function AccountGateScreen({ navigation }: Props) {
       finishAccount();
     } catch (err: any) {
       if (err.code === "SIGN_IN_CANCELLED") return;
+      if (routeIfLinkRequired(err, "google", googleIdToken)) return;
       setError(err.message || "Google sign-in failed");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /**
+   * The way back to an account the member already has.
+   *
+   * Without this, anyone using Apple's Hide My Email lands here with a relay
+   * alias that matches no existing account, so the server correctly mints a NEW
+   * one and they quietly end up with a duplicate — the exact problem this work
+   * exists to stop. Their address can never be matched, so the only way to
+   * reunite them with their account is to let them say so and sign in.
+   *
+   * Two thirds of our Apple accounts use a relay address, so this is the common
+   * case for Apple, not an edge case.
+   */
+  const handleExistingAccount = () => {
+    logEvent("onboarding_account_gate_existingAccountCTA");
+    navigation.navigate("Login");
   };
 
   const handleEmail = () => {
@@ -345,7 +388,7 @@ export function AccountGateScreen({ navigation }: Props) {
               />
             )}
 
-            {Platform.OS === "android" && (
+            {isGoogleSignInAvailable && (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={handleGoogleSignIn}
@@ -367,6 +410,18 @@ export function AccountGateScreen({ navigation }: Props) {
               activeOpacity={0.85}
             >
               <Text style={styles.ghostBtnText}>Use email instead</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleExistingAccount}
+              disabled={isLoading}
+              activeOpacity={0.85}
+              hitSlop={8}
+              style={styles.existingAccountBtn}
+            >
+              <Text style={styles.existingAccountText}>
+                Already have a Reset account? Sign in.
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -531,5 +586,18 @@ const styles = StyleSheet.create({
     color: WHITE,
     fontSize: 20,
     letterSpacing: -0.2,
+  },
+  // A text link rather than a fourth button: this is the escape hatch for
+  // returning members, and it should not compete with the three ways to sign up.
+  existingAccountBtn: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  existingAccountText: {
+    fontFamily: fonts.dmSans,
+    color: WHITE,
+    opacity: 0.7,
+    fontSize: 16,
+    letterSpacing: -0.16,
   },
 });
