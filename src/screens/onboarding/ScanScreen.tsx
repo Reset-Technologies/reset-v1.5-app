@@ -179,7 +179,11 @@ function deriveBiometrics(results: ScanResults) {
   }
 
   return {
-    stressIndex: results.stressIndex ?? 65,
+    // The SDK's stressIndex is a Baevsky index on a ~0.5-4+ scale (see
+    // utils/stress.ts), where >= 3 already reads as "Elevated". A numeric
+    // fallback here is not a neutral default -- it is a fabricated reading,
+    // so a missing value stays null and the UI shows no band at all.
+    stressIndex: results.stressIndex ?? null,
     heartRate: results.heartRate,
     wellness,
     vascularAge: vascularAgeOffset,

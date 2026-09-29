@@ -76,7 +76,7 @@ interface ScanResultsRaw {
 }
 
 interface BiometricData {
-  stressIndex: number;
+  stressIndex: number | null;
   heartRate: number;
   wellness: number;
   // RES-147: vascularAge is still captured + fed into the Reset Score; it's
