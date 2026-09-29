@@ -201,7 +201,19 @@ export function PreScanScreen({ navigation }: Props) {
 
   const handleClose = () => {
     logEvent("onboarding_pre_scan_skip");
-    navigation.navigate("NoScanEmptyState");
+    // Skipping the scan goes straight to the questions (Bryan, 2026-09-29).
+    //
+    // It used to go to NoScanEmptyState, whose only forward action navigates
+    // back to PreScan — so "Continue without scanning" was a loop with no way
+    // onward, not an alternative path. That is the mechanism behind the funnel
+    // gap measured on 2026-09-26: 179 members a month took this exit and 2.66%
+    // ever reached the account gate, against 54.5% of those who scanned.
+    //
+    // Nothing downstream needed building. TypingService already has a
+    // non-scanner branch that returns `starting_read`, and TypeRevealScreen
+    // already renders STARTING_READ_TAGLINE / _PARAGRAPH for it (RES-121). The
+    // whole path existed and was simply unreachable.
+    navigation.navigate("Survey");
   };
 
   const handleLogin = () => {
