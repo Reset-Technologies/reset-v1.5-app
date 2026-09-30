@@ -29,46 +29,19 @@ import {
   navigateWhenMounted,
 } from "../../navigation/rootNavigationRef";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
+import {
+  ArrowBackIcon,
+  ResetMarkIcon,
+  TypeMeaningIcon,
+  MealsIcon,
+  GuidanceIcon,
+} from "../../components/PaywallIcons";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
 
 const SCREEN_W = Dimensions.get("window").width;
 const SCREEN_H = Dimensions.get("window").height;
 
-// Vertical gap between the body sections (title / table / plans / CTA), scaled
-// to screen height. The comparison table is a fixed height; on short screens
-// (e.g. Galaxy S24, ~780dp) the 24px gaps squeeze the table's flex slot until
-// the table overflows it — overlapping the title above and the plan cards
-// below. Tightening the gaps on short screens gives the slot enough room for
-// the table to fit; tall screens keep the roomy design spacing.
-//
-// The slope is anchored so the value at iPhone-16-Pro height (~852dp) and above
-// is unchanged from the prior tuning (≈19 → max 24) — only screens SHORTER than
-// an iPhone get pulled tighter. This keeps big-screen rendering identical while
-// making room for the 8-row table (RES-156) on the S24.
-const BODY_GAP = Math.round(
-  Math.max(8, Math.min(24, 8 + (SCREEN_H - 780) * (11 / 72))),
-);
-
-// Vertical padding inside each comparison-table cell (the row spacing), scaled
-// to screen height. Short screens stay a touch tighter so the 8-row table fits
-// above the plan cards; tall screens keep the roomy 8px design. Anchored so the
-// value at ~852dp+ is unchanged (≈7 → max 8) — only shorter-than-iPhone screens
-// tighten, and only down to 4 now (the labels are single-line, so there's room).
-const CELL_PAD_V = Math.round(
-  Math.max(6, Math.min(8, 6 + (SCREEN_H - 780) / 72)),
-);
-
-// The table is centered in its flex slot, but the "Pro/Free" tabs sit at the
-// top of that block, so the data rows land below the geometric center — the
-// gap above the table reads larger than the gap below. On short screens (tight
-// gaps) this is visible, so nudge the table up by reducing the slot's bottom
-// half (paddingBottom on a center-justified slot shifts content up by half its
-// value). Zero at iPhone-16-Pro height (~852dp) and above, so big screens are
-// untouched.
-const TABLE_UP_BIAS = Math.round(
-  Math.max(0, Math.min(24, 24 - (SCREEN_H - 780) * (24 / 72))),
-);
 
 // Top inset above the logo + "reset pro". The 60px design value is sized for
 // the iPhone notch; the S24's status bar is smaller, so the title block sits
@@ -88,21 +61,22 @@ const GHOST_W = "rgba(250,253,254,0.24)";
 
 const RESET_LOGO = require("../../../assets/images/reset-logo.png");
 
-const FEATURES: { label: string; pro: boolean; free: boolean }[] = [
-  { label: "Daily meals built for your type", pro: true, free: false },
-  { label: "Swap any meal, anytime", pro: true, free: false },
-  { label: "Ester learns your patterns", pro: true, free: false },
-  { label: "Ask Ester anything", pro: true, free: false },
-  { label: "The full read on your type", pro: true, free: false },
-  { label: "Your Reset score, daily", pro: true, free: false },
-  { label: "Fresh scan every day", pro: true, free: false },
-  { label: "New insights as you change", pro: true, free: false },
+// Screen Copy row 14 is SUPERSEDED here. Bryan replaced the four benefit rows
+// with these three on 2026-09-30, after the Sheet was written — later artefact
+// wins. The Pro/Free comparison table went with them: there is no free tier to
+// compare against.
+//
+// 🔴 Copy is Bryan's, not the frame's. Figma renders line 3 as "...works BEST
+// for you"; his message says "works for you". Using his.
+const VALUE_LINES: { Icon: (p: { size?: number; color?: string }) => React.JSX.Element; label: string }[] = [
+  { Icon: TypeMeaningIcon, label: "Understand what your Type means" },
+  { Icon: MealsIcon, label: "Get meals built to help you lose weight" },
+  {
+    Icon: GuidanceIcon,
+    label: "Get guidance that adapts as Reset learns what works for you",
+  },
 ];
 
-const COL_W = 52;
-// Base size for the comparison-table labels; they shrink uniformly from here
-// only if the widest label would wrap (see ComparisonTable).
-const BASE_LABEL_FONT = 16;
 
 // Shown before the RevenueCat offering loads, or when the dashboard isn't set
 // up yet (no offering available). Once live packages load, the real localized
@@ -167,56 +141,6 @@ function buildPlanDisplay(
   return display;
 }
 
-function CheckIcon() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-        fill={WHITE}
-      />
-    </Svg>
-  );
-}
-
-// Reset wordmark from /Brand/Logo/Wordmark.svg (96×32). Inlined as SVG paths
-// to match the existing react-native-svg usage in this screen and avoid
-// pulling in a separate SVG-loader for a single asset. Wrapped in a View
-// with explicit dimensions because react-native-svg sometimes ignores
-// width/height props when a viewBox is present — clamping via the parent
-// View is reliable.
-function ResetWordmark({ width = 96, height = 32 }: { width?: number; height?: number }) {
-  return (
-    <View style={{ width, height }}>
-      <Svg width="100%" height="100%" viewBox="0 0 96 32" fill="none">
-        <Path
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d="M26.246 4.50004C33.6225 4.50004 36.8968 9.80407 36.8969 16.1447V17.5956H21.646C22.019 20.4135 23.4697 21.9053 26.5362 21.9054C28.7325 21.9054 29.9343 21.1175 30.3487 19.667H36.8138C35.9022 24.4329 31.8819 27.0447 26.4531 27.0447C19.9054 27.0446 15.2228 23.1072 15.2228 16.0206C15.2228 9.67997 18.8696 4.50015 26.246 4.50004ZM26.246 9.63933C23.6765 9.6394 22.2674 10.882 21.7701 13.4929H30.5147C30.3905 10.9236 28.8156 9.63933 26.246 9.63933Z"
-          fill={WHITE}
-        />
-        <Path
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d="M69.6772 4.45986C77.0538 4.45989 80.3281 9.76473 80.3281 16.1054V17.5554H65.0772C65.4505 20.3734 66.9005 21.866 69.9674 21.8661C72.1637 21.8661 73.3664 21.0782 73.7808 19.6277H80.2451C79.3335 24.3935 75.3141 27.0044 69.8853 27.0045L69.2763 26.9929C63.0486 26.7552 58.6541 22.8461 58.654 15.9813C58.654 9.64061 62.3007 4.45986 69.6772 4.45986ZM69.6772 9.59915C67.108 9.59915 65.6996 10.842 65.2022 13.4527H73.946C73.8216 10.8836 72.2464 9.59917 69.6772 9.59915Z"
-          fill={WHITE}
-        />
-        <Path
-          d="M47.4496 4.44558C53.4586 4.44568 57.2294 6.84939 57.5603 12.0295H51.1371C50.9299 10.2889 49.562 9.37772 47.2415 9.37772C45.3769 9.37777 44.4657 9.99881 44.4656 11.0349C44.4656 12.071 45.4185 12.6099 47.2004 12.9L51.4272 13.6045C54.7426 14.1431 57.8924 15.5939 57.8924 19.8625C57.8923 24.5867 54.0792 26.9902 48.4433 26.9902L47.9513 26.984C42.8717 26.8551 38.1509 24.713 37.6692 19.6545H44.2996C44.631 21.1047 45.9574 22.059 48.5683 22.059C50.5569 22.059 51.552 21.4786 51.5522 20.4429C51.5522 19.2409 50.3086 18.9095 48.5683 18.6608L45.5844 18.2045C42.0618 17.6659 38.2487 16.3809 38.2487 11.4491C38.2488 7.05638 41.4404 4.44558 47.4496 4.44558Z"
-          fill={WHITE}
-        />
-        <Path
-          d="M8.21027 9.02326C8.79046 6.61958 10.6138 4.96176 13.2246 4.96165H14.9058V12.2322H8.45848V26.5822H1.82812V4.96165H8.21027V9.02326Z"
-          fill={WHITE}
-        />
-        <Path
-          d="M87.4746 6.31879H94.171V13.5884H92.4897C89.8792 13.5884 88.0557 12.0623 87.4754 9.65897V20.7099L94.171 20.6438L94.1701 20.6447V26.5393H88.146C83.629 26.5393 81.4389 24.3846 81.4388 19.8259V1.82861H87.4746V6.31879Z"
-          fill={WHITE}
-        />
-      </Svg>
-    </View>
-  );
-}
-
 function CloseIcon({ color = WHITE, size = 16 }: { color?: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -230,127 +154,42 @@ function CloseIcon({ color = WHITE, size = 16 }: { color?: string; size?: number
   );
 }
 
-function ComparisonTable() {
-  const lastIdx = FEATURES.length - 1;
-
-  // Uniform "shrink to fit one line" for the label column. Per-row
-  // adjustsFontSizeToFit gave each row its own size (inconsistent) and
-  // over-shrank on Android (text left open space to the right). Instead:
-  // measure every label's natural single-line width, then pick ONE font size —
-  // the largest (<= base) at which the *widest* label still fits the column —
-  // and apply it to all rows. Wide screens (iPhone) keep the base size.
-  const [labelFont, setLabelFont] = React.useState(BASE_LABEL_FONT);
-  const availRef = React.useRef(0);
-  const natRef = React.useRef<Record<string, number>>({});
-  const recompute = React.useCallback(() => {
-    const avail = availRef.current;
-    const widths = Object.values(natRef.current);
-    if (!avail || widths.length < FEATURES.length) return;
-    const maxNat = Math.max(...widths);
-    const fit =
-      maxNat > avail
-        ? Math.floor(BASE_LABEL_FONT * (avail / maxNat) * 10) / 10
-        : BASE_LABEL_FONT;
-    setLabelFont((prev) => (Math.abs(prev - fit) > 0.05 ? fit : prev));
-  }, []);
-
+/**
+ * The face-down Type cards above the headline — Bryan asked for "something that
+ * feels like the unrevealed Type instead of the small Reset mark" (2026-09-30).
+ *
+ * 🔴 Face-DOWN is the whole point: the Type is still hidden until purchase, so
+ * these show the brand mark and blank skeleton rows, never a Type name, colour
+ * or mascot. Anything that leaks the Type gives away what the paywall sells.
+ */
+function TypeCardStack() {
   return (
-    <View style={styles.tableWrap}>
-      {/* Off-screen measuring pass — each label at base font in a wide,
-          non-clipping container; onTextLayout reports the true rendered width
-          of the single line (unaffected by container sizing). */}
-      <View style={styles.labelMeasure} pointerEvents="none">
-        {FEATURES.map((f) => (
-          <Text
-            key={f.label}
-            style={[styles.cellLabelText, { fontSize: BASE_LABEL_FONT }]}
-            numberOfLines={1}
-            onTextLayout={(e) => {
-              const w = e.nativeEvent.lines[0]?.width ?? 0;
-              if (w) {
-                natRef.current[f.label] = w;
-                recompute();
-              }
-            }}
-          >
-            {f.label}
-          </Text>
-        ))}
+    <View style={styles.cardStack}>
+      <View style={[styles.faceCard, styles.faceCardBack]}>
+        <FaceCardContent />
       </View>
-
-      {/* One continuous translucent fill behind the ENTIRE Pro column — spans
-          the tab AND the rows as a single layer. Splitting it (separate tab
-          fill + rows fill) makes Android seam at the sub-pixel boundary right
-          under the "Pro" pill; iOS antialiases it. One backing view is immune. */}
-      <View style={styles.proColBg} pointerEvents="none" />
-      {/* Column headers stick up like tabs above the table. */}
-      <View style={styles.tabsRow}>
-        <View style={[styles.tab, styles.tabPro]}>
-          <View style={styles.tabPill}>
-            <Text style={styles.tabText}>Pro</Text>
-          </View>
-        </View>
-        <View style={[styles.tab, styles.tabFree]}>
-          <Text style={styles.tabTextDim}>Free</Text>
-        </View>
-        {/* Invisible spacer so the headers align with the table cols below. */}
-        <View style={styles.tabSpacer} />
+      <View style={[styles.faceCard, styles.faceCardMid]}>
+        <FaceCardContent />
       </View>
-
-      <View style={styles.rowsWrap}>
-        {FEATURES.map((row, i) => {
-        const isFirst = i === 0;
-        const isLast = i === lastIdx;
-        return (
-          <View key={row.label} style={styles.tableRow}>
-            <View
-              style={[
-                styles.cellPro,
-                isLast && styles.cellProLast,
-              ]}
-            >
-              {row.pro ? <CheckIcon /> : <CloseIcon size={16} color={WHITE} />}
-            </View>
-            <View
-              style={[
-                styles.cellFree,
-                isLast && styles.cellFreeLast,
-              ]}
-            >
-              {row.free ? <CheckIcon /> : <CloseIcon size={16} color={WHITE} />}
-            </View>
-            <View
-              style={[
-                styles.cellLabel,
-                isFirst && styles.cellLabelFirst,
-                isLast && styles.cellLabelLast,
-              ]}
-              onLayout={
-                isFirst
-                  ? (e) => {
-                      // content width = layout width minus 12+12 padding, the
-                      // ~1px L/R borders, and a 2px safety margin so the line
-                      // never sits exactly at the edge (which would truncate).
-                      availRef.current = e.nativeEvent.layout.width - 27;
-                      recompute();
-                    }
-                  : undefined
-              }
-            >
-              {/* Every row uses the same computed labelFont, so they stay on one
-                  line at a single, consistent, as-large-as-fits size. */}
-              <Text
-                style={[styles.cellLabelText, { fontSize: labelFont }]}
-                numberOfLines={1}
-              >
-                {row.label}
-              </Text>
-            </View>
-          </View>
-        );
-        })}
+      <View style={[styles.faceCard, styles.faceCardFront]}>
+        <FaceCardContent />
       </View>
     </View>
+  );
+}
+
+function FaceCardContent() {
+  return (
+    <>
+      <View style={styles.faceCardLogo}>
+        <ResetMarkIcon size={36} color={MAROON} />
+      </View>
+      <View style={styles.skeletonGroup}>
+        <View style={[styles.skeletonBar, styles.skeletonTitle]} />
+        <View style={styles.skeletonBar} />
+        <View style={styles.skeletonBar} />
+      </View>
+    </>
   );
 }
 
@@ -484,6 +323,13 @@ export function PaywallScreen({ navigation }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // 🔴 PENDING — the personalized Ester line Bryan asked for on 2026-09-30.
+  // Held at null deliberately: `scan-insights` does not read onboarding answers
+  // yet, and its fallback asserts "your scan" to members who skipped the scan.
+  // Shipping that on the paywall would be a false claim on the revenue screen.
+  // Wire this to the generator once it takes onboarding answers as an input.
+  const esterLine: string | null = null;
 
   const plans = buildPlanDisplay(monthlyPkg, annualPkg);
 
@@ -781,33 +627,65 @@ export function PaywallScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.topBar}>
-        {/* Placeholder + close X use flex justify-between; logo is absolutely
-            positioned at center per Figma so it sits dead-center regardless
-            of the placeholder/X widths. */}
-        <View style={styles.topPlaceholder} />
-        {/* No skip — the paywall is a hard wall in both onboarding and the
-            post-onboarding gate; free users must subscribe to enter the app. */}
-        <Image source={RESET_LOGO} style={styles.topLogo} resizeMode="contain" />
+        {/* Screen Copy row 14 `paywall.back` is LOCKED: "Returns to Type ready
+            with the Type still hidden." goBack() does exactly that from both
+            stacks — Onboarding and Gate both push Paywall on top of TypeReady.
+            🔑 Still not a skip: the paywall remains a hard wall, and back only
+            ever lands on the screen before it. */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          disabled={purchasing || restoring}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <ArrowBackIcon size={24} color={WHITE} />
+        </TouchableOpacity>
+
+        <TypeCardStack />
+
+        {/* Mirrors the back button's width so the card stack sits dead-centre
+            (the frame carries the same invisible twin). */}
+        <View style={styles.backBtnGhost} pointerEvents="none" />
       </View>
 
       <View style={styles.body}>
-        <View style={styles.title}>
-          <View style={styles.wordmarkBaseline}>
-            <ResetWordmark width={96} height={32} />
-          </View>
-          <Text style={styles.titlePro}>pro</Text>
+        <View style={styles.headlineBlock}>
+          <Text style={styles.headline}>Your Type is ready.</Text>
+
+          {/* 🔴 PENDING COPY — Bryan wants a line generated in the moment from
+              what Ester learned in onboarding (2026-09-30). The generator does
+              not read onboarding answers yet, and its current fallback says
+              "your scan" to people who skipped the scan, so rendering anything
+              here today would ship a false claim. Lang designed the no-message
+              state for exactly this; we sit in it until the line exists.
+              When it does, pass it in and the card appears. */}
+          {esterLine ? (
+            <View style={styles.esterCard}>
+              <Image
+                source={RESET_LOGO}
+                style={styles.esterMark}
+                resizeMode="contain"
+              />
+              <Text style={styles.esterText}>{esterLine}</Text>
+            </View>
+          ) : null}
         </View>
 
-        {/* Flex:1 wrapper grabs spare vertical space between title and
-            plans. With justifyContent:center inside, the table is centered
-            within that spare space — so the visible distance from title to
-            table equals the distance from table to plans. Plans + CTA stay
-            anchored to the bottom of the body since the wrapper eats the
-            rest. */}
-        <View style={styles.tableSlot}>
-          <ComparisonTable />
+        <View style={styles.valueBlock}>
+          {VALUE_LINES.map(({ Icon, label }) => (
+            <View key={label} style={styles.valueRow}>
+              <Icon size={32} color={WHITE} />
+              <Text style={styles.valueText}>{label}</Text>
+            </View>
+          ))}
         </View>
 
+        {/* Plans + CTA are one group so the body has THREE children under
+            space-between, as the frame does — headline, value lines, purchase.
+            Four children would spread the plans away from the button. */}
+        <View style={styles.purchaseGroup}>
         <View style={styles.plansRow}>
           <PlanCard
             label="Monthly"
@@ -841,9 +719,9 @@ export function PaywallScreen({ navigation }: Props) {
             ]}
           >
             {purchasing ? (
-              <ActivityIndicator color={WHITE} />
+              <ActivityIndicator color={MAROON} />
             ) : (
-              <Text style={styles.subscribeText}>Subscribe</Text>
+              <Text style={styles.subscribeText}>Unlock my Type</Text>
             )}
           </TouchableOpacity>
           <View style={styles.footerRow}>
@@ -881,6 +759,7 @@ export function PaywallScreen({ navigation }: Props) {
             </View>
           ) : null}
         </View>
+        </View>
       </View>
     </View>
   );
@@ -904,226 +783,122 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     height: 40,
   },
-  topPlaceholder: { width: 72, height: 24 },
-  topLogo: {
-    position: "absolute",
-    width: 44,
-    height: 44,
-    left: "50%",
-    marginLeft: -22,
-    top: 0,
+  // 40 tall so the card stack (83) overhangs it, as the frame does.
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: MAROON_ALT,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  backBtnGhost: { width: 40, height: 40 },
+
+  // The face-down Type cards. Sizes are the frame's, kept as-is because the
+  // rotations and offsets only read right at this scale.
+  cardStack: { width: 64, height: 83 },
+  faceCard: {
+    position: "absolute",
+    width: 64,
+    height: 84,
+    borderRadius: 4.681,
+    overflow: "hidden",
+    alignItems: "center",
+    paddingTop: 7,
+    paddingBottom: 8,
+    paddingHorizontal: 5,
+    gap: 8,
+  },
+  faceCardBack: {
+    backgroundColor: "#AFA594",
+    left: -6,
+    top: 0,
+    transform: [{ rotate: "-6deg" }],
+  },
+  faceCardMid: {
+    backgroundColor: "#C9BFAF",
+    left: -7,
+    top: -4,
+    transform: [{ rotate: "-4deg" }],
+  },
+  faceCardFront: { backgroundColor: BONE, left: 0, top: 0 },
+  faceCardLogo: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  skeletonGroup: { width: "100%", gap: 2.34 },
+  // The blank rows that stand in for the Type's name and description — the
+  // "face-down" half of the metaphor.
+  skeletonBar: {
+    height: 3.121,
+    borderRadius: 0.78,
+    backgroundColor: "rgba(54,20,22,0.12)",
+    width: "100%",
+  },
+  skeletonTitle: { height: 4.681, width: 33 },
 
   // Body
   body: {
     flex: 1,
     alignItems: "center",
-    gap: BODY_GAP,
-    // Figma dev-mode measures 20px from logo bottom to top of the reset
-    // wordmark glyphs. With alignItems:center on the title row and pro
-    // lineHeight tightened to 40, the wordmark sits ~6px below the row
-    // top (wordmark 32 centered in row 40, +2 viewBox padding). Logo
-    // bottom is at body_top + 4 (logo 44 tall extending past the 40-tall
-    // topBar). Net: paddingTop 18 lands the visible gap at ~20px.
-    paddingTop: 18,
+    justifyContent: "space-between",
+    paddingTop: 24,
     width: "100%",
   },
 
-  // Title "reset pro" — baseline-aligned so "reset" and "pro" share a baseline
-  // like normal text. The wordmark SVG (viewBox 0 0 96 32, glyph baseline at
-  // y≈27) carries ~5px of empty space below its baseline, so it's wrapped with
-  // a -5 marginBottom (wordmarkBaseline) to bring its baseline-equivalent edge
-  // onto the text baseline. Center-aligning instead left "pro" high on iOS /
-  // low on Android because the glyph sits differently in its line box per OS.
-  title: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 10,
-  },
-  wordmarkBaseline: {
-    marginBottom: -5,
-  },
-  titlePro: {
-    fontFamily: fonts.dmSans,
+  headlineBlock: { width: "100%", alignItems: "center", gap: 24 },
+  purchaseGroup: { width: "100%", alignItems: "center", gap: 24 },
+  headline: {
+    fontFamily: fonts.catalogue,
     fontSize: 40,
-    // Tight line-height so the "pro" text container is 40 tall, not 48
-    // (default ~1.2 × fontSize). Default line-height inflates the title row
-    // height and, with alignItems:flex-end on the title row, pushes the
-    // wordmark glyphs ~16px below the row top instead of sitting at the
-    // top. Tightening here keeps the row at 40 and the visible glyphs
-    // close to the row top.
-    lineHeight: 40,
-    // Android adds extra font padding above/below text, which shifts "pro" out
-    // of line with the SVG wordmark (the alignment was tuned to iOS metrics).
-    // Removing it aligns the caps cross-platform; iOS ignores this prop.
-    includeFontPadding: false,
-    color: WHITE,
+    lineHeight: 44,
     letterSpacing: -0.4,
-    // Baseline alignment is geometrically correct, but next to the heavier
-    // "reset" wordmark "pro" optically reads low — lift it a few px. Visual
-    // only (transform), so it doesn't disturb the row layout. Same on both OS.
-    transform: [{ translateY: -5 }],
+    color: WHITE,
+    textAlign: "center",
+    includeFontPadding: false,
   },
 
-  // Wrapper around the comparison table — flex:1 lets it absorb spare
-  // vertical space between the title and the plans row so the table sits
-  // centered between them (equal gap above/below).
-  tableSlot: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    // Short-screen-only upward nudge so the table reads evenly spaced between
-    // the title and the plan cards (see TABLE_UP_BIAS). 0 on iPhone+.
-    paddingBottom: TABLE_UP_BIAS,
-  },
-
-  // Comparison table
-  tableWrap: {
-    width: "100%",
-    alignItems: "stretch",
-  },
-  tabsRow: {
+  // Ester's line. Square top-left corner, rounded elsewhere — the speech-bubble
+  // shape used for her elsewhere in the app.
+  esterCard: {
     flexDirection: "row",
-    alignItems: "flex-end",
-  },
-  tab: {
-    width: COL_W,
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 16,
     paddingTop: 8,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    paddingBottom: 12,
+    paddingLeft: 6,
+    paddingRight: 8,
   },
-  // No fill here — the continuous proColBg paints the tab's gray (see proColBg).
-  // Keeps only the top + left outline borders.
-  tabPro: {
-    borderLeftWidth: 0.5,
-    borderTopWidth: 0.5,
-    borderColor: DIVIDER,
-  },
-  tabFree: {
-    borderLeftWidth: 0.5,
-    borderRightWidth: 0.5,
-    borderTopWidth: 0.5,
-    borderColor: DIVIDER,
-  },
-  tabPill: {
-    backgroundColor: GHOST_W,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  tabText: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-    color: WHITE,
-  },
-  tabTextDim: {
-    fontFamily: fonts.dmSansMedium,
-    fontSize: 14,
-    color: TEXT_ALT,
-  },
-  tabSpacer: { flex: 1 },
-
-  // Holds the 8 data rows; position:relative anchor for the continuous Pro
-  // column fill that sits behind them.
-  rowsWrap: {
-    width: "100%",
-    position: "relative",
-  },
-  // Continuous translucent Pro-column fill (replaces per-cell + per-tab GHOST_W
-  // to kill Android sub-pixel seams). Lives in tableWrap so it spans the full
-  // column height — the rounded-top tab AND every row — as ONE layer. Rounded
-  // top corners (the tab) + bottom-left; bottom-right is square (meets table).
-  proColBg: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: COL_W,
-    backgroundColor: GHOST_W,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 8,
-  },
-
-  tableRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-
-  // Pro column cells — ghost bg, left border only (no top border → no
-  // horizontal row separators). Top border is implicit from the Pro tab
-  // above; bottom border closes the table on the last row.
-  // Pro column cells — transparent now; the translucent fill is drawn once by
-  // proColBg behind the rows (see rowsWrap) to avoid Android per-cell seams.
-  cellPro: {
-    width: COL_W,
-    borderLeftWidth: 0.5,
-    borderColor: DIVIDER,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: CELL_PAD_V,
-  },
-  // Pro column's bottom fill is drawn by the continuous proColBg (rounded gray
-  // box). No bottom *border* here (it drew a redundant hairline across the
-  // fill), but keep the corner radius so the left border curves to match the
-  // rounded corner instead of running straight past it.
-  cellProLast: {
-    borderBottomLeftRadius: 8,
-  },
-
-  // Free column cells — left border only.
-  cellFree: {
-    width: COL_W,
-    borderLeftWidth: 0.5,
-    borderColor: DIVIDER,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: CELL_PAD_V,
-  },
-  cellFreeLast: {
-    borderBottomWidth: 0.5,
-  },
-
-  // Label column — flex, left + right border. Top border applied only to
-  // the first row (cellLabelFirst) so the table top closes against the
-  // tabs above without adding a horizontal divider between content rows.
-  cellLabel: {
+  esterMark: { width: 26, height: 26 },
+  esterText: {
     flex: 1,
-    borderLeftWidth: 0.5,
-    borderRightWidth: 0.5,
-    borderColor: DIVIDER,
-    paddingLeft: 12,
-    paddingRight: 12,
-    paddingVertical: CELL_PAD_V,
-    justifyContent: "center",
-  },
-  cellLabelFirst: {
-    borderTopWidth: 0.5,
-    borderTopRightRadius: 8,
-  },
-  cellLabelLast: {
-    borderBottomWidth: 0.5,
-    borderBottomRightRadius: 8,
-  },
-  cellLabelText: {
-    fontFamily: fonts.dmSans,
-    fontSize: BASE_LABEL_FONT,
-    color: WHITE,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    lineHeight: 21,
     letterSpacing: -0.16,
+    color: WHITE,
   },
-  // Off-screen container for the label width-measuring pass (see
-  // ComparisonTable). Absolute so it never affects layout; invisible.
-  labelMeasure: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: 1000,
-    alignItems: "flex-start",
-    opacity: 0,
+
+  // Value lines — icon + text, no bordered box (Bryan, 2026-09-30).
+  valueBlock: { width: "100%", paddingHorizontal: 4, paddingBottom: 12 },
+  valueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  valueText: {
+    flex: 1,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 25,
+    letterSpacing: -0.2,
+    color: WHITE,
   },
 
   // Plan cards
@@ -1194,13 +969,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 14,
     top: -10,
-    backgroundColor: MAROON,
+    backgroundColor: MAROON_ALT,
+    borderWidth: 1,
+    borderColor: WHITE,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingTop: 2,
+    paddingBottom: 4,
     borderRadius: 100,
   },
+  // Was Playfair. Bryan queried the odd typeface and Lang moved it to the
+  // sans everything else uses.
   saleTagText: {
-    fontFamily: fonts.playfair,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: WHITE,
     letterSpacing: -0.12,
@@ -1220,20 +1000,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   subscribeBtn: {
-    backgroundColor: "#000",
-    height: 56,
+    backgroundColor: BONE,
+    minHeight: 44,
     width: "100%",
-    borderRadius: 4,
+    padding: 16,
     alignItems: "center",
     justifyContent: "center",
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    borderTopRightRadius: 24,
+    shadowColor: "#000000",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 25 },
+    shadowRadius: 25,
+    elevation: 8,
   },
   subscribeBtnDisabled: {
     opacity: 0.6,
   },
   subscribeText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
-    color: WHITE,
+    color: MAROON,
     letterSpacing: -0.2,
   },
   footerRow: {
