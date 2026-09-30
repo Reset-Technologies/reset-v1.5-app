@@ -8,10 +8,11 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
-import { typography } from "../../constants/typography";
-import { Button } from "../../components";
+import { fonts } from "../../constants/typography";
+import { OnboardingCta } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { AI_DISCLOSURE_URL, PRIVACY_POLICY_URL } from "../../constants/legal";
@@ -78,7 +79,22 @@ export function AiConsentScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <View style={styles.page}>
+      {/* Bottom-darken gradient over the page surface — the same treatment as
+          Pre-scan, Type ready and the reveal, so the run reads as one surface. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Svg width="100%" height="100%" preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="consentBg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0.4358" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="0.815" stopColor="#000000" stopOpacity="0.6" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#consentBg)" />
+        </Svg>
+      </View>
+
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -92,7 +108,7 @@ export function AiConsentScreen({ navigation }: Props) {
             lands; do not write one here. */}
         {scanned ? (
           <Text style={styles.lead}>
-            Your face video never leaves your device — the scan is processed
+            Your face video never leaves your device—the scan is processed
             right on your phone.
           </Text>
         ) : null}
@@ -139,20 +155,22 @@ export function AiConsentScreen({ navigation }: Props) {
       </ScrollView>
 
       <View style={styles.bottom}>
-        <Button
-          title="Create my type"
+        {/* Locked CTA, Screen Copy row 11: "Create my Type" — capital T. */}
+        <OnboardingCta
+          title="Create my Type"
           onPress={() => decide("granted")}
           disabled={!agreed || busy}
           loading={busy && agreed}
         />
-        <Button
+        <OnboardingCta
           title="Not now"
           variant="ghost"
           onPress={() => decide("declined")}
           disabled={busy}
         />
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -177,112 +195,127 @@ function LinkText({ label, url }: { label: string; url: string }) {
   );
 }
 
+// Figma 5266:67914 (unchecked) / 5266:68035 (checked).
+const DIVIDER = "#7E6869";     // divider-line
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: K.cream,
-  },
-  scroll: {
-    flex: 1,
-  },
+  page: { flex: 1, backgroundColor: K.brown },
+  container: { flex: 1 },
+  scroll: { flex: 1 },
   content: {
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 24,
     paddingBottom: 12,
+    gap: 24,
   },
   title: {
-    ...typography.h2,
-    color: K.text,
-    marginBottom: 16,
+    fontFamily: fonts.catalogue,
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: -0.32,
+    color: K.white,
   },
   lead: {
-    ...typography.body,
-    color: K.text,
-    lineHeight: 24,
-    marginBottom: 16,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.16,
+    color: K.white,
   },
   body: {
-    ...typography.body,
-    color: K.text,
-    lineHeight: 24,
-    marginBottom: 16,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.16,
+    color: K.white,
   },
   strong: {
-    ...typography.bodyMedium,
-    color: K.text,
+    fontFamily: fonts.catalogueBold,
+    color: K.white,
   },
-  list: {
-    gap: 10,
-    marginBottom: 20,
-  },
+  list: { gap: 10 },
   bulletRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
   bulletDot: {
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 3,
-    backgroundColor: K.brown,
+    backgroundColor: K.white,
   },
   bulletText: {
-    ...typography.body,
-    color: K.text,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.16,
+    color: K.white,
     flex: 1,
   },
   links: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 24,
   },
   link: {
-    ...typography.bodyMedium,
-    color: K.brown,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: K.white,
     textDecorationLine: "underline",
   },
   linkDot: {
-    ...typography.body,
-    color: K.sub,
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    color: DIVIDER,
   },
+  // The frame's card: page surface inside a hairline, square but for a large
+  // bottom-left corner — the mirror of the CTA's top-right.
   checkRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
-    padding: 16,
-    backgroundColor: K.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: K.border,
+    backgroundColor: K.brown,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+    borderBottomLeftRadius: 24,
+    paddingTop: 16,
+    paddingBottom: 20,
+    paddingLeft: 12,
+    paddingRight: 16,
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: K.brown,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 1,
   },
   checkboxOn: {
-    backgroundColor: K.brown,
+    backgroundColor: DIVIDER,
+    borderColor: DIVIDER,
   },
   checkMark: {
-    color: K.bone,
-    fontSize: 15,
+    color: K.white,
+    fontSize: 14,
     fontWeight: "700",
-    lineHeight: 18,
+    lineHeight: 16,
   },
   checkLabel: {
-    ...typography.body,
-    color: K.text,
+    fontFamily: fonts.catalogue,
+    fontSize: 14,
+    lineHeight: 19,
+    letterSpacing: -0.14,
+    color: K.white,
     flex: 1,
-    lineHeight: 22,
   },
   bottom: {
-    padding: 24,
+    paddingHorizontal: 24,
     paddingTop: 12,
+    paddingBottom: 24,
     gap: 12,
   },
 });
