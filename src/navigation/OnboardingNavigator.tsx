@@ -13,6 +13,7 @@ import {
   AccountGateScreen,
   CreateAccountScreen,
   AiConsentScreen,
+  TypeReadyScreen,
   PaywallScreen,
   WelcomeBackScreen,
 } from "../screens/onboarding";
@@ -55,6 +56,8 @@ export type OnboardingStackParamList = {
     continueTo?: string;
   };
   AiConsent: undefined;
+  /** "Your Type is ready." — Type hidden; the paywall comes next. */
+  TypeReady: undefined;
   TypeReveal: undefined;
   Paywall: undefined;
   Share: undefined;
@@ -179,6 +182,11 @@ export function OnboardingNavigator() {
           animation: "fade",
           gestureEnabled: false,
         }}
+      />
+      <Stack.Screen
+        name="TypeReady"
+        component={TypeReadyScreen}
+        options={{ animation: "fade", gestureEnabled: false }}
       />
       <Stack.Screen
         name="TypeReveal"

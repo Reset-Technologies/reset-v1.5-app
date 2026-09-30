@@ -16,7 +16,6 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
-import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent } from "../../services/braze";
 import { logout } from "../../services/auth";
 import {
@@ -399,7 +398,6 @@ export function PaywallScreen({ navigation }: Props) {
   const {
     state,
     setHomeV2Enabled,
-    completeOnboarding,
     setSubscriptionTier,
     clearAuth,
   } = useApp();
@@ -502,25 +500,41 @@ export function PaywallScreen({ navigation }: Props) {
     // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
     // education carousel and the survey entirely. They never met the feature,
     // so they must still get the intro.
-    const uid = state.auth.authUser?.id;
-    const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
-    if (!isGate && uid && sawWindowInOnboarding) markWindowIntroShown(uid);
-    completeOnboarding();
-    // Defer deep navigation until the Main stack has actually mounted —
-    // completeOnboarding flips the root state, which triggers a re-render
-    // and a new stack. We dispatch on the next tick via the module-level
-    // ref so this fires after Onboarding unmounts and Main mounts.
+    // 📌 The window-intro mark moved to TypeRevealScreen with the rest of the
+    // onboarding handoff — it belongs wherever onboarding actually ends, and
+    // that is no longer here.
+
+    // 🔴 In ONBOARDING the purchase is not the end any more — it is the middle.
+    // Bryan's V1 flow (2026-09-29) is Type ready → Paywall → reveal → Deep Read
+    // → first meal → Home, so the member has paid precisely to see the reveal
+    // that now follows.
+    //
+    // completeOnboarding() must NOT run here in that case. RootNavigator
+    // branches on hasCompletedOnboarding FIRST, so flipping it would swap the
+    // root stack out from under us and drop the member on Home — skipping the
+    // thing they just bought. TypeRevealScreen owns the handoff instead, at the
+    // end of its card stack.
+    //
+    if (!isGate) {
+      navigation.replace("TypeReveal");
+      return;
+    }
+
+    // A gate member has hasCompletedOnboarding true already, so there is
+    // nothing to complete — but they still bought the reveal and must see it.
+    // Bryan chose "#2" (2026-09-29): the reveal only, then Home. They have been
+    // through onboarding once; replaying the Deep Read and meal cards would
+    // read as sitting through it again immediately after paying.
+    //
+    // 🔑 It has to render from the MAIN stack, not here. Purchasing flips the
+    // tier to "pro", which re-renders RootNavigator out of Gate and into Main —
+    // this screen is already unmounting. Same deferred rootNavigationRef
+    // dispatch as the onboarding handoff, for the same reason.
     setTimeout(() => {
       if (rootNavigationRef.isReady()) {
-        // Deep-nest params: Main > AppOpenFlow > NextMeal. RootStackParamList
-        // doesn't model nested params so cast to any — same pattern as the
-        // existing app-open flow trigger in RootNavigator.
         (rootNavigationRef as any).navigate("Main", {
-          screen: "AppOpenFlow",
-          params: {
-            screen: "NextMeal",
-            params: { fromOnboarding: true },
-          },
+          screen: "TypeReveal",
+          params: { revealOnly: true },
         });
       }
     }, 80);

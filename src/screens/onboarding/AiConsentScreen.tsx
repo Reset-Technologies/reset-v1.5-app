@@ -51,7 +51,10 @@ export function AiConsentScreen({ navigation }: Props) {
     } catch {
       setAiConsent(status === "granted", status !== "granted");
     } finally {
-      navigation.reset({ index: 0, routes: [{ name: "TypeReveal" }] });
+      // Consent now hands off to Type ready, not the reveal: the Type stays
+      // hidden until purchase (Bryan, 2026-09-29 — Flow rows 13-16). The reveal
+      // is what the paywall sells, so it sits on the far side of it.
+      navigation.reset({ index: 0, routes: [{ name: "TypeReady" }] });
     }
   };
 

@@ -22,6 +22,8 @@ import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 // (set by CreateAccountScreen after the backend's TypingService runs on
 // the submitted behaviorAnswers). The FE no longer computes the type.
 import { useApp } from "../../context/AppContext";
+import { rootNavigationRef } from "../../navigation/rootNavigationRef";
+import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 import { ScoreRing } from "../../components/survey/ScoreRing";
 import { getResetScore, ResetScore } from "../../services/resetScore";
@@ -73,34 +75,26 @@ const TYPE_DISPLAY: Record<MetabolicType, string> = {
   Rebounder: "Rebounder",
 };
 
+// 🔒 LOCKED copy — "Reset V1 onboarding handoff w/ copy", Screen Copy rows 16.
+// Bryan restored these this pass (Open Checks #2, Closed 2026-09-29) after a
+// draft and Lang's card had each introduced a different wording. Four of the
+// five had drifted in here. Do not edit without a corresponding Sheet change.
+// 📌 Keyed by the internal archetype, so Ember is the key and Restorer is the
+// display name (TYPE_DISPLAY) — the Sheet calls this row Restorer.
 const TYPE_TAGLINE: Record<MetabolicType, string> = {
-  Chameleon: "Two weeks on. Two weeks off. Same body, different rules.",
-  Burner: "Sharp in the morning, gone by 3pm. Every single day.",
-  Ember: "You do everything right and the tank is still empty.",
-  Explorer: "You've never fit cleanly into any category.",
+  Chameleon: "What worked last week stops working this week.",
+  Burner: "Sharp in the morning. Gone by afternoon. Every single day.",
+  Ember: "Tired in a way sleep doesn't fix.",
+  Explorer: "Nothing is clearly wrong. Nothing is really clicking.",
   Rebounder: "The diet always works. Until it doesn't. Again.",
 };
 
-const TYPE_PARAGRAPH: Record<MetabolicType, string> = {
-  Chameleon:
-    "Your body lives in two-week phases. Heavier energy needs one half, lighter the next. Same body, different rules.",
-  Burner:
-    "Your metabolism runs hot under stress. Protein-forward meals keep your afternoon stable when cortisol spikes.",
-  Ember:
-    "Your body is running on rationed supply. When the raw materials run low, everything dims together — energy, recovery, metabolism. Weight is one of the last things a rationing body will release.",
-  Explorer:
-    "Your metabolic signals aren't loud yet — easier for me to read. A balanced baseline lets me learn your pattern fast.",
-  Rebounder:
-    "Your metabolism has adapted to protect itself. Calorie-sufficient meals help your metabolism find its rhythm again — never deficit-framed.",
-};
 
 // RES-121 non-scanner copy. When the backend returns `starting_read`, we
 // surface "Explorer" with soft directional language that points to "we'll
 // learn more once you scan" rather than asserting a metabolic pattern.
 const STARTING_READ_TAGLINE =
   "Your starting read — we'll sharpen it together once you scan.";
-const STARTING_READ_PARAGRAPH =
-  "Without a scan, I'm working from your answers alone. A balanced baseline is the right place to start, and the first scan will tell me how your body actually responds.";
 
 // Card width fills the screen with a fixed 12px gutter on each side, on every
 // device — replaces the old 378px Figma-frame cap so larger phones (e.g. Pro
@@ -271,9 +265,10 @@ function FrontCard({
                 {startingRead ? STARTING_READ_TAGLINE : TYPE_TAGLINE[type]}
               </Text>
             </View>
-            <Text style={styles.typeParagraph}>
-              {startingRead ? STARTING_READ_PARAGRAPH : TYPE_PARAGRAPH[type]}
-            </Text>
+            {/* 🔒 No card body. Screen Copy row 16 cuts it: "The reveal is name
+                plus one line. Type-level biology belongs in the reviewed Core
+                Read, not here." The paragraph stated personal biology as fact,
+                which the Deep Read claim rules exist to prevent. */}
 
             {/* RES-149: invisible-ink pixel reveal. An opaque bone Skia field
                 with a live copper/white shimmer hides the type, then dissolves
@@ -508,8 +503,14 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
 }
 
 // ── Screen ────────────────────────────────────────────────────────────
-export function TypeRevealScreen({ navigation }: Props) {
-  const { state } = useApp();
+export function TypeRevealScreen({ navigation, route }: Props) {
+  // Gate purchases show the reveal ONLY, then Home (Bryan, 2026-09-29: "#2").
+  // A returning unpaid member has already been through onboarding; replaying
+  // the Deep Read and meal-teaser cards would read as being made to sit through
+  // it twice immediately after paying.
+  const revealOnly = route?.params?.revealOnly === true;
+  const totalCards = revealOnly ? 1 : TOTAL_CARDS;
+  const { state, completeOnboarding } = useApp();
   const insets = useSafeAreaInsets();
 
   // The 812px card design height matches a tall device (iPhone Pro Max ~932,
@@ -686,13 +687,44 @@ export function TypeRevealScreen({ navigation }: Props) {
   // inside the setActiveIdx updater triggers a navigator state update while
   // TypeReveal is rendering, which React flags as a setState-in-render warning.
   useEffect(() => {
-    if (activeIdx >= TOTAL_CARDS) {
-      logEvent("onboarding_type_reveal_continueCTA");
-      // After the meal-rec teaser card, route to the Paywall (which owns
-      // the completeOnboarding + setHomeV2Enabled handoff to NextMeal).
-      navigation.replace("Paywall");
+    if (activeIdx < totalCards) return;
+    logEvent("onboarding_type_reveal_continueCTA");
+
+    // 🔴 This screen now ends onboarding. The paywall used to own the handoff,
+    // but Bryan's V1 flow (2026-09-29) puts the purchase BEFORE the reveal, so
+    // by the time we get here the member has already paid and the card stack is
+    // the last thing they see.
+    //
+    // completeOnboarding() flips hasCompletedOnboarding, which RootNavigator
+    // branches on first — that swap is what takes them out of the onboarding
+    // stack and into Main, so it has to happen here and not a moment earlier.
+    // Reveal-only runs INSIDE the Main stack (the tier already flipped to pro
+    // when they purchased, so RootNavigator has already swapped). Onboarding is
+    // long since complete for these members — there is nothing to complete and
+    // no window intro to mark. Just hand them to Home.
+    if (revealOnly) {
+      navigation.goBack();
+      return;
     }
-  }, [activeIdx, navigation]);
+
+    const uid = state.auth.authUser?.id;
+    const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
+    if (uid && sawWindowInOnboarding) markWindowIntroShown(uid);
+    completeOnboarding();
+
+    // Deferred for the same reason it was deferred in the paywall: the root
+    // re-render mounts a new stack, and dispatching before it exists is a
+    // silent no-op. The module-level ref survives this screen unmounting.
+    const t = setTimeout(() => {
+      if (rootNavigationRef.isReady()) {
+        (rootNavigationRef as any).navigate("Main", {
+          screen: "AppOpenFlow",
+          params: { screen: "NextMeal", params: { fromOnboarding: true } },
+        });
+      }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [activeIdx, totalCards, revealOnly, navigation, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
 
   const dismissActive = () => {
     // Continue the swipe from wherever the user released — translate up-left
@@ -935,11 +967,14 @@ export function TypeRevealScreen({ navigation }: Props) {
           state with just the spinner until both resolve. */}
       {loaded && (
         <>
-          {renderCard(5)}
-          {renderCard(4)}
-          {renderCard(3)}
-          {renderCard(2)}
-          {renderCard(1)}
+          {/* Reveal-only shows card 0 alone — no Deep Read or meal teaser
+              stacked behind it, since those are what we are deliberately not
+              replaying for a returning member. */}
+          {revealOnly ? null : renderCard(5)}
+          {revealOnly ? null : renderCard(4)}
+          {revealOnly ? null : renderCard(3)}
+          {revealOnly ? null : renderCard(2)}
+          {revealOnly ? null : renderCard(1)}
           {renderCard(0)}
         </>
       )}
@@ -1112,13 +1147,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: SUBTLE,
     letterSpacing: -0.2,
-  },
-  typeParagraph: {
-    fontFamily: fonts.dmSans,
-    fontSize: 14,
-    lineHeight: 20,
-    color: SUBTLE,
-    letterSpacing: -0.14,
   },
   revealCenter: {
     ...StyleSheet.absoluteFillObject,

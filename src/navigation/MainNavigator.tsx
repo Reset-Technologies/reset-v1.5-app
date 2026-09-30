@@ -11,6 +11,7 @@ import { RecipeDetailScreen } from "../screens/recipe";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ScanScreen } from "../screens/onboarding/ScanScreen";
 import { CalibrationScreen } from "../screens/onboarding/CalibrationScreen";
+import { TypeRevealScreen } from "../screens/onboarding/TypeRevealScreen";
 // Preview-only. WelcomeBack's real home is OnboardingNavigator, which isn't
 // mounted once someone is in the app — so Settings ▸ EXPERIMENTAL has no way to
 // reach it. Registering it here as well gives that row a destination. Nothing
@@ -68,6 +69,13 @@ export type MainStackParamList = {
   Calibration:
     | { mode?: "rescan"; returnTo?: "ScanResults" | "ScoreReveal" }
     | undefined;
+  /**
+   * Reveal-only, for a member who just purchased from the subscription gate.
+   * Their tier flips to "pro" on purchase, which re-renders RootNavigator into
+   * Main — so the reveal they paid for has to live here, not in GateNavigator,
+   * which is already unmounting by then.
+   */
+  TypeReveal: { revealOnly?: boolean } | undefined;
   Scan: {
     mode: "rescan";
     returnTo?: "ScanResults" | "ScoreReveal";
@@ -194,6 +202,15 @@ export function MainNavigator() {
         options={{
           presentation: "modal",
           animation: "slide_from_bottom",
+        }}
+      />
+      <Stack.Screen
+        name="TypeReveal"
+        component={TypeRevealScreen}
+        options={{
+          presentation: "fullScreenModal",
+          animation: "fade",
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
