@@ -916,20 +916,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 24,
+    // The frame's own value. Was 24, which sat the headline 30pt too high
+    // under the card stack.
+    paddingTop: 54,
     width: "100%",
   },
 
-  headlineBlock: { width: "100%", alignItems: "center", gap: 24 },
+  // ⚠️ The frame's nominal gap is 24, but Figma's line box for the headline sits
+  // lower than Android's, so a literal 24 put the bubble 9pt high. 32 lands the
+  // bubble's top where the frame has it. Measured, not guessed.
+  headlineBlock: { width: "100%", alignItems: "center", gap: 32 },
   purchaseGroup: { width: "100%", alignItems: "center", gap: 24 },
   headline: {
     fontFamily: fonts.catalogue,
     fontSize: 40,
-    lineHeight: 44,
+    // 🔴 NO `includeFontPadding: false` here, and lineHeight has to clear the
+    // descenders. That prop strips the padding Android uses to reserve
+    // descender room, which flat-cut the "y" in "Your Type is ready." — the
+    // exact failure recorded against the onboarding title in PR119. For a
+    // clipped descender do the OPPOSITE: leave includeFontPadding alone and
+    // give the line box room.
+    lineHeight: 48,
     letterSpacing: -0.4,
     color: WHITE,
     textAlign: "center",
-    includeFontPadding: false,
   },
 
   // Ester's line. Square top-left corner, rounded elsewhere — the speech-bubble
