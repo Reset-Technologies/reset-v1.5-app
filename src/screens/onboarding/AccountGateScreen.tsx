@@ -369,8 +369,12 @@ export function AccountGateScreen({ navigation }: Props) {
 
           {/* Title + subtitle + buttons */}
           <View style={styles.footer}>
-            <Text style={styles.title}>Your type is ready. Unlock it now</Text>
-            <Text style={styles.subtitle}>Everything's about to make sense.</Text>
+            {/* Screen Copy row 9 (Final, "Merged"). The old draft pair
+                ("Save your progress" / "Your answers, Type, and plan will stay
+                with you.") is Cut, and so is promising the Type here — the Type
+                is not revealed until after the paywall, two screens later. */}
+            <Text style={styles.title}>Got it. That’s everything I need for now.</Text>
+            <Text style={styles.subtitle}>Create an account to save your answers.</Text>
 
             {error && <Text style={styles.errorText}>{error}</Text>}
 
