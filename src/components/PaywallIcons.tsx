@@ -27,9 +27,11 @@ import Svg, {
  *
  * 🔴 SIGMA IS CALIBRATED, NOT COPIED. Figma's own value is 3.55, but
  * react-native-svg renders a markedly tighter blur for the same number.
- * Measured against Lang's frame, GLOW_SIGMA gives ~9pt rising +43 where the
- * design has ~12pt rising +41. If it ever looks wrong, MEASURE the frame and
- * re-tune rather than assuming the Figma number transfers.
+ * Measured against Lang's frame, sigma 5 / opacity 0.6 gave ~9pt rising +43
+ * where the design has ~12pt rising +41 — a fair match, but Cole asked for a
+ * touch more presence on device, so both are nudged up from there. If it ever
+ * looks wrong, MEASURE the frame and re-tune rather than assuming the Figma
+ * numbers transfer. There is ~17pt of room in the box before it clips.
  *
  * 🔴 A glow needs room, and Android WILL clip it — and the glyph with it.
  * Each icon draws into a box GLOW_SCALE times the glyph, built by padding the
@@ -43,7 +45,8 @@ import Svg, {
 const GLYPH = 32;
 const PAD = 17;
 const BOX = GLYPH + PAD * 2;
-const GLOW_SIGMA = 5;
+const GLOW_SIGMA = 6.5;
+const GLOW_OPACITY = 0.85;
 
 /** Multiply the glyph size by this to get the drawn box. */
 export const GLOW_SCALE = BOX / GLYPH;
@@ -77,7 +80,7 @@ export function TypeMeaningIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: nu
       <Defs>
         <Filter id="person_analysis_glow" filterUnits="userSpaceOnUse" x="-12.1033" y="-12.84867" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
-          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity={GLOW_OPACITY} result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
           <FeMerge>
             <FeMergeNode in="glow" />
@@ -101,7 +104,7 @@ export function MealsIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; 
       <Defs>
         <Filter id="eating_glow" filterUnits="userSpaceOnUse" x="-15.72067" y="-12.9" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
-          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity={GLOW_OPACITY} result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
           <FeMerge>
             <FeMergeNode in="glow" />
@@ -125,7 +128,7 @@ export function GuidanceIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: numbe
       <Defs>
         <Filter id="explore_glow" filterUnits="userSpaceOnUse" x="-13.23333" y="-13.23333" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
-          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity={GLOW_OPACITY} result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
           <FeMerge>
             <FeMergeNode in="glow" />
