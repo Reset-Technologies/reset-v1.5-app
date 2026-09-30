@@ -242,7 +242,7 @@ function FrontCard({
     <View style={[styles.card, { width: CARD_WIDTHS[0], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.cardContentTight}>
         <View style={styles.innerStack}>
-          <Text style={styles.headerText}>Here is your type!</Text>
+          <Text style={styles.headerText}>Here’s your Type.</Text>
 
           <View
             style={styles.typeBoneCard}
@@ -456,10 +456,9 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
         </View>
 
         <View style={styles.mealTeaserWrap}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrowText}>Based on your score</Text>
-          </View>
+          {/* Screen Copy row 19 cuts the "Based on your score" label: there is
+              no Reset Score on Day 1 (first score lands ~Day 21), so the label
+              claimed a number that does not exist. */}
           <View style={styles.mealTeaser}>
             <Image
               source={MEAL_TEASER_BG}

@@ -146,8 +146,10 @@ export function PreScanView({
             />
           </View>
 
-          <Text style={styles.headline}>Ready to discover your type?</Text>
-          <Text style={styles.subhead}>We'll start off with a scan to assess your:</Text>
+          <Text style={styles.headline}>Start with a 30-second scan.</Text>
+          <Text style={styles.subhead}>
+            It captures a few signals from your face. Your answers do the rest.
+          </Text>
 
           <View style={styles.grid}>
             <View style={styles.gridRow}>
@@ -170,7 +172,19 @@ export function PreScanView({
 
           <View style={styles.btnGroup}>
             <TouchableOpacity style={styles.scanBtn} onPress={onScan} activeOpacity={0.85}>
-              <Text style={styles.scanBtnText}>Scan now</Text>
+              <Text style={styles.scanBtnText}>Start scan</Text>
+            </TouchableOpacity>
+
+            {/* 🔴 The skip used to exist ONLY as the × in the corner. Declining
+                the scan is a legitimate path (Screen Copy row 2, `pre_scan.skip`,
+                Final) and 179 members a month take it — making it findable is the
+                point, not decoration. Deliberately quieter than "Start scan". */}
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={onClose}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.skipBtnText}>Continue without scanning</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -311,9 +325,26 @@ const styles = StyleSheet.create({
     color: MAROON,
     letterSpacing: -0.2,
   },
-  // "Scan now" + "I already have an account" grouped so the gap between
-  // them is exactly 8px (independent of the content container's gap).
+  // "Start scan" + "Continue without scanning" + "I already have an account"
+  // grouped so the gap between them is exactly 8px (independent of the content
+  // container's gap).
   btnGroup: { gap: 8 },
+  // "Continue without scanning" — text-only, so it reads as the quiet
+  // alternative to the two filled buttons around it rather than a third
+  // equal-weight choice.
+  skipBtn: {
+    minHeight: 44,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipBtnText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    color: "rgba(250,253,254,0.82)",
+    letterSpacing: -0.2,
+    textDecorationLine: "underline",
+  },
   // "I already have an account" — ghost button below "Scan now"
   loginBtn: {
     backgroundColor: "rgba(250,253,254,0.24)",

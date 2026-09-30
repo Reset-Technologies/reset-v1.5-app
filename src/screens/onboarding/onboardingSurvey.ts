@@ -126,7 +126,9 @@ export const SURVEY_STEPS: SurveyStep[] = [
   },
   {
     kind: "analyzing",
-    text: "Analyzing your responses",
+    // Screen Copy row 12 (`type_processing.line`, Final). Brief, and it names
+    // no Type — the Type is not revealed until after the paywall.
+    text: "Putting it together\u2026",
     // Same video as the post-scan intro (~8.9s). Advances on playToEnd;
     // durationMs is only the fallback cap (see the "logo" step above).
     durationMs: 9500,
