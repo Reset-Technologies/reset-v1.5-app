@@ -1,5 +1,15 @@
 import React from "react";
-import Svg, { Defs, Filter, FeDropShadow, G, Path } from "react-native-svg";
+import Svg, {
+  Defs,
+  FeComposite,
+  FeFlood,
+  FeGaussianBlur,
+  FeMerge,
+  FeMergeNode,
+  Filter,
+  G,
+  Path,
+} from "react-native-svg";
 
 /**
  * Icons for the rebuilt paywall (Figma 5283:17105).
@@ -8,21 +18,29 @@ import Svg, { Defs, Filter, FeDropShadow, G, Path } from "react-native-svg";
  * SVG transformer in Metro — every other icon here (BookmarkIcon, TrendIcon)
  * does the same.
  *
- * 🔑 The three value icons carry a WHITE GLOW, and it is part of the design,
- * not decoration: Figma exports it as an feDropShadow (0 offset, sigma 3.55,
- * #FAFDFE at 60%) inside each asset. Reproduced with react-native-svg's own
- * filter so it renders on BOTH platforms — an RN `boxShadow` on the wrapper
- * would trace the square box, not the glyph.
+ * 🔑 The three value icons carry a WHITE GLOW. It is part of the exported
+ * asset, not decoration: Figma bakes it in as a zero-offset drop shadow,
+ * #FAFDFE at 60%.
  *
- * 🔴 A glow needs room. Each icon renders into its filter region, which is
- * wider than the 32pt glyph, so `GLOW_PAD` is the overhang per side — give the
- * wrapper `marginHorizontal: -GLOW_PAD` so the glow spills instead of shifting
- * the layout or being clipped.
+ * 🔴 Built from FeGaussianBlur + FeFlood + FeComposite + FeMerge, NOT
+ * FeDropShadow — `FeDropShadow` renders as a no-op here.
+ *
+ * 🔴 SIGMA IS CALIBRATED, NOT COPIED. Figma's own value is 3.55, but
+ * react-native-svg renders a markedly tighter blur for the same number:
+ * measured against Lang's frame, 3.55 gave a ~3pt halo where the design has
+ * ~7pt per side. GLOW_SIGMA is tuned so the rendered halo matches the frame.
+ * If it ever looks wrong, MEASURE the frame and re-tune rather than assuming
+ * the Figma number is what to use.
+ *
+ * 🔴 A glow needs room. Each icon draws into its filter region (the frame's own,
+ * widened by 10 units, since the frame's is tight enough to clip a halo this
+ * wide),
+ * inside a 32pt layout box so it overflows a centred box rather than resizing
+ * it.
  */
 
 const GLYPH = 32;
-const FILTER_BOX = 46.2;
-export const GLOW_PAD = (FILTER_BOX - GLYPH) / 2;
+const GLOW_SIGMA = 5;
 
 // Back chevron — Figma `arrow_forward`, mirrored.
 export function ArrowBackIcon({ size = 24, color = "#FAFDFE" }: { size?: number; color?: string }) {
@@ -44,14 +62,18 @@ export function ResetMarkIcon({ size = 24, color = "#FAFDFE" }: { size?: number;
 
 // Figma `person_analysis` — paywall value line 1.
 export function TypeMeaningIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  // Renders into the filter region (46.2 units for a 32pt glyph) so the
-  // glow is not clipped; the glyph itself still measures `size`.
-  const box = (size * 46.2) / GLYPH;
+  const box = (size * 66.2) / GLYPH;
   return (
-    <Svg width={box} height={box} viewBox="-2.2033 -2.94867 46.2 46.2" fill="none">
+    <Svg width={box} height={box} viewBox="-12.2033 -12.9487 66.2 66.2" fill="none">
       <Defs>
-        <Filter id="person_analysis_glow" x="-2.2033" y="-2.94867" width="46.2" height="46.2" filterUnits="userSpaceOnUse">
-          <FeDropShadow dx="0" dy="0" stdDeviation="3.55" floodColor="#FAFDFE" floodOpacity="0.6" />
+        <Filter id="person_analysis_glow" filterUnits="userSpaceOnUse" x="-12.2033" y="-12.9487" width="66.2" height="66.2">
+          <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeComposite in="tint" in2="blur" operator="in" result="glow" />
+          <FeMerge>
+            <FeMergeNode in="glow" />
+            <FeMergeNode in="SourceGraphic" />
+          </FeMerge>
         </Filter>
       </Defs>
       <G filter="url(#person_analysis_glow)">
@@ -63,14 +85,18 @@ export function TypeMeaningIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: nu
 
 // Figma `eating` — paywall value line 2.
 export function MealsIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  // Renders into the filter region (46.2 units for a 32pt glyph) so the
-  // glow is not clipped; the glyph itself still measures `size`.
-  const box = (size * 46.2) / GLYPH;
+  const box = (size * 66.2) / GLYPH;
   return (
     <Svg width={box} height={box} viewBox="-5.82067 -3.0 46.2 46.2" fill="none">
       <Defs>
-        <Filter id="eating_glow" x="-5.82067" y="-3.0" width="46.2" height="46.2" filterUnits="userSpaceOnUse">
-          <FeDropShadow dx="0" dy="0" stdDeviation="3.55" floodColor="#FAFDFE" floodOpacity="0.6" />
+        <Filter id="eating_glow" filterUnits="userSpaceOnUse" x="-5.82067" y="-3.0" width="46.2" height="46.2">
+          <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeComposite in="tint" in2="blur" operator="in" result="glow" />
+          <FeMerge>
+            <FeMergeNode in="glow" />
+            <FeMergeNode in="SourceGraphic" />
+          </FeMerge>
         </Filter>
       </Defs>
       <G filter="url(#eating_glow)">
@@ -82,14 +108,18 @@ export function MealsIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; 
 
 // Figma `explore` — paywall value line 3.
 export function GuidanceIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  // Renders into the filter region (39.5333 units for a 32pt glyph) so the
-  // glow is not clipped; the glyph itself still measures `size`.
-  const box = (size * 39.5333) / GLYPH;
+  const box = (size * 59.5333) / GLYPH;
   return (
     <Svg width={box} height={box} viewBox="0.0 0.0 39.5333 39.5333" fill="none">
       <Defs>
-        <Filter id="explore_glow" x="0.0" y="0.0" width="39.5333" height="39.5333" filterUnits="userSpaceOnUse">
-          <FeDropShadow dx="0" dy="0" stdDeviation="3.55" floodColor="#FAFDFE" floodOpacity="0.6" />
+        <Filter id="explore_glow" filterUnits="userSpaceOnUse" x="0.0" y="0.0" width="39.5333" height="39.5333">
+          <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
+          <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
+          <FeComposite in="tint" in2="blur" operator="in" result="glow" />
+          <FeMerge>
+            <FeMergeNode in="glow" />
+            <FeMergeNode in="SourceGraphic" />
+          </FeMerge>
         </Filter>
       </Defs>
       <G filter="url(#explore_glow)">

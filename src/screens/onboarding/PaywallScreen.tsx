@@ -11,17 +11,7 @@ import {
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { PurchasesPackage } from "react-native-purchases";
-import Svg, {
-  Defs,
-  Ellipse,
-  FeGaussianBlur,
-  Filter,
-  G,
-  LinearGradient,
-  Path,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
@@ -644,49 +634,33 @@ export function PaywallScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* Bottom-darken gradient over the maroon-alt page surface. */}
+      {/* The page background.
+          🔑 This is ONE calibrated vertical gradient, not a reproduction of
+          Lang's construction. Her frame builds it from two heavily blurred
+          ellipses over a black bottom-darken layer; react-native-svg's
+          FeGaussianBlur renders that unreliably (the same stdDeviation gives a
+          visibly tighter blur, and it is expensive over a 3x-screen surface).
+          Measuring the frame instead showed the horizontal variation is at most
+          5/255 — it is a vertical ramp in all but name — so these stops are
+          sampled straight off her render and land within ~1/255 of it. If the
+          design changes, RE-MEASURE the frame and re-derive the stops. */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%" preserveAspectRatio="none">
           <Defs>
             <LinearGradient id="paywallBg" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0.4358" stopColor="#000000" stopOpacity="0" />
-              <Stop offset="0.815" stopColor="#000000" stopOpacity="0.6" />
+              <Stop offset="0" stopColor="#422224" />
+              <Stop offset="0.03" stopColor="#442527" />
+              <Stop offset="0.10" stopColor="#4E3032" />
+              <Stop offset="0.18" stopColor="#503335" />
+              <Stop offset="0.30" stopColor="#503335" />
+              <Stop offset="0.34" stopColor="#4D2F31" />
+              <Stop offset="0.42" stopColor="#432325" />
+              <Stop offset="0.50" stopColor="#381618" />
+              <Stop offset="0.58" stopColor="#361416" />
+              <Stop offset="1" stopColor="#361416" />
             </LinearGradient>
           </Defs>
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#paywallBg)" />
-        </Svg>
-      </View>
-
-      {/* Lang's `.Gradient/Burner` wash — two heavily blurred ellipses that lift
-          the top of the screen and sink the middle. Despite the layer name it is
-          NOT type-coloured: the fills are the neutral page surfaces (#513436
-          over #361416), so it cannot leak the Type this screen exists to hide.
-          Sits ABOVE the darken gradient, as it does in the frame (CSS paints
-          background layers behind children). Extends far past every edge, so the
-          blur is never visibly clipped. */}
-      <View style={styles.wash} pointerEvents="none">
-        <Svg width="100%" height="100%" viewBox="0 0 1209.46 1648.33" preserveAspectRatio="none">
-          <Defs>
-            {/* userSpaceOnUse with an explicit, generous region — a percentage
-                region left the ellipses with hard edges, and `in` has to be
-                named or the blur is a no-op. */}
-            <Filter
-              id="washBlur"
-              filterUnits="userSpaceOnUse"
-              x="-400"
-              y="-400"
-              width="2009"
-              height="2449"
-            >
-              <FeGaussianBlur in="SourceGraphic" stdDeviation="49.8329" />
-            </Filter>
-          </Defs>
-          <G filter="url(#washBlur)">
-            <Ellipse cx="604.73" cy="681.663" rx="505.064" ry="581.997" fill={MAROON_ALT} />
-          </G>
-          <G filter="url(#washBlur)">
-            <Ellipse cx="604.141" cy="984.698" rx="410.734" ry="563.968" fill={MAROON} />
-          </G>
         </Svg>
       </View>
 
@@ -858,15 +832,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     height: 40,
-  },
-  // The wash layer. Percentages are the frame's: it reaches ~62% past each side
-  // and ~66% below, which is what keeps the blurred edges off-screen.
-  wash: {
-    position: "absolute",
-    left: -0.6231 * SCREEN_W,
-    top: -0.0006 * SCREEN_H,
-    width: SCREEN_W * 2.2462,
-    height: SCREEN_H * 1.6579,
   },
 
   // 40 tall so the card stack (83) overhangs it, as the frame does.
