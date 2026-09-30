@@ -28,8 +28,6 @@ import {
 } from "../../navigation/rootNavigationRef";
 import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent, setCustomAttribute } from "../../services/braze";
-import { ScoreRing } from "../../components/survey/ScoreRing";
-import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
 import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
@@ -109,14 +107,14 @@ const CARD_SIDE_MARGIN = 12;
 // margins is already < CONTENT_MAX_WIDTH). The `left: (SCREEN_W - cardW)/2`
 // positioning below keeps the narrower card centered automatically.
 const CARD_W = Math.min(SCREEN_W - CARD_SIDE_MARGIN * 2, CONTENT_MAX_WIDTH);
-const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
+const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
 
-const TOTAL_CARDS = 6;
+const TOTAL_CARDS = 5;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
 // fetch fails outright (timeout, auth error, etc.). The normal "no scan"
@@ -144,11 +142,9 @@ const ENTRY_POSE = [
   { dx: SCREEN_W * 0.75, dy: -SCREEN_H * 0.55, rot: 16 },
   // idx 1 (type summary — RES-146)
   { dx: SCREEN_W * 0.68, dy: -SCREEN_H * 0.5, rot: 14 },
-  // idx 2 (reset score)
-  { dx: SCREEN_W * 0.6, dy: -SCREEN_H * 0.45, rot: 13 },
-  // idx 3 (insight)
+  // idx 2 (insight)
   { dx: SCREEN_W * 0.42, dy: -SCREEN_H * 0.3, rot: 9 },
-  // idx 4 (Reset Window recommendation)
+  // idx 3 (Reset Window recommendation)
   { dx: SCREEN_W * 0.34, dy: -SCREEN_H * 0.25, rot: 7 },
   // idx 5 (back / meal teaser): subtle settle
   { dx: SCREEN_W * 0.28, dy: -SCREEN_H * 0.2, rot: 6 },
@@ -337,57 +333,6 @@ function FrontCard({
   );
 }
 
-function MiddleCard({
-  type,
-  score,
-  confidence,
-  daysToFull,
-}: {
-  type: MetabolicType;
-  score: number;
-  confidence: number;
-  daysToFull: number;
-}) {
-  const logo = TYPE_LOGO[type];
-  // ScoreRing renders into a 320×200 box at width=BASE_W. The card's blue
-  // score surface is `cardW - cardPadding*2 - surfacePadding*2` wide; size
-  // the ring just under that so the SVG sits flush.
-  const ringWidth = CARD_WIDTHS[1] - 24 * 2 - 16 * 2;
-
-  return (
-    <View style={[styles.card, { width: CARD_WIDTHS[1], backgroundColor: CARD_BG_FRONT }]}>
-      <View style={styles.cardContent}>
-        <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
-
-        <Text style={styles.midGreeting}>
-          Thanks for checking in!{"\n\n"}Great to know you're a{" "}
-          <Text style={styles.midGreetingBold}>{TYPE_DISPLAY[type]}.</Text>
-          {"\n\n"}Here's how you're looking today:
-        </Text>
-
-        <View style={styles.scoreBlock}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrowText}>Today's Reset Score</Text>
-          </View>
-          <View style={styles.scoreSurface}>
-            <ScoreRing score={score} animate={false} width={ringWidth} />
-          </View>
-          <View style={styles.confidenceRow}>
-            {daysToFull > 0 ? (
-              <Text style={styles.confidenceHint}>
-                Estimated {daysToFull} days til near 100% confidence
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <Text style={styles.swipeHint}>Swipe left to continue</Text>
-      </View>
-    </View>
-  );
-}
-
 function InsightCard({
   type,
   noticed,
@@ -558,14 +503,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     setDetail(d);
   };
 
-  // Pull the same Reset Score the Home screen will show, so the number on
-  // the middle card matches Home exactly (rather than the raw SDK wellness).
-  // Backend lazily computes/persists if the fire-and-forget recompute kicked
-  // off by submitScanResults hasn't landed yet, so the fetch always succeeds
-  // when a scan exists. The insight blurb is fetched in parallel — the LLM
-  // call dominates total latency, so kicking it off alongside the score
-  // keeps the loading window tight.
-  const [resetScore, setResetScore] = useState<ResetScore | null>(null);
   // Two-beat scan takeaway (split format): "what we noticed" + "your meal
   // because of that". Pre-paywall the meal half is generic (no dish named).
   const [insightNoticed, setInsightNoticed] = useState<string | null>(null);
@@ -579,8 +516,7 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       // declined third-party-AI consent, we skip it entirely and show the
       // static type (the reset score is a deterministic backend calc, kept).
       const aiGranted = state.user.aiConsentGranted === true;
-      const [scoreRes, insightRes] = await Promise.allSettled([
-        getResetScore(),
+      const [insightRes] = await Promise.allSettled([
         // No meal slots pre-paywall; request the SPLIT format so the takeaway
         // renders as two beats ("what we noticed" + "your meal because of that")
         // instead of one wall of text. The long prose stays post-paywall.
@@ -589,9 +525,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           : Promise.reject(new Error("ai_consent_declined")),
       ]);
       if (cancelled) return;
-      if (scoreRes.status === "fulfilled") {
-        setResetScore(scoreRes.value.score ?? null);
-      }
       if (insightRes.status === "fulfilled") {
         setInsightNoticed(insightRes.value.noticed ?? null);
         setInsightMeal(insightRes.value.mealBecause ?? null);
@@ -602,15 +535,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       cancelled = true;
     };
   }, []);
-
-  const score = Math.round(
-    resetScore?.score ?? state.biometrics?.wellness ?? 70
-  );
-  const confidence = Math.round(resetScore?.confidence ?? 15);
-  // Same formula HomeScreenV2 uses for the ConfidenceCard, so the days
-  // estimate stays consistent between TypeReveal and Home.
-  const daysToFull =
-    confidence < 100 ? Math.max(1, Math.ceil(100 - confidence)) : 0;
 
   useEffect(() => {
     logEvent("onboarding_type_reveal", { metabolic_type: metabolicType });
@@ -775,7 +699,7 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     [pan]
   );
 
-  const renderCard = (idx: 0 | 1 | 2 | 3 | 4 | 5) => {
+  const renderCard = (idx: 0 | 1 | 2 | 3 | 4) => {
     const isActive = idx === activeIdx;
     const isDismissed = idx < activeIdx;
     const pose = ENTRY_POSE[idx];
@@ -872,15 +796,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       );
     } else if (idx === 2) {
       content = (
-        <MiddleCard
-          type={metabolicType}
-          score={score}
-          confidence={confidence}
-          daysToFull={daysToFull}
-        />
-      );
-    } else if (idx === 3) {
-      content = (
         <InsightCard
           type={metabolicType}
           noticed={insightNoticed ?? INSIGHT_NOTICED_FALLBACK}
@@ -892,10 +807,10 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           bodyMaxHeight={Math.max(80, Math.floor((cardH - 340) / 2))}
         />
       );
-    } else if (idx === 4) {
+    } else if (idx === 3) {
       content = (
         <WindowRecCard
-          width={CARD_WIDTHS[4]}
+          width={CARD_WIDTHS[3]}
           height={cardH}
           typeLogo={TYPE_LOGO[metabolicType]}
         />
@@ -970,7 +885,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           {/* Reveal-only shows card 0 alone — no Deep Read or meal teaser
               stacked behind it, since those are what we are deliberately not
               replaying for a returning member. */}
-          {revealOnly ? null : renderCard(5)}
           {revealOnly ? null : renderCard(4)}
           {revealOnly ? null : renderCard(3)}
           {revealOnly ? null : renderCard(2)}
@@ -1188,8 +1102,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
 
-  // Reset Score block
-  scoreBlock: { gap: 6 },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   eyebrowDot: {
     width: 7,
@@ -1198,45 +1110,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#92B4BD",
   },
   eyebrowText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    color: SUBTLE,
-    letterSpacing: -0.12,
-  },
-  scoreSurface: {
-    backgroundColor: BLUE_BG,
-    borderRadius: 4,
-    borderTopRightRadius: 64,
-    paddingTop: 16,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    alignItems: "center",
-  },
-  confidenceRow: {
-    backgroundColor: BLUE_BG,
-    borderRadius: 4,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  confidenceLabel: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    color: MAROON,
-    letterSpacing: -0.12,
-  },
-  confidenceValue: {
-    fontFamily: fonts.dmSans,
-    fontWeight: "700",
-    fontSize: 16,
-    color: MAROON,
-    letterSpacing: -0.16,
-  },
-  confidenceHint: {
-    flex: 1,
     fontFamily: fonts.dmSans,
     fontSize: 12,
     color: SUBTLE,
