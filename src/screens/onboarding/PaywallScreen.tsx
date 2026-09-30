@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Dimensions,
   ActivityIndicator,
   Linking,
@@ -59,7 +58,6 @@ const TEXT_ALT = "#B0A3A4";
 const DIVIDER = "#7E6869";
 const GHOST_W = "rgba(250,253,254,0.24)";
 
-const RESET_LOGO = require("../../../assets/images/reset-logo.png");
 
 // Screen Copy row 14 is SUPERSEDED here. Bryan replaced the four benefit rows
 // with these three on 2026-09-30, after the Sheet was written — later artefact
@@ -324,12 +322,21 @@ export function PaywallScreen({ navigation }: Props) {
     };
   }, []);
 
-  // 🔴 PENDING — the personalized Ester line Bryan asked for on 2026-09-30.
-  // Held at null deliberately: `scan-insights` does not read onboarding answers
-  // yet, and its fallback asserts "your scan" to members who skipped the scan.
-  // Shipping that on the paywall would be a false claim on the revenue screen.
-  // Wire this to the generator once it takes onboarding answers as an input.
-  const esterLine: string | null = null;
+  // Ester's line. Bryan signed off on the design WITH this card (2026-09-30),
+  // so it renders.
+  //
+  // 🔴 THE STRING IS LANG'S PLACEHOLDER FROM THE FRAME, NOT APPROVED COPY, and
+  // it is the same for everyone — the opposite of what Bryan actually asked
+  // for ("generated in the moment… specific to that person"). It ships as a
+  // holding line because it is the one thing here that is true for every
+  // member regardless of path: every member answers the energy question, and
+  // it claims nothing about a scan, so it is safe for scanners and skippers
+  // alike. That is the ONLY reason it is safe to render today.
+  //
+  // ▶ Replace with the generator once `scan-insights` reads onboarding answers
+  // (see the notes on that service). Until then, do not let this line grow
+  // into anything that asserts a reading we have not actually taken.
+  const esterLine: string | null = "Your energy levels are telling me something.";
 
   const plans = buildPlanDisplay(monthlyPkg, annualPkg);
 
@@ -663,11 +670,9 @@ export function PaywallScreen({ navigation }: Props) {
               When it does, pass it in and the card appears. */}
           {esterLine ? (
             <View style={styles.esterCard}>
-              <Image
-                source={RESET_LOGO}
-                style={styles.esterMark}
-                resizeMode="contain"
-              />
+              <View style={styles.esterMark}>
+                <ResetMarkIcon size={26} color={WHITE} />
+              </View>
               <Text style={styles.esterText}>{esterLine}</Text>
             </View>
           ) : null}
@@ -873,7 +878,7 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
     paddingRight: 8,
   },
-  esterMark: { width: 26, height: 26 },
+  esterMark: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
   esterText: {
     flex: 1,
     fontFamily: fonts.catalogue,
