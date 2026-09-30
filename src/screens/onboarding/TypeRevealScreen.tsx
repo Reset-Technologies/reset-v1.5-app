@@ -503,7 +503,13 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
 }
 
 // ── Screen ────────────────────────────────────────────────────────────
-export function TypeRevealScreen({ navigation }: Props) {
+export function TypeRevealScreen({ navigation, route }: Props) {
+  // Gate purchases show the reveal ONLY, then Home (Bryan, 2026-09-29: "#2").
+  // A returning unpaid member has already been through onboarding; replaying
+  // the Deep Read and meal-teaser cards would read as being made to sit through
+  // it twice immediately after paying.
+  const revealOnly = route?.params?.revealOnly === true;
+  const totalCards = revealOnly ? 1 : TOTAL_CARDS;
   const { state, completeOnboarding } = useApp();
   const insets = useSafeAreaInsets();
 
@@ -681,7 +687,7 @@ export function TypeRevealScreen({ navigation }: Props) {
   // inside the setActiveIdx updater triggers a navigator state update while
   // TypeReveal is rendering, which React flags as a setState-in-render warning.
   useEffect(() => {
-    if (activeIdx < TOTAL_CARDS) return;
+    if (activeIdx < totalCards) return;
     logEvent("onboarding_type_reveal_continueCTA");
 
     // 🔴 This screen now ends onboarding. The paywall used to own the handoff,
@@ -692,6 +698,15 @@ export function TypeRevealScreen({ navigation }: Props) {
     // completeOnboarding() flips hasCompletedOnboarding, which RootNavigator
     // branches on first — that swap is what takes them out of the onboarding
     // stack and into Main, so it has to happen here and not a moment earlier.
+    // Reveal-only runs INSIDE the Main stack (the tier already flipped to pro
+    // when they purchased, so RootNavigator has already swapped). Onboarding is
+    // long since complete for these members — there is nothing to complete and
+    // no window intro to mark. Just hand them to Home.
+    if (revealOnly) {
+      navigation.goBack();
+      return;
+    }
+
     const uid = state.auth.authUser?.id;
     const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
     if (uid && sawWindowInOnboarding) markWindowIntroShown(uid);
@@ -709,7 +724,7 @@ export function TypeRevealScreen({ navigation }: Props) {
       }
     }, 80);
     return () => clearTimeout(t);
-  }, [activeIdx, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
+  }, [activeIdx, totalCards, revealOnly, navigation, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
 
   const dismissActive = () => {
     // Continue the swipe from wherever the user released — translate up-left
@@ -952,11 +967,14 @@ export function TypeRevealScreen({ navigation }: Props) {
           state with just the spinner until both resolve. */}
       {loaded && (
         <>
-          {renderCard(5)}
-          {renderCard(4)}
-          {renderCard(3)}
-          {renderCard(2)}
-          {renderCard(1)}
+          {/* Reveal-only shows card 0 alone — no Deep Read or meal teaser
+              stacked behind it, since those are what we are deliberately not
+              replaying for a returning member. */}
+          {revealOnly ? null : renderCard(5)}
+          {revealOnly ? null : renderCard(4)}
+          {revealOnly ? null : renderCard(3)}
+          {revealOnly ? null : renderCard(2)}
+          {revealOnly ? null : renderCard(1)}
           {renderCard(0)}
         </>
       )}

@@ -13,11 +13,14 @@ import { K } from "../constants/colors";
 // the reveal is now what the paywall sells rather than something already given
 // away (Bryan, 2026-09-29).
 //
-// 🔴 OPEN: what a gate member sees AFTER purchasing. Subscribing flips the tier
-// to "pro", which re-renders RootNavigator straight into Main — so today they
-// would pay to see their Type and land on Home without ever seeing it. The
-// Sheet says they should get the reveal ("no second gate"). Awaiting Bryan's
-// call on how much of the tail they repeat; tracked in the handoff notes.
+// After purchasing, a gate member gets the REVEAL ONLY and then Home (Bryan,
+// 2026-09-29: "#2"). They have been through onboarding once, so replaying the
+// Deep Read and meal cards would read as sitting through it again immediately
+// after paying.
+// 🔑 That reveal cannot render from this navigator: purchasing flips the tier
+// to "pro", which re-renders RootNavigator out of Gate and into Main before it
+// could mount. PaywallScreen deep-navigates to Main > TypeReveal
+// { revealOnly: true } instead.
 //
 // PaywallScreen detects gate mode from state.user.hasCompletedOnboarding.
 export type GateStackParamList = {
