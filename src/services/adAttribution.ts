@@ -47,6 +47,7 @@ import { Platform } from "react-native";
 // package's SOURCE into our program — where a pre-existing `typeof jest` check
 // fails to compile under our `strict` and cannot be silenced by skipLibCheck.
 import type { AppsFlyerSDK } from "@appsflyer-sdk/js-core-plugin";
+import { setUserProperties } from "./amplitude";
 
 // Native module is unavailable in Expo Go and in any build made before this
 // package was linked by prebuild. Load it defensively — same contract as
@@ -257,6 +258,63 @@ function destinationFrom(deepLink: Record<string, unknown>): string | null {
  * unhandled rejection from analytics must never surface as a redbox or a crash
  * in a screen that has nothing to do with advertising.
  */
+/**
+ * The commercial attribution fields, and nothing else.
+ *
+ * Default-deny, exactly as ALLOWED_EVENTS above: the conversion payload is a
+ * loose bag AppsFlyer can add to at any time, and copying it wholesale would
+ * ship whatever they add next straight into Amplitude without anyone deciding
+ * to. These five describe where a user came from and nothing about them.
+ *
+ * Names are AppsFlyer's own spellings rather than our camelCase, so the
+ * properties match what the vendor integration would have produced and what
+ * anyone reading AppsFlyer docs or Meta reports expects to find.
+ */
+const ATTRIBUTION_FIELDS = [
+  "af_status", // "Organic" | "Non-organic" — the paid/organic split itself
+  "media_source",
+  "campaign",
+  "adset",
+  "af_ad",
+] as const;
+
+/**
+ * Conversion payload → the Amplitude user properties to set, or null for
+ * "set nothing".
+ *
+ * Exported and pure so the decision can be exercised directly. This repo has
+ * no test runner, so "pure function + a callable entry point" is the only way
+ * this logic is checkable at all without adding one.
+ */
+export function attributionPropertiesFrom(
+  data: Record<string, unknown>,
+): Record<string, string> | null {
+  // 🔴 First launch only. AppsFlyer delivers conversion data on EVERY launch,
+  // and a later re-attribution would otherwise overwrite the source the member
+  // actually arrived from — rewriting history every time they open the app.
+  if (data.is_first_launch !== true) return null;
+
+  const attrs: Record<string, string> = {};
+  for (const key of ATTRIBUTION_FIELDS) {
+    const value = data[key];
+    // Strings only: the bag is typed `unknown` per field, and an object or
+    // array would reach Amplitude as "[object Object]".
+    if (typeof value === "string" && value.trim() !== "") {
+      attrs[key] = value.trim();
+    }
+  }
+
+  // No attribution means we set NOTHING, rather than stamping the user as
+  // organic by omission — an absent property reads as "unknown", which is the
+  // truth, and a wrong "Organic" would quietly understate paid performance.
+  return Object.keys(attrs).length === 0 ? null : attrs;
+}
+
+function applyAttribution(data: Record<string, unknown>): void {
+  const attrs = attributionPropertiesFrom(data);
+  if (attrs) setUserProperties(attrs);
+}
+
 function ignore(result: unknown): void {
   Promise.resolve(result).catch(() => {});
 }
@@ -285,6 +343,38 @@ export function init(): void {
     // is attached yet — there is no retry and no way to ask for it later. A
     // listener registered after init() would work in testing (where the link is
     // usually already resolved) and silently lose real deferred deep links.
+    // 🔑 Read attribution OUT of AppsFlyer and put it on the Amplitude user.
+    //
+    // This is the opposite direction to everything else in this file, and it is
+    // deliberate. AppsFlyer's own Amplitude V2 integration has never delivered a
+    // single row (Active on both apps, correct project key, US region, "all
+    // media sources including organic" — verified 2026-09-29), so the
+    // server-to-server path is not something we control or can debug.
+    //
+    // 🔴 It also would not have answered the question even if it worked.
+    // AppsFlyer keys its postback by DEVICE id; our Amplitude events are keyed
+    // to our database user id (services/amplitude.ts setUserId). If those two
+    // never merge, `media_source` lands on a different Amplitude user than the
+    // funnel and the paid-vs-organic split is still impossible. Setting the
+    // property from inside the app puts it on the SAME user by construction.
+    //
+    // Registered before init() for the same reason as the deep-link listener
+    // below: native delivers this once and drops it if nobody is listening.
+    AppsFlyer.registerConversionListener({
+      onConversionDataSuccess: (data) => {
+        try {
+          applyAttribution(data);
+        } catch {
+          // Attribution is reporting, not function. It must never be able to
+          // take down a launch.
+        }
+      },
+      onConversionDataFail: () => {
+        // Nothing to do: no attribution simply means the user properties stay
+        // unset, which reads as "unknown" rather than as organic.
+      },
+    });
+
     AppsFlyer.registerDeepLinkListener({
       onDeepLinking: (data) => {
         if (data.status !== "FOUND" || !data.deepLink) return;
