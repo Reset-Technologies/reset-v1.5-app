@@ -25,7 +25,26 @@ type Props = NativeStackScreenProps<any, "AiConsent">;
 // and continues into the non-AI experience. The backend enforces the decision
 // on every AI endpoint regardless.
 export function AiConsentScreen({ navigation }: Props) {
-  const { setAiConsent } = useApp();
+  const { state, setAiConsent } = useApp();
+
+  // 🔴 Open Check #4 of the V1 onboarding handoff. The locked consent body
+  // tells everyone that Reset shares "the wellness signals from your scan" and
+  // that "your face video never leaves your device" — both false for someone
+  // who skipped the scan, and until 2026-09-29 unreachable, because skippers
+  // looped back at NoScanEmptyState and never got here. The skip fix opens that
+  // path, so this screen now has to tell them the truth.
+  //
+  // 🔴 ENGINEERING DOES NOT WRITE THIS COPY. The Sheet is explicit: "Cole builds
+  // the state; compliance supplies the final string." So the no-scan variant
+  // OMITS the two claims that do not apply rather than inventing replacements —
+  // removing a false claim is not authoring legal copy, but writing a new one
+  // would be. When compliance delivers the approved wording, it goes in the two
+  // marked places below and nothing else changes.
+  //
+  // `startingRead` is set by CreateAccountScreen from the typing response
+  // immediately before it routes here, and is true exactly when the backend
+  // typed the member with no scan.
+  const scanned = state.user.startingRead !== true;
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -64,10 +83,16 @@ export function AiConsentScreen({ navigation }: Props) {
       >
         <Text style={styles.title}>Before we build your type</Text>
 
-        <Text style={styles.lead}>
-          Your face video never leaves your device — the scan is processed right
-          on your phone.
-        </Text>
+        {/* 🔴 PENDING COMPLIANCE (Open Check #4): no approved no-scan lead
+            exists. Omitted rather than reworded — there is no face video to
+            make a promise about. Replace with the approved string when it
+            lands; do not write one here. */}
+        {scanned ? (
+          <Text style={styles.lead}>
+            Your face video never leaves your device — the scan is processed
+            right on your phone.
+          </Text>
+        ) : null}
 
         <Text style={styles.body}>
           To create your type and personalize your meals, Reset shares a few
@@ -79,7 +104,12 @@ export function AiConsentScreen({ navigation }: Props) {
           <Bullet text="Your first name" />
           <Bullet text="The things you tell Ester" />
           <Bullet text="Your check-in answers" />
-          <Bullet text="The wellness signals from your scan" />
+          {/* 🔴 PENDING COMPLIANCE (Open Check #4): a member who skipped the
+              scan has no wellness signals to share, so the row is omitted for
+              them. Awaiting the approved no-scan wording. */}
+          {scanned ? (
+            <Bullet text="The wellness signals from your scan" />
+          ) : null}
         </View>
 
         <View style={styles.links}>
