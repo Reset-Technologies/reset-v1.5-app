@@ -505,6 +505,29 @@ export function PaywallScreen({ navigation }: Props) {
     const uid = state.auth.authUser?.id;
     const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
     if (!isGate && uid && sawWindowInOnboarding) markWindowIntroShown(uid);
+
+    // 🔴 In ONBOARDING the purchase is not the end any more — it is the middle.
+    // Bryan's V1 flow (2026-09-29) is Type ready → Paywall → reveal → Deep Read
+    // → first meal → Home, so the member has paid precisely to see the reveal
+    // that now follows.
+    //
+    // completeOnboarding() must NOT run here in that case. RootNavigator
+    // branches on hasCompletedOnboarding FIRST, so flipping it would swap the
+    // root stack out from under us and drop the member on Home — skipping the
+    // thing they just bought. TypeRevealScreen owns the handoff instead, at the
+    // end of its card stack.
+    //
+    // 🔴 The gate path deliberately still completes here. A returning unpaid
+    // member already has hasCompletedOnboarding true, and purchasing flips the
+    // tier straight to Main — so they currently get no reveal at all. That is a
+    // real gap, not an oversight; it is with Bryan (how much of the tail should
+    // they replay?) and wiring it before he answers would mean building it
+    // twice. See GateNavigator.
+    if (!isGate) {
+      navigation.replace("TypeReveal");
+      return;
+    }
+
     completeOnboarding();
     // Defer deep navigation until the Main stack has actually mounted —
     // completeOnboarding flips the root state, which triggers a re-render
