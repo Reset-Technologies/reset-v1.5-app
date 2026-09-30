@@ -67,7 +67,14 @@ const GHOST_ON_BONE = "rgba(54,20,22,0.12)";
 // from the R letterform on the face-down cards, and the frame uses each in its
 // own place. Silver-shaded rather than flat white: the frame renders it at
 // ~(217,220,221), which is this asset, not a tinted mark.
-const BRAND_MARK = require("../../../assets/images/brand-logo-silver.png");
+//
+// 🔴 This is a TIGHTLY CROPPED copy of brand-logo-silver.png, which is 224x224
+// with the glyph filling only 75% — 12.5% transparent padding a side (the same
+// trap as ester-avatar.png). With the padded original, `size` meant "box",
+// not "mark", and a 26 box drew a 19pt mark. Cropping once means 26 means 26,
+// with no compensating magic number to get wrong later. The original is left
+// alone; other screens still use it.
+const BRAND_MARK = require("../../../assets/images/brand-mark-tight.png");
 const DIVIDER = "#7E6869";
 
 
@@ -943,6 +950,8 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
     paddingRight: 8,
   },
+  // 🔴 brand-logo-silver.png is 224x224 with the glyph filling only 75% —
+  // 12.5% TRANSPARENT PADDING per side (the same trap as ester-avatar.png).
   esterMark: { width: 26, height: 26 },
   esterText: {
     flex: 1,
