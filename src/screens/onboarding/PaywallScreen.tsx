@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Image,
   Dimensions,
   ActivityIndicator,
   Linking,
@@ -57,6 +58,16 @@ const MAROON = "#361416";
 const WHITE = "#FAFDFE";
 const BONE = "#F3EFE3";
 const TEXT_ALT = "#B0A3A4";
+// ghost-surface: #361416 at 12%. Everything ON a face-down card is this one
+// tone — the monogram as much as the skeleton rows — which is what makes the
+// card read as unrevealed.
+const GHOST_ON_BONE = "rgba(54,20,22,0.12)";
+
+// 🔑 The BRAND mark (rounded body, hole, dot, two feet) — a different glyph
+// from the R letterform on the face-down cards, and the frame uses each in its
+// own place. Silver-shaded rather than flat white: the frame renders it at
+// ~(217,220,221), which is this asset, not a tinted mark.
+const BRAND_MARK = require("../../../assets/images/brand-logo-silver.png");
 const DIVIDER = "#7E6869";
 
 
@@ -181,7 +192,11 @@ function FaceCardContent() {
   return (
     <>
       <View style={styles.faceCardLogo}>
-        <ResetMarkIcon size={36} color={MAROON} />
+        {/* 🔴 Ghost tone, NOT full-strength maroon. Measured off the frame at
+            (219,212,202), which is exactly MAROON at 12% over the bone card —
+            the same token as the skeleton rows below it. Rendering it solid
+            made the card look face-UP. */}
+        <ResetMarkIcon size={36} color={GHOST_ON_BONE} />
       </View>
       <View style={styles.skeletonGroup}>
         <View style={[styles.skeletonBar, styles.skeletonTitle]} />
@@ -703,9 +718,11 @@ export function PaywallScreen({ navigation }: Props) {
               When it does, pass it in and the card appears. */}
           {esterLine ? (
             <View style={styles.esterCard}>
-              <View style={styles.esterMark}>
-                <ResetMarkIcon size={26} color={WHITE} />
-              </View>
+              <Image
+                source={BRAND_MARK}
+                style={styles.esterMark}
+                resizeMode="contain"
+              />
               <Text style={styles.esterText}>{esterLine}</Text>
             </View>
           ) : null}
@@ -882,7 +899,7 @@ const styles = StyleSheet.create({
   skeletonBar: {
     height: 3.121,
     borderRadius: 0.78,
-    backgroundColor: "rgba(54,20,22,0.12)",
+    backgroundColor: GHOST_ON_BONE,
     width: "100%",
   },
   skeletonTitle: { height: 4.681, width: 33 },
@@ -926,7 +943,7 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
     paddingRight: 8,
   },
-  esterMark: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
+  esterMark: { width: 26, height: 26 },
   esterText: {
     flex: 1,
     fontFamily: fonts.catalogue,
