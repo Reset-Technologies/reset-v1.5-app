@@ -24,7 +24,10 @@ import {
   restorePurchases,
 } from "../../services/revenuecat";
 import { setSubscriptionTierDev, getProfile } from "../../services/profile";
-import { rootNavigationRef } from "../../navigation/rootNavigationRef";
+import {
+  rootNavigationRef,
+  navigateWhenMounted,
+} from "../../navigation/rootNavigationRef";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
@@ -536,14 +539,16 @@ export function PaywallScreen({ navigation }: Props) {
    * dispatch the onboarding handoff uses.
    */
   const revealAfterGatePurchase = () => {
-    setTimeout(() => {
-      if (rootNavigationRef.isReady()) {
-        (rootNavigationRef as any).navigate("Main", {
-          screen: "TypeReveal",
-          params: { revealOnly: true },
-        });
-      }
-    }, 80);
+    // Waits for Main to exist rather than guessing a delay — the tier flip
+    // re-renders the root and `isReady()` only reports the container, not the
+    // stack. A fixed timeout here would drop the reveal on a slow device, which
+    // is precisely the bug this whole branch exists to fix.
+    navigateWhenMounted("Main", () => {
+      (rootNavigationRef as any).navigate("Main", {
+        screen: "TypeReveal",
+        params: { revealOnly: true },
+      });
+    });
   };
 
   /**
