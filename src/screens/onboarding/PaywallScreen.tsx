@@ -30,6 +30,8 @@ import {
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 import {
   ArrowBackIcon,
+  GLOW_OVERHANG,
+  GLOW_SCALE,
   ResetMarkIcon,
   TypeMeaningIcon,
   MealsIcon,
@@ -936,15 +938,17 @@ const styles = StyleSheet.create({
 
   // Value lines — icon + text, no bordered box (Bryan, 2026-09-30).
   valueBlock: { width: "100%", paddingHorizontal: 4, paddingBottom: 12 },
-  // 32 in layout, 46.2 drawn: the glow overflows a centred box rather than
-  // widening it. Negative margins here instead SHRANK the footprint to 17.8 and
-  // dragged every row left.
+  // 🔴 Sized to the FULL drawn box and pulled back by the overhang, so the
+  // footprint is still 32 but nothing is clipped. Sizing this to 32 and
+  // relying on overflow cut the fork/knife and compass mid-glyph on Android;
+  // negative margins on a 32 box instead shrank the footprint to 17.8 and
+  // dragged every row left. This is the combination that is right.
   valueIcon: {
-    width: 32,
-    height: 32,
+    width: 32 * GLOW_SCALE,
+    height: 32 * GLOW_SCALE,
+    margin: -32 * GLOW_OVERHANG,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
   },
   valueRow: {
     flexDirection: "row",

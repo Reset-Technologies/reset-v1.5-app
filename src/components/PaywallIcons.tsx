@@ -26,21 +26,29 @@ import Svg, {
  * FeDropShadow — `FeDropShadow` renders as a no-op here.
  *
  * 🔴 SIGMA IS CALIBRATED, NOT COPIED. Figma's own value is 3.55, but
- * react-native-svg renders a markedly tighter blur for the same number:
- * measured against Lang's frame, 3.55 gave a ~3pt halo where the design has
- * ~7pt per side. GLOW_SIGMA is tuned so the rendered halo matches the frame.
- * If it ever looks wrong, MEASURE the frame and re-tune rather than assuming
- * the Figma number is what to use.
+ * react-native-svg renders a markedly tighter blur for the same number.
+ * Measured against Lang's frame, GLOW_SIGMA gives ~9pt rising +43 where the
+ * design has ~12pt rising +41. If it ever looks wrong, MEASURE the frame and
+ * re-tune rather than assuming the Figma number transfers.
  *
- * 🔴 A glow needs room. Each icon draws into its filter region (the frame's own,
- * widened by 10 units, since the frame's is tight enough to clip a halo this
- * wide),
- * inside a 32pt layout box so it overflows a centred box rather than resizing
- * it.
+ * 🔴 A glow needs room, and Android WILL clip it — and the glyph with it.
+ * Each icon draws into a box GLOW_SCALE times the glyph, built by padding the
+ * glyph's own bounding box symmetrically (not Figma's filter region, which is
+ * tight and differs per icon). The caller must size its wrapper to that full
+ * box and pull it back with `margin: -size * GLOW_OVERHANG` so the glow
+ * overflows without the layout moving. Sizing the wrapper to the glyph instead
+ * clipped the second and third icons mid-glyph.
  */
 
 const GLYPH = 32;
+const PAD = 17;
+const BOX = GLYPH + PAD * 2;
 const GLOW_SIGMA = 5;
+
+/** Multiply the glyph size by this to get the drawn box. */
+export const GLOW_SCALE = BOX / GLYPH;
+/** Overhang per side, as a fraction of the glyph size. */
+export const GLOW_OVERHANG = (BOX - GLYPH) / GLYPH / 2;
 
 // Back chevron — Figma `arrow_forward`, mirrored.
 export function ArrowBackIcon({ size = 24, color = "#FAFDFE" }: { size?: number; color?: string }) {
@@ -60,13 +68,14 @@ export function ResetMarkIcon({ size = 24, color = "#FAFDFE" }: { size?: number;
   );
 }
 
-// Figma `person_analysis` — paywall value line 1.
+// Figma `person_analysis` — paywall value line 1. Glyph bounding box starts at (4.8967, 4.15133); the
+// viewBox pads that symmetrically so the glyph sits dead centre in the box.
 export function TypeMeaningIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  const box = (size * 66.2) / GLYPH;
+  const box = size * GLOW_SCALE;
   return (
-    <Svg width={box} height={box} viewBox="-12.2033 -12.9487 66.2 66.2" fill="none">
+    <Svg width={box} height={box} viewBox={`-12.1033 -12.84867 ${BOX} ${BOX}`} fill="none">
       <Defs>
-        <Filter id="person_analysis_glow" filterUnits="userSpaceOnUse" x="-12.2033" y="-12.9487" width="66.2" height="66.2">
+        <Filter id="person_analysis_glow" filterUnits="userSpaceOnUse" x="-12.1033" y="-12.84867" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
           <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
@@ -83,13 +92,14 @@ export function TypeMeaningIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: nu
   );
 }
 
-// Figma `eating` — paywall value line 2.
+// Figma `eating` — paywall value line 2. Glyph bounding box starts at (1.27933, 4.1); the
+// viewBox pads that symmetrically so the glyph sits dead centre in the box.
 export function MealsIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  const box = (size * 66.2) / GLYPH;
+  const box = size * GLOW_SCALE;
   return (
-    <Svg width={box} height={box} viewBox="-5.82067 -3.0 46.2 46.2" fill="none">
+    <Svg width={box} height={box} viewBox={`-15.72067 -12.9 ${BOX} ${BOX}`} fill="none">
       <Defs>
-        <Filter id="eating_glow" filterUnits="userSpaceOnUse" x="-5.82067" y="-3.0" width="46.2" height="46.2">
+        <Filter id="eating_glow" filterUnits="userSpaceOnUse" x="-15.72067" y="-12.9" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
           <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
@@ -106,13 +116,14 @@ export function MealsIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; 
   );
 }
 
-// Figma `explore` — paywall value line 3.
+// Figma `explore` — paywall value line 3. Glyph bounding box starts at (3.76667, 3.76667); the
+// viewBox pads that symmetrically so the glyph sits dead centre in the box.
 export function GuidanceIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: number; color?: string }) {
-  const box = (size * 59.5333) / GLYPH;
+  const box = size * GLOW_SCALE;
   return (
-    <Svg width={box} height={box} viewBox="0.0 0.0 39.5333 39.5333" fill="none">
+    <Svg width={box} height={box} viewBox={`-13.23333 -13.23333 ${BOX} ${BOX}`} fill="none">
       <Defs>
-        <Filter id="explore_glow" filterUnits="userSpaceOnUse" x="0.0" y="0.0" width="39.5333" height="39.5333">
+        <Filter id="explore_glow" filterUnits="userSpaceOnUse" x="-13.23333" y="-13.23333" width={BOX} height={BOX}>
           <FeGaussianBlur in="SourceAlpha" stdDeviation={GLOW_SIGMA} result="blur" />
           <FeFlood floodColor="#FAFDFE" floodOpacity="0.6" result="tint" />
           <FeComposite in="tint" in2="blur" operator="in" result="glow" />
