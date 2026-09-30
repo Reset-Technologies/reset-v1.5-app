@@ -504,7 +504,7 @@ export function PaywallScreen({ navigation }: Props) {
     // onboarding handoff — it belongs wherever onboarding actually ends, and
     // that is no longer here.
 
-    // 🔴 In ONBOARDING the purchase is not the end any more — it is the middle.
+    // 🔴 The purchase is not the end of onboarding any more — it is the middle.
     // Bryan's V1 flow (2026-09-29) is Type ready → Paywall → reveal → Deep Read
     // → first meal → Home, so the member has paid precisely to see the reveal
     // that now follows.
@@ -515,21 +515,27 @@ export function PaywallScreen({ navigation }: Props) {
     // thing they just bought. TypeRevealScreen owns the handoff instead, at the
     // end of its card stack.
     //
-    if (!isGate) {
-      navigation.replace("TypeReveal");
-      return;
-    }
+    navigation.replace("TypeReveal");
 
-    // A gate member has hasCompletedOnboarding true already, so there is
-    // nothing to complete — but they still bought the reveal and must see it.
-    // Bryan chose "#2" (2026-09-29): the reveal only, then Home. They have been
-    // through onboarding once; replaying the Deep Read and meal cards would
-    // read as sitting through it again immediately after paying.
-    //
-    // 🔑 It has to render from the MAIN stack, not here. Purchasing flips the
-    // tier to "pro", which re-renders RootNavigator out of Gate and into Main —
-    // this screen is already unmounting. Same deferred rootNavigationRef
-    // dispatch as the onboarding handoff, for the same reason.
+  };
+
+  /**
+   * The reveal a gate member just paid for. Bryan chose "#2" (2026-09-29): the
+   * reveal only, then Home — they have been through onboarding once, so
+   * replaying the Deep Read and meal cards would read as sitting through it
+   * again immediately after paying.
+   *
+   * 🔑 Separate from proceedToApp deliberately. That is the ONBOARDING
+   * completion handoff: it flips homeV2 on and hands off to NextMeal, neither
+   * of which should happen to an existing member who simply bought a
+   * subscription.
+   *
+   * 🔑 And it has to render from the MAIN stack. Purchasing flips the tier to
+   * "pro", which re-renders RootNavigator out of Gate and into Main — this
+   * screen is already unmounting — hence the same deferred rootNavigationRef
+   * dispatch the onboarding handoff uses.
+   */
+  const revealAfterGatePurchase = () => {
     setTimeout(() => {
       if (rootNavigationRef.isReady()) {
         (rootNavigationRef as any).navigate("Main", {
@@ -655,7 +661,12 @@ export function PaywallScreen({ navigation }: Props) {
       // Deliberately NO purchase event here — no money moved. Dev-build events
       // land in the real Amplitude project, so firing one would put fabricated
       // revenue in the same funnel the ad spend is judged on.
-      if (!isGate) proceedToApp();
+      //
+      // Mirrors the real success path on BOTH sides, which is the point of the
+      // shortcut: without the gate branch, the reveal a gate member paid for
+      // could not be exercised in a dev build at all.
+      if (isGate) revealAfterGatePurchase();
+      else proceedToApp();
       return;
     }
 
@@ -690,7 +701,8 @@ export function PaywallScreen({ navigation }: Props) {
         // from onboarding_paywall_purchased so a reinstall never inflates CAC.
         logEvent("onboarding_paywall_recovered", packageProps(pkg));
         setSubscriptionTier("pro");
-        if (!isGate) proceedToApp();
+        if (isGate) revealAfterGatePurchase();
+        else proceedToApp();
       } else {
         logEvent("onboarding_paywall_failed", packageProps(pkg));
         toast.show({
@@ -706,8 +718,9 @@ export function PaywallScreen({ navigation }: Props) {
       // on, and the one to forward to the ad platforms.
       logEvent("onboarding_paywall_purchased", purchaseProps(pkg));
       // Optimistic local flip; the backend reconciles via RevenueCat webhook
-      // and getProfile() re-syncs the tier on next launch. In the gate, this
-      // re-renders RootNavigator straight into Main (no proceedToApp needed).
+      // and getProfile() re-syncs the tier on next launch. In the gate this
+      // re-renders RootNavigator into Main — which is exactly why the reveal
+      // has to be dispatched INTO the Main stack rather than pushed here.
       setSubscriptionTier("pro");
     } else {
       // Neither cancelled nor errored, yet no entitlement — the store reported
@@ -715,7 +728,15 @@ export function PaywallScreen({ navigation }: Props) {
       // and it means someone may have paid and not been let in.
       logEvent("onboarding_paywall_no_entitlement", packageProps(pkg));
     }
-    if (!isGate) proceedToApp();
+    // 🔴 A gate member proceeds ONLY on a real entitlement. Onboarding still
+    // always continues (it never blocks the flow on a paywall outcome), but
+    // showing the reveal to someone the store did not actually grant pro would
+    // hand out the very thing the gate exists to sell.
+    if (isGate) {
+      if (outcome.isPro) revealAfterGatePurchase();
+    } else {
+      proceedToApp();
+    }
   };
 
   const handleRestore = async () => {
@@ -729,7 +750,10 @@ export function PaywallScreen({ navigation }: Props) {
       logEvent("onboarding_paywall_restore_success");
       setSubscriptionTier("pro");
       toast.show({ message: "Subscription restored", icon: "✓" });
-      if (!isGate) proceedToApp();
+      // States tab: "Restore Purchase → straight to After purchase → Type
+      // reveal." A restore earns the reveal the same as a fresh purchase.
+      if (isGate) revealAfterGatePurchase();
+      else proceedToApp();
     } else {
       logEvent("onboarding_paywall_restore_none");
       toast.show({ message: "No active subscription found to restore." });
