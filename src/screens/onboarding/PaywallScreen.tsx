@@ -11,7 +11,17 @@ import {
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { PurchasesPackage } from "react-native-purchases";
-import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, {
+  Defs,
+  Ellipse,
+  FeGaussianBlur,
+  Filter,
+  G,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from "react-native-svg";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
@@ -56,7 +66,6 @@ const WHITE = "#FAFDFE";
 const BONE = "#F3EFE3";
 const TEXT_ALT = "#B0A3A4";
 const DIVIDER = "#7E6869";
-const GHOST_W = "rgba(250,253,254,0.24)";
 
 
 // Screen Copy row 14 is SUPERSEDED here. Bryan replaced the four benefit rows
@@ -219,6 +228,21 @@ function PlanCard({
       activeOpacity={0.85}
       style={[styles.planCard, radiiStyle, stateStyle]}
     >
+      {/* Selected fill is a fade from 24% white at the top to nothing, not a
+          flat tint — clipped by the card's own radii via overflow:hidden. */}
+      {selected ? (
+        <View style={[StyleSheet.absoluteFill, radiiStyle, styles.planSheen]} pointerEvents="none">
+          <Svg width="100%" height="100%" preserveAspectRatio="none">
+            <Defs>
+              <LinearGradient id="planSheen" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={WHITE} stopOpacity="0.24" />
+                <Stop offset="1" stopColor={WHITE} stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#planSheen)" />
+          </Svg>
+        </View>
+      ) : null}
       {saleTag ? (
         <View style={styles.saleTag}>
           <Text style={styles.saleTagText}>{saleTag}</Text>
@@ -633,6 +657,39 @@ export function PaywallScreen({ navigation }: Props) {
         </Svg>
       </View>
 
+      {/* Lang's `.Gradient/Burner` wash — two heavily blurred ellipses that lift
+          the top of the screen and sink the middle. Despite the layer name it is
+          NOT type-coloured: the fills are the neutral page surfaces (#513436
+          over #361416), so it cannot leak the Type this screen exists to hide.
+          Sits ABOVE the darken gradient, as it does in the frame (CSS paints
+          background layers behind children). Extends far past every edge, so the
+          blur is never visibly clipped. */}
+      <View style={styles.wash} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox="0 0 1209.46 1648.33" preserveAspectRatio="none">
+          <Defs>
+            {/* userSpaceOnUse with an explicit, generous region — a percentage
+                region left the ellipses with hard edges, and `in` has to be
+                named or the blur is a no-op. */}
+            <Filter
+              id="washBlur"
+              filterUnits="userSpaceOnUse"
+              x="-400"
+              y="-400"
+              width="2009"
+              height="2449"
+            >
+              <FeGaussianBlur in="SourceGraphic" stdDeviation="49.8329" />
+            </Filter>
+          </Defs>
+          <G filter="url(#washBlur)">
+            <Ellipse cx="604.73" cy="681.663" rx="505.064" ry="581.997" fill={MAROON_ALT} />
+          </G>
+          <G filter="url(#washBlur)">
+            <Ellipse cx="604.141" cy="984.698" rx="410.734" ry="563.968" fill={MAROON} />
+          </G>
+        </Svg>
+      </View>
+
       <View style={styles.topBar}>
         {/* Screen Copy row 14 `paywall.back` is LOCKED: "Returns to Type ready
             with the Type still hidden." goBack() does exactly that from both
@@ -681,7 +738,9 @@ export function PaywallScreen({ navigation }: Props) {
         <View style={styles.valueBlock}>
           {VALUE_LINES.map(({ Icon, label }) => (
             <View key={label} style={styles.valueRow}>
-              <Icon size={32} color={WHITE} />
+              <View style={styles.valueIcon}>
+                <Icon size={32} color={WHITE} />
+              </View>
               <Text style={styles.valueText}>{label}</Text>
             </View>
           ))}
@@ -723,6 +782,18 @@ export function PaywallScreen({ navigation }: Props) {
               (purchasing || restoring) && styles.subscribeBtnDisabled,
             ]}
           >
+            {/* Sheen down the top ~40% of the button, per the frame. */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width="100%" height="100%" preserveAspectRatio="none">
+                <Defs>
+                  <LinearGradient id="ctaSheen" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={WHITE} stopOpacity="0.8" />
+                    <Stop offset="0.3955" stopColor={WHITE} stopOpacity="0" />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#ctaSheen)" />
+              </Svg>
+            </View>
             {purchasing ? (
               <ActivityIndicator color={MAROON} />
             ) : (
@@ -773,7 +844,7 @@ export function PaywallScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: MAROON_ALT,
+    backgroundColor: MAROON,
     paddingTop: TOP_PAD,
     paddingBottom: 40,
     paddingHorizontal: 24,
@@ -788,6 +859,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     height: 40,
   },
+  // The wash layer. Percentages are the frame's: it reaches ~62% past each side
+  // and ~66% below, which is what keeps the blurred edges off-screen.
+  wash: {
+    position: "absolute",
+    left: -0.6231 * SCREEN_W,
+    top: -0.0006 * SCREEN_H,
+    width: SCREEN_W * 2.2462,
+    height: SCREEN_H * 1.6579,
+  },
+
   // 40 tall so the card stack (83) overhangs it, as the frame does.
   backBtn: {
     width: 40,
@@ -890,6 +971,16 @@ const styles = StyleSheet.create({
 
   // Value lines — icon + text, no bordered box (Bryan, 2026-09-30).
   valueBlock: { width: "100%", paddingHorizontal: 4, paddingBottom: 12 },
+  // 32 in layout, 46.2 drawn: the glow overflows a centred box rather than
+  // widening it. Negative margins here instead SHRANK the footprint to 17.8 and
+  // dragged every row left.
+  valueIcon: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+  },
   valueRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -934,13 +1025,18 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   planUnselected: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: DIVIDER,
+    // The frame's soft warm lift on the unselected card.
+    boxShadow: "0px 2px 6px 0px rgba(124,87,87,0.32)",
   },
   planSelected: {
     borderWidth: 2,
     borderColor: WHITE,
-    backgroundColor: GHOST_W,
+    // The glow that marks the chosen plan. RN 0.76+ takes `boxShadow` on both
+    // platforms, so this is a real coloured glow rather than an Android
+    // `elevation` grey.
+    boxShadow: "0px 0px 13.1px 0px rgba(237,235,224,0.5)",
   },
   planTitle: {
     fontFamily: fonts.dmSans,
@@ -1015,12 +1111,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderBottomRightRadius: 4,
     borderTopRightRadius: 24,
-    shadowColor: "#000000",
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 25 },
-    shadowRadius: 25,
-    elevation: 8,
+    // Two shadows, as the frame has them: a white glow hugging the button and
+    // the deep drop beneath it.
+    boxShadow:
+      "0px 0px 13.1px 0px rgba(250,253,254,0.4), 0px 25px 50px 0px rgba(0,0,0,0.25)",
+    overflow: "hidden",
   },
+  planSheen: { overflow: "hidden" },
   subscribeBtnDisabled: {
     opacity: 0.6,
   },
