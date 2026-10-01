@@ -318,7 +318,18 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
           ) : (
             <Animated.View style={{ opacity: contentOpacity }}>
               {step.kind === "message" &&
-                step.lines.map((l, i) => (
+                /* 🔴 Keyed on BIOMETRICS, not `startingRead`. startingRead is
+                   only set from the typing response, which lands AFTER account
+                   creation — i.e. after this screen — so it is undefined here
+                   and branching on it silently did nothing. A scan is the only
+                   thing that populates `biometrics`, so its absence is what
+                   "skipped" means at this point in the flow. (The reveal's
+                   insight fallback DOES use startingRead, correctly: it runs
+                   after typing.) */
+                (state.biometrics === null && step.linesNoScan
+                  ? step.linesNoScan
+                  : step.lines
+                ).map((l, i) => (
                   <Text key={i} style={[styles.messageLine, i > 0 && { marginTop: 12 }]}>
                     {l}
                   </Text>
