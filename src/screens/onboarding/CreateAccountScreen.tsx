@@ -374,21 +374,16 @@ const styles = StyleSheet.create({
 
   content: {
     /**
-     * Vertically CENTRED, which is a deliberate step away from the frame:
-     * 5265:67848 is top-anchored and leaves ~268pt empty below the button on
-     * its own 874 canvas, and more than that on a taller phone. Cole's call
-     * (2026-10-01) — the void read as a mistake on device.
+     * TOP-anchored, as the frame has it (5265:67848): content runs y84→606 on
+     * an 874 canvas and the rest of the screen is simply empty. Briefly
+     * centred this; Cole chose Lang's anchoring instead.
      *
-     * The back arrow is NOT in here; it lives in `topBar` outside the
-     * ScrollView, so it stays pinned under the status bar while this block
-     * centres. `flexGrow` lets the container fill so there is something to
-     * centre within, and the content still scrolls once it outgrows the
-     * viewport (keyboard open, or a short screen).
+     * `paddingTop: 40` is the frame's gap between the back button and the
+     * headline — the button ends at y124 and the title starts at y164. It was
+     * 24, which is why the arrow sat tight against the heading.
      */
-    flexGrow: 1,
-    justifyContent: "center",
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 40,
     paddingBottom: 24,
     gap: 24,
   },
