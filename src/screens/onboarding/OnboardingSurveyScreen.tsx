@@ -23,6 +23,11 @@ import { useApp } from "../../context/AppContext";
 import { FastingInfoSheet } from "./FastingInfoSheet";
 import { logEvent } from "../../services/braze";
 import {
+  REFLECTIONS,
+  getProvisionalLeader,
+  type ProvisionalLeader,
+} from "../../services/reflections";
+import {
   SURVEY_STEPS,
   SurveyOption,
   resolveOptions,
@@ -177,6 +182,38 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     // message beat: no video, fixed timer.
     const t = setTimeout(goNext, (step as any).durationMs ?? 2000);
     return () => clearTimeout(t);
+  }, [stepIndex]);
+
+  /**
+   * Proof of listening (row 8). Resolved when the step is reached rather than
+   * precomputed, because it depends on the answer the member gave moments ago.
+   *
+   * 🔑 Fails OPEN, not closed: if the call errors the reflection is skipped
+   * rather than blocking the survey behind a network hop that exists purely to
+   * show one sentence. `null` renders nothing and the timer still advances.
+   */
+  const [reflection, setReflection] = useState<string | null>(null);
+  useEffect(() => {
+    if (step.kind !== "reflection") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const leader: ProvisionalLeader = await getProvisionalLeader({
+          q1: state.user.quizAnswers.q1 ?? null,
+          q2: state.user.quizAnswers.q2 ?? null,
+          q3: state.user.quizAnswers.q3 ?? null,
+        });
+        if (!cancelled) {
+          setReflection(REFLECTIONS[leader] ?? null);
+          logEvent("onboarding_survey_reflection", { leader });
+        }
+      } catch {
+        if (!cancelled) setReflection(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [stepIndex]);
 
   const [infoOpen, setInfoOpen] = useState(false);
@@ -334,6 +371,10 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
                     {l}
                   </Text>
                 ))}
+              {step.kind === "reflection" && reflection ? (
+                <Text style={styles.messageLine}>{reflection}</Text>
+              ) : null}
+
               {step.kind === "question" && (
                 <>
                   <Text style={styles.question}>{questionText}</Text>

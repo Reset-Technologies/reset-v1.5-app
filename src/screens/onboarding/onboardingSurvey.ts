@@ -30,6 +30,13 @@ export type SurveyStep =
       linesNoScan?: string[];
       durationMs: number;
     }
+  /**
+   * Proof of listening — Screen Copy row 8, Flow row 8 (`v1_reflection`).
+   * One of R1–R5, chosen from the provisional archetype leader after the three
+   * scored questions. The text is not held here because it depends on answers
+   * the member has only just given; the screen resolves it at render time.
+   */
+  | { kind: "reflection"; durationMs: number }
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
@@ -113,6 +120,14 @@ export const SURVEY_STEPS: SurveyStep[] = [
     options: QUIZ_Q3.options.map((o) => ({ id: o.value, label: o.label })),
     eventName: "onboarding_survey_q3",
   },
+  // 🔑 Here, and only here. Row 8: "Exactly one R1–R5 after U3." Our q3 IS the
+  // third scored question — the wording differs from the Sheet's U1–U3 until
+  // the V1 question set is rebuilt, but it feeds the same scorer, and the
+  // lines describe the pattern rather than quoting the answer.
+  // ⚠️ Row 8 also says "then P2 on the same screen". We have no goal-weight
+  // step yet (it ships with the V1 questions), so the reflection stands alone
+  // for now — raised with Bryan 2026-10-01.
+  { kind: "reflection", durationMs: 3200 },
   {
     kind: "question",
     key: "restrict",
