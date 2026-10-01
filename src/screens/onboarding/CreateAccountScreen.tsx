@@ -373,9 +373,20 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    // No `flexGrow` — the frame is TOP-anchored and simply leaves the bottom
-    // of the screen empty (content runs y84→606 on an 874 frame). flexGrow
-    // stretched this to fill, which is what pushed the CTA to the bottom.
+    /**
+     * Vertically CENTRED, which is a deliberate step away from the frame:
+     * 5265:67848 is top-anchored and leaves ~268pt empty below the button on
+     * its own 874 canvas, and more than that on a taller phone. Cole's call
+     * (2026-10-01) — the void read as a mistake on device.
+     *
+     * The back arrow is NOT in here; it lives in `topBar` outside the
+     * ScrollView, so it stays pinned under the status bar while this block
+     * centres. `flexGrow` lets the container fill so there is something to
+     * centre within, and the content still scrolls once it outgrows the
+     * viewport (keyboard open, or a short screen).
+     */
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 24,
