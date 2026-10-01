@@ -33,6 +33,8 @@ import {
   PROFILE_COPY,
   GOAL_COPY,
   GOAL_LABEL,
+  article,
+  embedSentence,
 } from "../../constants/metabolicProfile";
 
 
@@ -62,10 +64,6 @@ function deltaText(dir: TrendDirection): string {
 
 function cap(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-function article(word: string): string {
-  return /^[aeiou]/i.test(word) ? "an" : "a";
 }
 
 // Energy words ordered low → high. Check-in values (low/off/steady/good/high)
@@ -455,7 +453,7 @@ export function ProfileScreen() {
           <Text style={[styles.headline, { color: surfaces.textStrong }]}>
             As {article(typeDisplay)}{" "}
             <Text style={[styles.headlineType, { color: primary }]}>{typeDisplay},</Text>{" "}
-            {typeConfig.tagline.replace(/\.$/, "")}.
+            {embedSentence(typeConfig.tagline)}.
           </Text>
 
           {/* Your Goal */}

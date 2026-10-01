@@ -117,3 +117,24 @@ export const GOAL_LABEL: Record<string, string> = {
 export function article(word: string): string {
   return /^[aeiou]/i.test(word) ? "an" : "a";
 }
+
+/**
+ * Drops a `TYPE_CONFIGS[...].tagline` into the middle of a sentence.
+ *
+ * 🔑 The taglines are authored as STANDALONE sentences — "Your signals are
+ * quiet — easier for me to read." — and two of their four consumers still use
+ * them that way, correctly (ShareScreen displays one on its own and starts a
+ * share sentence with another). The other two embed them after a comma, in
+ * "As a {Type}, {tagline}.", where the authored capital reads as a typo:
+ * "As an Explorer, Your signals are quiet…". The embedding sites already
+ * stripped the trailing full stop; this is the other half of the same job.
+ *
+ * Only the first character is touched, so em dashes, proper nouns later in the
+ * line and everything else survive. The taglines are a fixed in-repo set that
+ * all begin "Your", so there is no case where lowering the first letter is
+ * wrong — revisit if a tagline is ever authored starting with a proper noun.
+ */
+export function embedSentence(text: string): string {
+  const trimmed = text.replace(/\.$/, "");
+  return trimmed ? trimmed.charAt(0).toLowerCase() + trimmed.slice(1) : trimmed;
+}

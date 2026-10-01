@@ -12,6 +12,7 @@ import {
   PROFILE_COPY,
   GOAL_COPY,
   article,
+  embedSentence,
 } from "../../constants/metabolicProfile";
 import type { StatDetailData } from "../profile/StatDetailSheet";
 
@@ -46,7 +47,8 @@ export function TypeSummaryCard({
   const copy = PROFILE_COPY[type];
   const goalText = GOAL_COPY[goalSlug ?? ""] ?? copy.goal;
   const primary = TYPE_PRIMARY[type];
-  const tagline = TYPE_CONFIGS[type].tagline.replace(/\.$/, "");
+  // Reads mid-sentence after "As a {Type}," — see embedSentence.
+  const tagline = embedSentence(TYPE_CONFIGS[type].tagline);
   const anchor = TYPE_GRADIENT_STOPS[type].anchor;
 
   // We measure the top content (headline + goal + strength/weakness) since its
