@@ -37,7 +37,6 @@ const GHOST = "rgba(250,253,254,0.24)";
 const ESTER_AVATAR = require("../../../assets/images/ester-avatar-silver.png");
 // Pre-blurred type card from Figma export. We render this as the featured
 // teaser as-is — no live blur or per-type avatar/text overlay needed.
-const FEATURED_CARD = require("../../../assets/images/onboarding/account-gate-card.png");
 // Mini-card silhouette (the small cards behind the featured one — still
 // coded). Per-type artwork drops in as it comes from the PM; remaining
 // types fall back to the silver Ester avatar.
@@ -60,50 +59,10 @@ const TYPE_LOGO: Record<MetabolicType, any> = {
 const SCREEN_W = Dimensions.get("window").width;
 
 // All five types, in the order Figma shows them in the background fan.
-const TYPE_ORDER: MetabolicType[] = [
-  "Chameleon",
-  "Burner",
-  "Ember", // Figma "Restorer"
-  "Explorer",
-  "Rebounder",
-];
 
-const TYPE_DISPLAY_NAME: Record<MetabolicType, string> = {
-  Chameleon: "Chameleon",
-  Burner: "Burner",
-  Ember: "Restorer",
-  Explorer: "Explorer",
-  Rebounder: "Rebounder",
-};
 
 // Tagline blurbs from Figma, keyed to the matching code type.
-const TYPE_BLURB: Record<MetabolicType, string> = {
-  Chameleon: "Two weeks on. Two weeks off. Same body, different rules.",
-  Burner: "Sharp in the morning, gone by 3pm. Every single day.",
-  Ember: "You do everything right and the tank is still empty.",
-  Explorer: "You've never fit cleanly into any category.",
-  Rebounder: "The diet always works. Until it doesn't. Again.",
-};
 
-function TypeCardMini({ type, label, blurb }: { type: MetabolicType; label: string; blurb: string }) {
-  const logo = TYPE_LOGO[type];
-  return (
-    <View style={styles.miniCard}>
-      <View style={styles.miniInfo}>
-        <Text style={styles.miniInfoDot}>i</Text>
-      </View>
-      <View style={styles.miniSilhouetteWrap}>
-        <Image source={logo} style={styles.miniSilhouette} resizeMode="contain" />
-      </View>
-      <View style={styles.miniHeader}>
-        <Text style={styles.miniTitle}>{label}</Text>
-        <Text style={styles.miniBlurb} numberOfLines={3}>
-          {blurb}
-        </Text>
-      </View>
-    </View>
-  );
-}
 
 export function AccountGateScreen({ navigation }: Props) {
   const { state, setUserAccount, setAuth, setTypingResult, completeOnboarding } = useApp();
@@ -112,8 +71,6 @@ export function AccountGateScreen({ navigation }: Props) {
   const [appleAvailable, setAppleAvailable] = useState(Platform.OS === "ios");
   // Measured height of the graphic area, so the featured card can scale down
   // to fit short screens (capped at its 373 design height).
-  const [graphicH, setGraphicH] = useState(0);
-  const featuredCardHeight = graphicH ? Math.min(373, graphicH - 24) : 373;
 
   useEffect(() => {
     logEvent("onboarding_account_gate");
@@ -341,31 +298,11 @@ export function AccountGateScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.center}>
-          {/* Stacked graphic: row of mini cards behind, featured card in front */}
-          <View
-            style={styles.graphicWrap}
-            onLayout={(e) => setGraphicH(e.nativeEvent.layout.height)}
-          >
-            <View style={styles.bgRow} pointerEvents="none">
-              {TYPE_ORDER.map((t) => (
-                <TypeCardMini
-                  key={t}
-                  type={t}
-                  label={TYPE_DISPLAY_NAME[t]}
-                  blurb={TYPE_BLURB[t]}
-                />
-              ))}
-            </View>
-
-            <Image
-              source={FEATURED_CARD}
-              style={[styles.featuredCard, { height: featuredCardHeight }]}
-              resizeMode="contain"
-            />
-            {/* Static teaser intentionally uses the designer-baked blur image
-                instead of overlaying type-specific text + a live blur — the
-                user's actual type stays hidden until account creation. */}
-          </View>
+          {/* 🔴 The blurred Type-card teaser is GONE. Lang's frame for this
+              screen (5264:67655) is text and buttons only — no graphic at all.
+              ⚠️ That is the frame's call, not the Sheet's: the Sheet only cuts a
+              blurred card on row 12 (Building the Type), so this rests on the
+              layout source alone. Easy to put back if Lang meant it to stay. */}
 
           {/* Title + subtitle + buttons */}
           <View style={styles.footer}>
@@ -378,6 +315,11 @@ export function AccountGateScreen({ navigation }: Props) {
 
             {error && <Text style={styles.errorText}>{error}</Text>}
 
+            {/* The frame puts the auth buttons in their own flex-1 block pinned
+                to the bottom, with the two Ester lines above it. Without this
+                wrapper the lines are siblings of the buttons and flex-end drags
+                the whole group to the bottom of the screen. */}
+            <View style={styles.authButtons}>
             {appleAvailable && (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={
@@ -413,7 +355,7 @@ export function AccountGateScreen({ navigation }: Props) {
               disabled={isLoading}
               activeOpacity={0.85}
             >
-              <Text style={styles.ghostBtnText}>Use email instead</Text>
+              <Text style={styles.ghostBtnText}>Continue with email</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -427,6 +369,7 @@ export function AccountGateScreen({ navigation }: Props) {
                 Already have a Reset account? Sign in.
               </Text>
             </TouchableOpacity>
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -462,90 +405,47 @@ const styles = StyleSheet.create({
   center: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 24,
     paddingBottom: 32,
-    justifyContent: "space-between",
   },
 
-  graphicWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-
-  bgRow: {
-    position: "absolute",
-    flexDirection: "row",
-    gap: 8,
-    opacity: 0.5,
-    alignItems: "center",
-  },
-
-  // Mini cards (5 across, behind featured)
-  miniCard: {
-    width: 84,
-    height: 126,
-    backgroundColor: BONE,
-    borderRadius: 12,
-    paddingTop: 6,
-    paddingHorizontal: 6,
-    paddingBottom: 8,
-    alignItems: "flex-end",
-    gap: 8,
-  },
-  miniInfo: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: MAROON,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniInfoDot: { color: BONE, fontSize: 6, lineHeight: 8 },
   miniSilhouetteWrap: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
-  miniSilhouette: { width: 56, height: 56 },
-  miniHeader: { alignSelf: "stretch", gap: 4 },
-  miniTitle: {
-    fontFamily: fonts.dmSans,
-    color: MAROON,
-    fontSize: 7,
-    lineHeight: 7,
-  },
-  miniBlurb: {
-    fontFamily: fonts.dmSans,
-    color: MAROON,
-    opacity: 0.4,
-    fontSize: 5,
-    lineHeight: 6,
-  },
 
-  // Featured card — designer-baked blurred PNG, 240x373 natural size. Height
-  // is set inline from the measured graphic area (capped at 373) so on shorter
-  // screens (e.g. Galaxy S24) it scales down to fit instead of bleeding into
-  // the top logo and the title; aspectRatio derives the width to match.
-  featuredCard: {
-    height: 373,
-    aspectRatio: 240 / 373,
-  },
+  miniHeader: { alignSelf: "stretch", gap: 4 },
+
 
   // Bottom CTA block
-  footer: { gap: 12, paddingTop: 24, alignItems: "center" },
+  // The frame's Buttons block is flex-1 / justify-end: the two Ester lines sit
+  // at the TOP of the slot and the buttons at the BOTTOM, with the space
+  // between them. `space-between` on the parent is not the same thing — it
+  // spread the text apart and left the buttons mid-screen.
+  footer: { flex: 1, paddingTop: 16, alignItems: "center", width: "100%" },
+  authButtons: {
+    flex: 1,
+    gap: 12,
+    paddingTop: 16,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    width: "100%",
+  },
+  // Both lines are Title-2 at the same weight and colour in the frame — this
+  // is Ester talking, not a headline over a caption, so they match.
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
-    fontSize: 40,
-    lineHeight: 44,
-    letterSpacing: -0.4,
-    textAlign: "center",
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.24,
+    width: "100%",
   },
   subtitle: {
-    fontFamily: fonts.dmSans,
-    color: BONE,
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.2,
-    textAlign: "center",
+    fontFamily: fonts.catalogue,
+    color: WHITE,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.24,
+    width: "100%",
+    marginTop: 24,
   },
   errorText: {
     fontFamily: fonts.dmSans,
@@ -561,16 +461,17 @@ const styles = StyleSheet.create({
   primaryBtn: {
     width: "100%",
     backgroundColor: WHITE,
-    borderRadius: 4,
     minHeight: 44,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    padding: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 4,
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    borderTopRightRadius: 24,
   },
   primaryBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: MAROON,
     fontSize: 20,
     letterSpacing: -0.2,
@@ -578,15 +479,17 @@ const styles = StyleSheet.create({
   ghostBtn: {
     width: "100%",
     backgroundColor: GHOST,
-    borderRadius: 4,
     minHeight: 44,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    padding: 16,
     alignItems: "center",
     justifyContent: "center",
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    borderTopRightRadius: 24,
   },
   ghostBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogueMedium,
     color: WHITE,
     fontSize: 20,
     letterSpacing: -0.2,
