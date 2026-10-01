@@ -102,10 +102,12 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 export function PreScanView({
   onScan,
   onClose,
+  onBack,
   interactive = true,
 }: {
   onScan: () => void;
   onClose: () => void;
+  onBack: () => void;
   interactive?: boolean;
 }) {
   return (
@@ -136,7 +138,17 @@ export function PreScanView({
               top-right. Same action — declining the scan — but the frame gives
               the skip its own button below, so this is a plain back control. */}
           <View style={styles.topRow}>
-            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.backBtn}>
+            {/* 🔴 This is BACK, not skip. It used to call onClose — the same
+                handler as "Continue without scanning" — because the control
+                here was once an ✕ and skipping really was the only thing it
+                could do. Lang's frame makes it a back ARROW, and once the
+                Opening screen existed there was somewhere to go, so an arrow
+                that silently dropped people into the survey was lying about
+                itself. Screen Copy row 2 lists exactly two actions on this
+                screen ("Start scan", "Continue without scanning") and the note
+                says it is "not a Scan / Skip / Log in fork" — two controls
+                doing the same skip is precisely that fork. */}
+            <TouchableOpacity onPress={onBack} hitSlop={12} style={styles.backBtn}>
               <ArrowBackIcon size={24} color={WHITE} />
             </TouchableOpacity>
           </View>
@@ -225,10 +237,16 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Survey");
   };
 
+  const handleBack = () => {
+    logEvent("onboarding_pre_scan_back");
+    navigation.goBack();
+  };
+
   return (
     <PreScanView
       onScan={handleScan}
       onClose={handleClose}
+      onBack={handleBack}
     />
   );
 }

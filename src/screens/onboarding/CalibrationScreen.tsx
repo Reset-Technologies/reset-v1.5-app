@@ -255,6 +255,42 @@ export function CalibrationScreen({ navigation, route }: Props) {
         </Svg>
       </View>
 
+      {/* Screen Copy row 3: "Only after Start scan. Back returns to Pre-scan."
+          Flow row 3 says the same — "Continue → Camera permission. Back →
+          Pre-scan." Onboarding had NO back control at all here: the header
+          below is gated on `weightOnly`, which is the re-scan path. Android's
+          hardware back happened to work, so the gap only bit on iOS, where
+          there was no way out of this screen but forwards.
+          `goBack()` rather than a named route, because Calibration is also
+          pushed from WelcomeBack — popping returns to whichever one sent us. */}
+      {!weightOnly && (
+        <View
+          style={[styles.rescanHeader, { top: insets.top + 6 }]}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity
+            onPress={() => {
+              logEvent("onboarding_calibration_back");
+              navigation.goBack();
+            }}
+            style={styles.headerBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M19 12H5M11 19l-7-7 7-7"
+                stroke={BONE}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {weightOnly && (
         <View
           style={[styles.rescanHeader, { top: insets.top + 6 }]}
