@@ -15,6 +15,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { GoogleMark } from "../../components/GoogleMark";
 import { useApp } from "../../context/AppContext";
 import { loginWithApple, loginWithGoogle } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
@@ -32,7 +33,6 @@ const MAROON = "#361416";
 const BONE = "#F3EFE3";
 const WHITE = "#FAFDFE";
 const ON_BONE_SUBTLE = "#7E6869";
-const GHOST = "rgba(250,253,254,0.24)";
 
 const ESTER_AVATAR = require("../../../assets/images/ester-avatar-silver.png");
 // Pre-blurred type card from Figma export. We render this as the featured
@@ -344,7 +344,10 @@ export function AccountGateScreen({ navigation }: Props) {
                 {isLoading ? (
                   <ActivityIndicator color={MAROON} />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Continue with Google</Text>
+                  <>
+                    <GoogleMark size={20} />
+                    <Text style={styles.primaryBtnText}>Continue with Google</Text>
+                  </>
                 )}
               </TouchableOpacity>
             )}
@@ -404,7 +407,8 @@ const styles = StyleSheet.create({
 
   center: {
     flex: 1,
-    paddingHorizontal: 24,
+    // Frame's own side inset.
+    paddingHorizontal: 12,
     paddingTop: 24,
     paddingBottom: 32,
   },
@@ -460,6 +464,8 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     width: "100%",
+    flexDirection: "row",
+    gap: 12,
     backgroundColor: WHITE,
     minHeight: 44,
     padding: 16,
@@ -476,23 +482,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     letterSpacing: -0.2,
   },
+  // 🔑 Transparent and small, per the frame — it is the quiet third option.
+  // As a filled block at 20pt it read as a second primary button.
   ghostBtn: {
     width: "100%",
-    backgroundColor: GHOST,
     minHeight: 44,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
-    borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 4,
-    borderBottomRightRadius: 4,
-    borderTopRightRadius: 24,
   },
   ghostBtnText: {
     fontFamily: fonts.catalogueMedium,
     color: WHITE,
-    fontSize: 20,
-    letterSpacing: -0.2,
+    fontSize: 14,
   },
   // A text link rather than a fourth button: this is the escape hatch for
   // returning members, and it should not compete with the three ways to sign up.
