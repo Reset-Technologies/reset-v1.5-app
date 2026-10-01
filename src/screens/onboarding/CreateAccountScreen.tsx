@@ -290,11 +290,17 @@ export function CreateAccountScreen({ navigation }: Props) {
             </View>
 
             {error && <Text style={styles.errorText}>{error}</Text>}
-          </ScrollView>
 
-          {/* RES-196: 18+ / Terms attestation pinned above the CTA (outside the
-              ScrollView) so it's always visible and can't be scrolled past. */}
-          <View style={styles.bottomRow}>
+            {/* 🔑 INSIDE the ScrollView, directly under the form — the frame
+                (5265:67848) ends the form with the button 40pt below the
+                password helper and leaves the rest of the screen empty. This
+                used to be pinned outside the ScrollView, which stretched the
+                content and pushed the CTA to the bottom edge with a void in
+                between.
+                RES-196's attestation still can't be scrolled past: it sits
+                immediately above the CTA, so the button cannot be on screen
+                without it. */}
+            <View style={styles.bottomRow}>
             <View style={styles.checkRow}>
               <Pressable
                 style={[styles.checkbox, agreed && styles.checkboxOn]}
@@ -338,7 +344,8 @@ export function CreateAccountScreen({ navigation }: Props) {
               disabled={!isValid || isLoading}
               loading={isLoading}
             />
-          </View>
+            </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -366,9 +373,12 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flexGrow: 1,
+    // No `flexGrow` — the frame is TOP-anchored and simply leaves the bottom
+    // of the screen empty (content runs y84→606 on an 874 frame). flexGrow
+    // stretched this to fill, which is what pushed the CTA to the bottom.
     paddingHorizontal: 24,
     paddingTop: 24,
+    paddingBottom: 24,
     gap: 24,
   },
   title: {
@@ -417,9 +427,10 @@ const styles = StyleSheet.create({
   },
 
   bottomRow: {
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    paddingTop: 8,
+    // Inside `content` now, so it inherits the 24 side padding. The frame puts
+    // 40 between the password helper and the button; `content`'s gap supplies
+    // 24, this adds the remaining 16.
+    marginTop: 16,
   },
   checkRow: {
     flexDirection: "row",
