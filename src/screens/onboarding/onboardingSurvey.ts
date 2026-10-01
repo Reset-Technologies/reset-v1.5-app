@@ -59,21 +59,20 @@ export const SURVEY_STEPS: SurveyStep[] = [
   { kind: "logo", durationMs: 9500 },
   {
     kind: "message",
+    // Screen Copy row 6 `Ester intro`. Bryan wrote BOTH variants as Final, so
+    // the skip branch is no longer the shipped line with the thanks removed —
+    // each path has its own authored ending. The scanned one hands off to row
+    // 12's loading line on purpose ("put the pieces together" → "Putting it
+    // together…"), and the skipped one promises a "starting Type" rather than
+    // "the most accurate type", which is the same softening the reveal card
+    // already makes with STARTING_READ_TAGLINE.
     lines: [
-      "Hello, I'm Ester!",
-      "Your Reset guide. Thanks for completing the scan!",
-      "I have just a few more questions, so I can give you the most accurate type.",
+      "Hi, I'm Ester.",
+      "I'll ask a few quick questions about what usually happens in your day, then I'll put the pieces together.",
     ],
-    // 🔴 Ester's FIRST words cannot thank someone for a scan they declined.
-    // Until the skip fix (2026-09-29) scanners were the only people who got
-    // here, so the line was safe; skippers now land on this exact screen.
-    // This OMITS the thanks rather than inventing a replacement — the same
-    // approach the consent screen takes for its two scan claims. Everything
-    // else is the shipped line, untouched.
     linesNoScan: [
-      "Hello, I'm Ester!",
-      "Your Reset guide.",
-      "I have just a few more questions, so I can give you the most accurate type.",
+      "Hi, I'm Ester.",
+      "I'll ask a few quick questions about what usually happens in your day. That's enough to find your starting Type.",
     ],
     durationMs: 2800,
   },

@@ -369,8 +369,14 @@ function InsightCard({
       <View style={styles.insightCardContent}>
         <View style={styles.insightTop}>
           <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
+          {/* Screen Copy row 17 `deep_read.takeaway` (Final, New):
+              "Here's my biggest takeaway." Lang's frame (5266:68492) still
+              shows "…from your scan." — the `Figma shows now` column marks it
+              as the placeholder to replace, and Bryan's note says why: "Drops
+              'from your scan': skipped users didn't scan, and most evidence
+              comes from answers." The old string here asserted a scan too. */}
           <Text style={styles.midGreeting}>
-            Here's what I'm thinking about your scan.
+            Here's my biggest takeaway.
           </Text>
           {beats.map((beat) => (
             <View key={beat.label} style={styles.insightWrap}>
@@ -403,9 +409,17 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
       <View style={styles.backCardContent}>
         <View style={styles.backCardTop}>
           <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
-          <Text style={styles.midGreeting}>
-            Based on your scan and {TYPE_DISPLAY[type].toLowerCase()} archetype, I have your{" "}
-            <Text style={styles.midGreetingBold}>first</Text> meal rec ready!
+          {/* Screen Copy row 19 `first_plan.headline` / `first_plan.body`,
+              both Final. What was here was the `Figma shows now` placeholder
+              verbatim — "Based on your scan and restorer archetype, I have
+              your first meal rec ready!" — which breaks two of Bryan's rules
+              at once: it asserts a scan to members who skipped it, and it says
+              "archetype", which his note bans outright ("No 'archetype.'").
+              The body replaces the lost specificity without claiming the meal
+              is medically prescribed or uniquely optimal. */}
+          <Text style={styles.midGreeting}>Your first meal is ready.</Text>
+          <Text style={styles.bridgeBody}>
+            I picked it to fit the pattern behind your Type.
           </Text>
         </View>
 
@@ -434,7 +448,10 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
                 <Rect x="0" y="0" width="100%" height="100%" fill="url(#mealMaroon)" />
               </Svg>
             </View>
-            <Text style={styles.mealTeaserTitle}>Want to see it?</Text>
+            {/* Row 19's Action / CTA column: "Show me". It sits where Lang
+                put the title, with her arrow button to its right — the two
+                together are the labelled CTA. */}
+            <Text style={styles.mealTeaserTitle}>Show me</Text>
             <TouchableOpacity
               onPress={onTap}
               style={styles.mealArrowBtn}
@@ -783,9 +800,20 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           onShareResults={async () => {
             logEvent("onboarding_type_reveal_share");
             try {
+              // Screen Copy row 16 `reveal.share` is a Check: "Shares the Type
+              // name, one-liner and art only. Never scan values, weight, goal
+              // weight or answers." Name + the locked one-liner is all this is.
+              // 🔴 And it branches the same way the card does. A member who
+              // skipped the scan sees STARTING_READ_TAGLINE on the card, not
+              // the asserted Explorer line — sharing the asserted line would
+              // put a claim in their friends' hands that the screen itself
+              // deliberately withholds.
+              const line = state.user.startingRead
+                ? STARTING_READ_TAGLINE
+                : TYPE_TAGLINE[metabolicType];
               await Share.share(
                 shareWithLink(
-                  `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${TYPE_TAGLINE[metabolicType]}`,
+                  `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${line}`,
                 ),
               );
             } catch {}
@@ -1123,9 +1151,17 @@ const styles = StyleSheet.create({
     color: MAROON,
     letterSpacing: -0.24,
   },
-  midGreetingBold: {
-    fontFamily: fonts.dmSansBold,
+  // The bridge's supporting line, a step down from the headline on the same
+  // card — matches the supporting-line relationship on the rebuilt onboarding
+  // screens rather than introducing a third size.
+  bridgeBody: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    lineHeight: 23,
     color: MAROON,
+    opacity: 0.8,
+    letterSpacing: -0.17,
+    marginTop: -12,
   },
   middleTypeLogo: {
     width: 56,

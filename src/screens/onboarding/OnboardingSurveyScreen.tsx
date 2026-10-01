@@ -366,6 +366,22 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       {isQuestion && step.kind === "question" && step.multiSelect && selected.length > 0 && (
         <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
           <View style={styles.continueRow}>
+            {/* Screen Copy row 7 `Advance control`: the copy is "Continue",
+                and the row's `Figma shows now` is "Continue + arrow (one
+                frame)" — a labelled control, not a bare glyph. The styles for
+                it were already here and unreferenced; this wires them up. The
+                behaviour the row describes ("Continue appears only on P1 and
+                P2"; single-select advances on tap) is what the surrounding
+                guard already does. */}
+            <TouchableOpacity
+              onPress={commitAnswer}
+              style={styles.continuePill}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+            >
+              <Text style={styles.continueText}>Continue</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={commitAnswer} style={styles.arrowBtn} activeOpacity={0.85}>
               <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
                 <Path
@@ -581,16 +597,31 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingBottom: 24,
   },
+  // Row 7's Figma cell is "Continue + arrow (ONE frame)", so the label and the
+  // round arrow butt together into a single continuous bar: no gap, and the
+  // pill carries the left half of the arrow's 28 radius. Centred rather than
+  // bottom-aligned, or the 56 circle and the shorter label sit on different
+  // baselines and the seam shows.
   continueRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    alignItems: "flex-end",
-    gap: 4,
+    alignItems: "center",
+    gap: 0,
   },
+  // 🔑 The pill runs 28 UNDER the arrow (negative margin + matching padding)
+  // instead of butting against it. Abutting leaves a crescent of background
+  // above and below the single point where a square edge touches a circle;
+  // overlapping fuses the two whites into one capsule, which is what "one
+  // frame" means here.
   continuePill: {
     backgroundColor: WHITE,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    height: 56,
+    justifyContent: "center",
+    paddingLeft: 24,
+    paddingRight: 44,
+    marginRight: -28,
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
   },
   continueText: {
     fontFamily: fonts.dmSans,

@@ -85,13 +85,31 @@ const DIVIDER = "#7E6869";
 //
 // 🔴 Copy is Bryan's, not the frame's. Figma renders line 3 as "...works BEST
 // for you"; his message says "works for you". Using his.
+/**
+ * Screen Copy row 14, benefits 1, 2 and 4 — all Final.
+ *
+ * 🔴 These are BRYAN'S strings, not the ones in Lang's frame. The frame reads
+ * "Understand what your Type means / Get meals built to help you lose weight /
+ * Get guidance that adapts as Reset learns what works for you", and row 14's
+ * `Figma shows now` column does NOT list them — it still lists the OLD Pro/Free
+ * table ("Reveal your type · Access to deep reads", …). So the Sheet was never
+ * updated for this frame, and the frame's lines have never passed copy review.
+ * Bryan's row notes are the reason that matters: benefit 2 carries "No
+ * 'perfect,' 'metabolism-based' or medical claims", and the frame's version
+ * promises weight loss in exactly that row; benefit 4 carries "Never call Ester
+ * a doctor, clinician or nutritionist."
+ *
+ * 🔴 BENEFIT 3 IS DELIBERATELY ABSENT. "Daily scans and Reset Score" is the one
+ * row Bryan marked **Check**, not Final: "Confirm both are live at launch.
+ * Reset Score first appears around Day 21." Row 18 cut the Reset Score card
+ * from the reveal for that same reason, so advertising the Score as something
+ * you get by subscribing would sell a number that does not exist for three
+ * weeks. It goes in once he confirms — and it needs a fourth icon from Lang.
+ */
 const VALUE_LINES: { Icon: (p: { size?: number; color?: string }) => React.JSX.Element; label: string }[] = [
-  { Icon: TypeMeaningIcon, label: "Understand what your Type means" },
-  { Icon: MealsIcon, label: "Get meals built to help you lose weight" },
-  {
-    Icon: GuidanceIcon,
-    label: "Get guidance that adapts as Reset learns what works for you",
-  },
+  { Icon: TypeMeaningIcon, label: "Your Type and Deep Read" },
+  { Icon: MealsIcon, label: "Meals picked for your patterns" },
+  { Icon: GuidanceIcon, label: "Ongoing guidance from Ester" },
 ];
 
 
@@ -730,13 +748,13 @@ export function PaywallScreen({ navigation }: Props) {
         <View style={styles.headlineBlock}>
           <Text style={styles.headline}>Your Type is ready.</Text>
 
-          {/* 🔴 PENDING COPY — Bryan wants a line generated in the moment from
-              what Ester learned in onboarding (2026-09-30). The generator does
-              not read onboarding answers yet, and its current fallback says
-              "your scan" to people who skipped the scan, so rendering anything
-              here today would ship a false claim. Lang designed the no-message
-              state for exactly this; we sit in it until the line exists.
-              When it does, pass it in and the card appears. */}
+          {/* 🔴 STILL A PLACEHOLDER, not a generated read — see the note on
+              `esterLine` above for why this particular sentence is the only
+              one safe to render today, and why the card is not simply left in
+              Lang's no-message state. Bryan wants a line generated in the
+              moment from what Ester learned (2026-09-30); the generator does
+              not read onboarding answers yet. When it does, pass it in here
+              and delete the constant. */}
           {esterLine ? (
             <View style={styles.esterCard}>
               <Image
@@ -750,6 +768,17 @@ export function PaywallScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.valueBlock}>
+          {/* Screen Copy row 14 `Paywall · Value line` (Final): "Reveal your
+              Type and put it to work." Its `Figma shows now` cell is EMPTY and
+              Bryan's note calls it a "New line above the benefit rows" — it
+              exists in no frame, so there is no layout to copy. It goes at the
+              head of the benefit block, which is the position the note
+              describes, and stays inside that block so the body still has the
+              three space-between children the frame's rhythm depends on. */}
+          <Text style={styles.valueLead}>
+            Reveal your Type and put it to work.
+          </Text>
+
           {VALUE_LINES.map(({ Icon, label }) => (
             <View key={label} style={styles.valueRow}>
               <View style={styles.valueIcon}>
@@ -1025,6 +1054,17 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 12,
     paddingBottom: 16,
+  },
+  // A step above the benefit rows without competing with the 40pt headline.
+  valueLead: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+    color: WHITE,
+    opacity: 0.85,
+    paddingHorizontal: 4,
+    paddingBottom: 14,
   },
   valueText: {
     flex: 1,

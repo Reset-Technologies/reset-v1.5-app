@@ -60,7 +60,7 @@ export function CalibrationScreen({ navigation, route }: Props) {
     stored?.age &&
     stored?.biologicalSex
   );
-  const weightOnly = isRescan && hasStoredBody; // hide Height + Age + Gender
+  const weightOnly = isRescan && hasStoredBody; // hide Height + Age + Sex
 
   // Weight-only re-scan opens on a decision screen ("is your weight the same?")
   // rather than a forced input — tapping "update my weight" reveals the field.
@@ -300,10 +300,17 @@ export function CalibrationScreen({ navigation, route }: Props) {
               <Text style={styles.headline}>
                 {weightOnly ? "Update your weight" : "A few quick details"}
               </Text>
+              {/* Screen Copy row 3 `Scan setup · Supporting` (Final): "These
+                  help tune the scan to you." What was here is the row's
+                  `Figma shows now` placeholder verbatim — Bryan's note on the
+                  row is "Short rationale. Don't explain BMR or TDEE", and
+                  "accurate to your body" is the reading-accuracy claim that
+                  rationale is meant to avoid. The weight-only variant is a
+                  rescan, not Scan setup, so the Sheet doesn't govern it. */}
               <Text style={styles.subhead}>
                 {weightOnly
                   ? "So today's scan reflects your current weight."
-                  : "This calibrates your scan so the reading is accurate to your body."}
+                  : "These help tune the scan to you."}
               </Text>
             </View>
 
@@ -383,8 +390,13 @@ export function CalibrationScreen({ navigation, route }: Props) {
                 </Field>
               )}
 
+              {/* Screen Copy row 3 `Fields` lists "Height · Weight · Age ·
+                  Sex", and its Figma cell spells out "Sex (Female, Male)".
+                  The options here have always been Female/Male and the state
+                  behind them is already `sex` — only the label said Gender —
+                  and the value feeds Shen's biological-sex parameter. */}
               {!weightOnly && (
-                <Field label="Gender">
+                <Field label="Sex">
                   <View style={styles.sexRow}>
                     {(["female", "male"] as const).map((option) => (
                       <TouchableOpacity
