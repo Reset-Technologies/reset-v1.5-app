@@ -124,9 +124,11 @@ export const SURVEY_STEPS: SurveyStep[] = [
   // third scored question — the wording differs from the Sheet's U1–U3 until
   // the V1 question set is rebuilt, but it feeds the same scorer, and the
   // lines describe the pattern rather than quoting the answer.
-  // ⚠️ Row 8 also says "then P2 on the same screen". We have no goal-weight
-  // step yet (it ships with the V1 questions), so the reflection stands alone
-  // for now — raised with Bryan 2026-10-01.
+  // ✅ Row 8 also says "then P2 on the same screen". We have no goal-weight
+  // step yet (it ships with the V1 questions). Bryan RATIFIED standing alone
+  // (2026-10-01): "ship the reflection on its own. P2 should come after it
+  // once the goal-weight step is built, but it doesn't need to hold up the
+  // reflection now." ⇒ when P2 lands it goes IMMEDIATELY AFTER this step.
   { kind: "reflection", durationMs: 3200 },
   {
     kind: "question",
