@@ -22,7 +22,7 @@ import { registerWithEmail } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
-import { ArrowBackIcon } from "../../components/PaywallIcons";
+import { OnboardingBackButton } from "../../components";
 import { OnboardingCta } from "../../components";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
@@ -196,15 +196,7 @@ export function CreateAccountScreen({ navigation }: Props) {
               0 — she is not present on this screen — so it is dropped rather
               than centred here. */}
           <View style={styles.topBar}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={styles.backBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <ArrowBackIcon size={24} color={WHITE} />
-            </TouchableOpacity>
+            <OnboardingBackButton onPress={() => navigation.goBack()} />
           </View>
 
           <ScrollView

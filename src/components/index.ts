@@ -5,6 +5,7 @@ export type { EsterVariant } from "./EsterBubble";
 export { Pill } from "./Pill";
 export { Button } from "./Button";
 export { ResetWordmark } from "./ResetWordmark";
+export { OnboardingBackButton } from "./OnboardingBackButton";
 export { OnboardingCta } from "./OnboardingCta";
 export { AiConsentNudge } from "./AiConsentNudge";
 export { MealCard, MealCardSlot } from "./MealCard";

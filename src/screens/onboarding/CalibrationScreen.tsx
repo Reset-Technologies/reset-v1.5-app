@@ -18,6 +18,7 @@ import { TYPE_MASCOT } from "../../constants/mascots";
 import { fonts, radius } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { logEvent } from "../../services/braze";
+import { OnboardingBackButton } from "../../components";
 
 type Props = NativeStackScreenProps<any, "Calibration">;
 
@@ -265,29 +266,18 @@ export function CalibrationScreen({ navigation, route }: Props) {
           pushed from WelcomeBack — popping returns to whichever one sent us. */}
       {!weightOnly && (
         <View
-          style={[styles.rescanHeader, { top: insets.top + 6 }]}
+          style={[styles.onboardingBackRow, { top: insets.top + 8 }]}
           pointerEvents="box-none"
         >
-          <TouchableOpacity
+          {/* 🔑 The shared control, not a local chevron. This was a hand-drawn
+              stroked arrow with no circle behind it, so one screen after
+              Pre-scan the back button visibly changed shape. */}
+          <OnboardingBackButton
             onPress={() => {
               logEvent("onboarding_calibration_back");
               navigation.goBack();
             }}
-            style={styles.headerBtn}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M19 12H5M11 19l-7-7 7-7"
-                stroke={BONE}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </TouchableOpacity>
+          />
         </View>
       )}
 
@@ -558,6 +548,23 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     letterSpacing: -0.15,
     paddingVertical: 4,
+  },
+  /**
+   * 🔑 Matches Pre-scan exactly — 24 in from the left, 8 below the safe area,
+   * which is Lang's x24/y60 on both frames (5262:67220 and 5251:59411).
+   * It previously borrowed `rescanHeader` (20 and +6), which put the same
+   * button 4pt further left and 10pt higher than it sits one screen earlier,
+   * so stepping Pre-scan → Scan setup made it visibly jump. Kept separate from
+   * `rescanHeader` because that one carries a second button and lays out
+   * space-between.
+   */
+  onboardingBackRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 24,
+    alignItems: "flex-start",
   },
   rescanHeader: {
     position: "absolute",

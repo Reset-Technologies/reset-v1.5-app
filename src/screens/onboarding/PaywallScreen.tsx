@@ -30,7 +30,6 @@ import {
 } from "../../navigation/rootNavigationRef";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 import {
-  ArrowBackIcon,
   GLOW_OVERHANG,
   GLOW_SCALE,
   ResetMarkIcon,
@@ -38,6 +37,7 @@ import {
   MealsIcon,
   GuidanceIcon,
 } from "../../components/PaywallIcons";
+import { OnboardingBackButton } from "../../components";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
 
@@ -726,16 +726,10 @@ export function PaywallScreen({ navigation }: Props) {
             stacks — Onboarding and Gate both push Paywall on top of TypeReady.
             🔑 Still not a skip: the paywall remains a hard wall, and back only
             ever lands on the screen before it. */}
-        <TouchableOpacity
+        <OnboardingBackButton
           onPress={() => navigation.goBack()}
           disabled={purchasing || restoring}
-          style={styles.backBtn}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <ArrowBackIcon size={24} color={WHITE} />
-        </TouchableOpacity>
+        />
 
         <TypeCardStack />
 
@@ -904,14 +898,6 @@ const styles = StyleSheet.create({
   },
 
   // 40 tall so the card stack (83) overhangs it, as the frame does.
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: MAROON_ALT,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   backBtnGhost: { width: 40, height: 40 },
 
   // Sits above the paywall and swallows taps so the CTA cannot be double-fired

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Image,
   ScrollView,
   Dimensions,
@@ -15,7 +14,7 @@ import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { logEvent } from "../../services/braze";
 import { PreScanIllustration } from "../../components/PreScanIllustration";
-import { ArrowBackIcon } from "../../components/PaywallIcons";
+import { OnboardingBackButton } from "../../components";
 import { OnboardingCta } from "../../components";
 
 type Props = NativeStackScreenProps<any, "PreScan">;
@@ -129,30 +128,26 @@ export function PreScanView({
         edges={["top", "bottom"]}
         pointerEvents={interactive ? "auto" : "none"}
       >
+        {/* 🔑 PINNED, not in the content flow. Lang puts this at x24/y60 in
+            BOTH this frame (5251:59411) and Scan setup (5262:67220) — the same
+            spot, so the control does not move as you step between them. It
+            used to be the first child of `content`, which is `flex-end`, so it
+            floated with the content and sat ~43pt lower than Scan setup's.
+            🔴 This is BACK, not skip. It used to call onClose — the same
+            handler as "Continue without scanning" — because the control here
+            was once an ✕ and skipping really was the only thing it could do.
+            Lang's frame makes it a back ARROW, and once Opening existed there
+            was somewhere to go, so an arrow that silently dropped people into
+            the survey was lying about itself. */}
+        <View style={styles.backRow} pointerEvents="box-none">
+          <OnboardingBackButton onPress={onBack} />
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
         >
-          {/* Back sits top-LEFT in the frame, replacing the x that used to be
-              top-right. Same action — declining the scan — but the frame gives
-              the skip its own button below, so this is a plain back control. */}
-          <View style={styles.topRow}>
-            {/* 🔴 This is BACK, not skip. It used to call onClose — the same
-                handler as "Continue without scanning" — because the control
-                here was once an ✕ and skipping really was the only thing it
-                could do. Lang's frame makes it a back ARROW, and once the
-                Opening screen existed there was somewhere to go, so an arrow
-                that silently dropped people into the survey was lying about
-                itself. Screen Copy row 2 lists exactly two actions on this
-                screen ("Start scan", "Continue without scanning") and the note
-                says it is "not a Scan / Skip / Log in fork" — two controls
-                doing the same skip is precisely that fork. */}
-            <TouchableOpacity onPress={onBack} hitSlop={12} style={styles.backBtn}>
-              <ArrowBackIcon size={24} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-
           {/* 🔑 The frame's own artwork. This screen used to show the Type-cards
               fan (`prescan-types.png`), which the design never had here — and
               which still carries the OLD drifted Type taglines that #148 fixed
@@ -267,14 +262,13 @@ const styles = StyleSheet.create({
   },
   // Back — top-LEFT and its own row, so it does not sit in the bottom-pinned
   // stack. Same rounded control as the paywall's.
-  topRow: { alignItems: "flex-start" },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: "#513436",
-    alignItems: "center",
-    justifyContent: "center",
+  // x24 / y60 in the frame — pinned just below the status bar, matching Scan
+  // setup exactly. The SafeAreaView above already insets past the status bar,
+  // so this is the frame's remaining 1pt rounded to a usable tap gap.
+  backRow: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    alignItems: "flex-start",
   },
   graphicWrap: {
     // Frame is 237; trimmed to buy back room for the extra button. The
