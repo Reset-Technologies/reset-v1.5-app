@@ -361,7 +361,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     paddingHorizontal: 24,
-    paddingTop: 8,
+    /**
+     * 🔑 24, NOT the 8 that Pre-scan and Scan setup use — this screen really
+     * does sit lower in Lang's frames, and it is not a slip on her part.
+     * There the back button is pinned at the SLOT's own origin (y=60, flush
+     * with the status bar). Here it is a child INSIDE the SLOT, at y=24
+     * within it, so it lands at y=84 — 22pt below the 62pt status bar.
+     * Matching Pre-scan's 8 here would be copying the wrong screen.
+     */
+    paddingTop: 24,
   },
   backBtn: {
     width: 40,
