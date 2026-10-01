@@ -886,6 +886,14 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       {!loaded && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={WHITE} />
+          {/* Screen Copy row 15, "After purchase" (Final). The frame
+              (5251:61742) is a bare centred spinner — its `Figma shows now`
+              reads "Spinner, no text" — so the words exist only in the Sheet.
+              Bryan: "Flows straight into the reveal; no second gate", which is
+              exactly this overlay: the reveal's own load, full-screen on the
+              page surface. The paywall shows the same line while the purchase
+              resolves, so the two read as one continuous state. */}
+          <Text style={styles.loadingText}>Unlocking your Type…</Text>
         </View>
       )}
 
@@ -929,6 +937,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    gap: 24,
+  },
+  loadingText: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+    color: WHITE,
+    textAlign: "center",
   },
   safe: { width: "100%" },
   topBar: {

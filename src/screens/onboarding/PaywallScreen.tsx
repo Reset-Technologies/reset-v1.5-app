@@ -688,6 +688,20 @@ export function PaywallScreen({ navigation }: Props) {
         </Svg>
       </View>
 
+      {/* Screen Copy row 15, "After purchase" (Final): "Unlocking your Type…".
+          🔴 The string was MISSING ENTIRELY — the frame (5251:61742) is a bare
+          centred spinner and its `Figma shows now` literally reads "Spinner, no
+          text", so the words only exist in the Sheet. Bryan's note: "The
+          previous screen already said the Type is ready. Flows straight into
+          the reveal; no second gate." — hence an overlay on the paywall rather
+          than a route of its own. */}
+      {purchasing ? (
+        <View style={styles.purchaseOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color={WHITE} />
+          <Text style={styles.purchaseOverlayText}>Unlocking your Type…</Text>
+        </View>
+      ) : null}
+
       <View style={styles.topBar}>
         {/* Screen Copy row 14 `paywall.back` is LOCKED: "Returns to Type ready
             with the Type still hidden." goBack() does exactly that from both
@@ -870,6 +884,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   backBtnGhost: { width: 40, height: 40 },
+
+  // Sits above the paywall and swallows taps so the CTA cannot be double-fired
+  // while the purchase resolves.
+  purchaseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    backgroundColor: MAROON,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 24,
+  },
+  purchaseOverlayText: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+    color: WHITE,
+    textAlign: "center",
+  },
 
   // The face-down Type cards. Sizes are the frame's, kept as-is because the
   // rotations and offsets only read right at this scale.
