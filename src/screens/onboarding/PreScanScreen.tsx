@@ -102,12 +102,10 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 export function PreScanView({
   onScan,
   onClose,
-  onLogin,
   interactive = true,
 }: {
   onScan: () => void;
   onClose: () => void;
-  onLogin?: () => void;
   interactive?: boolean;
 }) {
   return (
@@ -191,19 +189,6 @@ export function PreScanView({
               onPress={onClose}
             />
 
-            {/* ⚠️ NOT in the frame — the design drops log-in from this screen
-                because Flow row 1 puts it on Opening. We have no Opening yet,
-                and `navigate("Login")` exists in exactly two places: here and
-                the account gate, which sits AFTER the whole survey. Removing it
-                now would bury log-in behind onboarding for every returning
-                member. Goes when Opening gains it. */}
-            <TouchableOpacity
-              style={styles.loginBtn}
-              onPress={onLogin}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.loginBtnText}>I already have an account</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -240,16 +225,10 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Survey");
   };
 
-  const handleLogin = () => {
-    logEvent("onboarding_pre_scan_loginCTA");
-    navigation.navigate("Login");
-  };
-
   return (
     <PreScanView
       onScan={handleScan}
       onClose={handleClose}
-      onLogin={handleLogin}
     />
   );
 }
@@ -330,25 +309,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.16,
   },
 
-  // "Start scan" + "Continue without scanning" + "I already have an account"
-  // grouped so the gap between them is exactly 8px (independent of the content
-  // container's gap).
+  // "Start scan" + "Continue without scanning", grouped so the gap between them
+  // is independent of the content container's gap.
+  // 🔑 "I already have an account" used to sit here as a third button. It moved
+  // to Opening, where Flow row 1 puts it. Its fill — rgba(250,253,254,0.24),
+  // radius 4 — is now the `ghostFilled` variant on OnboardingCta.
   btnGroup: { gap: 12 },
-
-  // "I already have an account" — ghost button below "Scan now"
-  loginBtn: {
-    backgroundColor: "rgba(250,253,254,0.24)",
-    borderRadius: 4,
-    minHeight: 44,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loginBtnText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    color: WHITE,
-    letterSpacing: -0.2,
-  },
   closeGlyph: { fontSize: 28, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
 });

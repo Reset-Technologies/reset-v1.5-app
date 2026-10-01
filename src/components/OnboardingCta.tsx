@@ -28,17 +28,19 @@ export function OnboardingCta({
 }: {
   title: string;
   onPress: () => void;
-  variant?: "primary" | "ghost";
+  variant?: "primary" | "ghost" | "ghostFilled";
   disabled?: boolean;
   loading?: boolean;
 }) {
   const ghost = variant === "ghost";
+  const ghostFilled = variant === "ghostFilled";
+  const onDark = ghost || ghostFilled;
   return (
     <TouchableOpacity
       style={[
-        ghost ? styles.ghost : styles.primary,
-        disabled && !ghost && styles.primaryDisabled,
-        disabled && ghost && styles.ghostDisabled,
+        ghostFilled ? styles.ghostFilled : ghost ? styles.ghost : styles.primary,
+        disabled && !onDark && styles.primaryDisabled,
+        disabled && onDark && styles.ghostDisabled,
       ]}
       onPress={onPress}
       disabled={disabled || loading}
@@ -48,9 +50,17 @@ export function OnboardingCta({
       accessibilityState={{ disabled: disabled || loading }}
     >
       {loading ? (
-        <ActivityIndicator color={ghost ? K.white : K.brown} />
+        <ActivityIndicator color={onDark ? K.white : K.brown} />
       ) : (
-        <Text style={ghost ? styles.ghostLabel : styles.primaryLabel}>
+        <Text
+          style={
+            ghostFilled
+              ? styles.ghostFilledLabel
+              : ghost
+                ? styles.ghostLabel
+                : styles.primaryLabel
+          }
+        >
           {title}
         </Text>
       )}
@@ -93,6 +103,29 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   ghostDisabled: { opacity: 0.5 },
+  /**
+   * The second action on a full-bleed photographic surface — Opening's "Log in"
+   * (Figma 5251:43275). It is NOT the `ghost` variant: that one is transparent
+   * and 14pt, sized to sit UNDER a primary button as a quieter opt-out. This
+   * one is a peer of the primary — same height, same 20pt label — and carries
+   * a translucent fill so it stays legible over video. Radius is 4 on all four
+   * corners, not the 4/4/4/24 of the primary, which is what keeps the primary
+   * reading as the primary.
+   */
+  ghostFilled: {
+    backgroundColor: "rgba(250,253,254,0.24)",
+    minHeight: 44,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 4,
+  },
+  ghostFilledLabel: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    letterSpacing: -0.2,
+    color: K.white,
+  },
   ghostLabel: {
     fontFamily: fonts.catalogueMedium,
     fontSize: 14,

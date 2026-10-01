@@ -1,7 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
-  EducationCarouselScreen,
+  OpeningScreen,
   PreScanScreen,
   NoScanEmptyStateScreen,
   CalibrationScreen,
@@ -32,7 +32,7 @@ import { K } from "../constants/colors";
 // its own camera permission, and the question content has been folded into the
 // config-driven OnboardingSurveyScreen.
 export type OnboardingStackParamList = {
-  Education: undefined;
+  Opening: undefined;
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
@@ -69,7 +69,7 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Education"
+      initialRouteName="Opening"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
@@ -77,8 +77,8 @@ export function OnboardingNavigator() {
       }}
     >
       <Stack.Screen
-        name="Education"
-        component={EducationCarouselScreen}
+        name="Opening"
+        component={OpeningScreen}
         options={{ contentStyle: { backgroundColor: K.brown } }}
       />
       <Stack.Screen
@@ -88,7 +88,10 @@ export function OnboardingNavigator() {
           contentStyle: { backgroundColor: K.brown },
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
-          animation: "none",
+          // Was "none" because the carousel's fifth page rendered a PreScanView
+          // "peek" and did the transition itself. Opening is a plain screen, so
+          // PreScan takes the stack's normal push animation again.
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

@@ -1,4 +1,4 @@
-export { EducationCarouselScreen } from "./EducationCarouselScreen";
+export { OpeningScreen } from "./OpeningScreen";
 export { PreScanScreen } from "./PreScanScreen";
 export { NoScanEmptyStateScreen } from "./NoScanEmptyStateScreen";
 export { CalibrationScreen } from "./CalibrationScreen";
