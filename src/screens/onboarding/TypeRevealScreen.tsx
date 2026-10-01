@@ -117,12 +117,21 @@ const CARD_STACK_STEP = 6;
 const TOTAL_CARDS = 5;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
-// fetch fails outright (timeout, auth error, etc.). The normal "no scan"
-// case doesn't apply here because TypeReveal is only reached after a
-// successful scan + account creation.
-// Two-beat fallbacks for the split takeaway card (used if the fetch fails).
+// fetch fails outright (timeout, auth error, etc.).
+//
+// 🔴 TWO fallbacks, because skippers reach this screen now. The comment here
+// used to say the no-scan case "doesn't apply, TypeReveal is only reached
+// after a successful scan" — that stopped being true when the skip fix
+// (2026-09-29) routed non-scanners through the survey to the same reveal, and
+// the scan line was being asserted to people who had declined one.
+//
+// The no-scan version OMITS the scan claim rather than inventing a new one,
+// and leans on the same framing RES-121 already approved for non-scanners
+// (see STARTING_READ_TAGLINE): a first read, sharpened once they scan.
 const INSIGHT_NOTICED_FALLBACK =
   "Your scan gives me a first read on where your body is today.";
+const INSIGHT_NOTICED_FALLBACK_NO_SCAN =
+  "Your answers give me a first read on where you are today.";
 const INSIGHT_MEAL_FALLBACK =
   "Today's meals are chosen to meet you there and keep your energy steady.";
 
@@ -798,7 +807,12 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       content = (
         <InsightCard
           type={metabolicType}
-          noticed={insightNoticed ?? INSIGHT_NOTICED_FALLBACK}
+          noticed={
+            insightNoticed ??
+            (state.user.startingRead === true
+              ? INSIGHT_NOTICED_FALLBACK_NO_SCAN
+              : INSIGHT_NOTICED_FALLBACK)
+          }
           mealBecause={insightMeal ?? INSIGHT_MEAL_FALLBACK}
           // Cap EACH bubble's scroll area to a share of the room left after the
           // fixed logo/header/eyebrows + paddings, so a long beat scrolls

@@ -20,7 +20,16 @@ export type SurveyOption = { id: string; label: string };
 
 export type SurveyStep =
   | { kind: "logo"; durationMs: number }
-  | { kind: "message"; lines: string[]; durationMs: number }
+  | {
+      kind: "message";
+      lines: string[];
+      /**
+       * Lines to use when the member SKIPPED the scan. Optional: only the
+       * steps that actually assert something about a scan need it.
+       */
+      linesNoScan?: string[];
+      durationMs: number;
+    }
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
@@ -53,6 +62,17 @@ export const SURVEY_STEPS: SurveyStep[] = [
     lines: [
       "Hello, I'm Ester!",
       "Your Reset guide. Thanks for completing the scan!",
+      "I have just a few more questions, so I can give you the most accurate type.",
+    ],
+    // 🔴 Ester's FIRST words cannot thank someone for a scan they declined.
+    // Until the skip fix (2026-09-29) scanners were the only people who got
+    // here, so the line was safe; skippers now land on this exact screen.
+    // This OMITS the thanks rather than inventing a replacement — the same
+    // approach the consent screen takes for its two scan claims. Everything
+    // else is the shipped line, untouched.
+    linesNoScan: [
+      "Hello, I'm Ester!",
+      "Your Reset guide.",
       "I have just a few more questions, so I can give you the most accurate type.",
     ],
     durationMs: 2800,
