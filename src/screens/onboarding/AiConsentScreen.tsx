@@ -36,12 +36,16 @@ export function AiConsentScreen({ navigation }: Props) {
   // looped back at NoScanEmptyState and never got here. The skip fix opens that
   // path, so this screen now has to tell them the truth.
   //
-  // 🔴 ENGINEERING DOES NOT WRITE THIS COPY. The Sheet is explicit: "Cole builds
-  // the state; compliance supplies the final string." So the no-scan variant
-  // OMITS the two claims that do not apply rather than inventing replacements —
-  // removing a false claim is not authoring legal copy, but writing a new one
-  // would be. When compliance delivers the approved wording, it goes in the two
-  // marked places below and nothing else changes.
+  // ✅ RESOLVED — Bryan, 2026-10-01, and the answer is exactly what was already
+  // built: "keep the approved screen exactly the same except remove the two
+  // scan-specific references: the face-video sentence and the 'wellness signals
+  // from your scan' bullet." No replacement wording is coming; omission IS the
+  // approved treatment. This was the last item blocking the release.
+  //
+  // 🔴 ENGINEERING STILL DOES NOT WRITE THIS COPY. Nothing new goes in the two
+  // branches below — the scanned text is the approved string and the skip path
+  // is that string minus the two claims. Anyone tempted to "fill in" the gap
+  // for skippers is authoring legal copy.
   //
   // `startingRead` is set by CreateAccountScreen from the typing response
   // immediately before it routes here, and is true exactly when the backend
@@ -103,10 +107,9 @@ export function AiConsentScreen({ navigation }: Props) {
       >
         <Text style={styles.title}>Before we build your type</Text>
 
-        {/* 🔴 PENDING COMPLIANCE (Open Check #4): no approved no-scan lead
-            exists. Omitted rather than reworded — there is no face video to
-            make a promise about. Replace with the approved string when it
-            lands; do not write one here. */}
+        {/* ✅ Open Check #4, closed by Bryan 2026-10-01: omit the face-video
+            sentence for skippers and change nothing else. There is no face
+            video to make a promise about. Do NOT add a replacement line. */}
         {scanned ? (
           <Text style={styles.lead}>
             Your face video never leaves your device—the scan is processed
@@ -124,9 +127,9 @@ export function AiConsentScreen({ navigation }: Props) {
           <Bullet text="Your first name" />
           <Bullet text="The things you tell Ester" />
           <Bullet text="Your check-in answers" />
-          {/* 🔴 PENDING COMPLIANCE (Open Check #4): a member who skipped the
-              scan has no wellness signals to share, so the row is omitted for
-              them. Awaiting the approved no-scan wording. */}
+          {/* ✅ Open Check #4, closed by Bryan 2026-10-01: omit this bullet for
+              skippers — they have no wellness signals to share. Do NOT add a
+              replacement bullet. */}
           {scanned ? (
             <Bullet text="The wellness signals from your scan" />
           ) : null}
