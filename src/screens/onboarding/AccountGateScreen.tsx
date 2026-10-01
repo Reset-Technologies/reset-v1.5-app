@@ -407,8 +407,15 @@ const styles = StyleSheet.create({
 
   center: {
     flex: 1,
-    // Frame's own side inset.
-    paddingHorizontal: 12,
+    /**
+     * 🔑 24, not 12. The frame nests the inset TWICE and I only took the first
+     * one: `SLOT` sits at x=12 inside a 402 body, and its children sit at a
+     * further x=12 inside that — 354 wide, so 24 clear of each edge. Reading
+     * the SLOT alone put every line 12pt too close to the screen edge.
+     * (The top bar's own 12 is the SLOT-level inset and is correct there; it
+     * holds 56pt icon buttons, not text.)
+     */
+    paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 32,
   },
