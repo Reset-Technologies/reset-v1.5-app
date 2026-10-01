@@ -204,9 +204,20 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 24,
+    /**
+     * 102 = where Lang starts the headline (y=164 on the frame, 62 of which is
+     * the status bar). That space is the back button's in 5266:67914 — 22 above
+     * it, 40 for the button, 40 below — and we deliberately have no back button
+     * here: BOTH entry points reach this screen with `navigation.reset`, so
+     * there is no back entry to return to. Going "back" would mean undoing an
+     * account that already exists. The band is kept so the copy lands where
+     * she placed it rather than riding up against the status bar.
+     */
+    paddingTop: 102,
     paddingBottom: 12,
-    gap: 24,
+    // The frame's rhythm is a consistent 40 between every block — headline,
+    // body, checkbox, buttons. This was 24.
+    gap: 40,
   },
   title: {
     fontFamily: fonts.catalogue,
