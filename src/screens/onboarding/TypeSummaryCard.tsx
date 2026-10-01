@@ -58,7 +58,28 @@ export function TypeSummaryCard({
   // and up) the header stays full-size and the footer pins to the bottom — the
   // original layout; on short cards only the header shrinks so the footer text
   // still clears the clipped edge.
-  const [topH, setTopH] = useState(0);
+  // 🔑 The THREE body blocks are measured individually and summed, rather than
+  // measuring their container. The container is now flexed so it can spread
+  // them (see `spread`), which means its own laid-out height is the space
+  // available, not the space needed — measuring it would feed the header
+  // sizing below a number that depends on the header sizing. Child heights are
+  // natural regardless of how the parent distributes slack, so this is stable.
+  const [blockH, setBlockH] = useState<[number, number, number]>([0, 0, 0]);
+  const measure =
+    (i: 0 | 1 | 2) =>
+    (e: { nativeEvent: { layout: { height: number } } }) => {
+      const h = Math.round(e.nativeEvent.layout.height);
+      setBlockH((prev) => {
+        if (prev[i] === h) return prev;
+        const next = [...prev] as [number, number, number];
+        next[i] = h;
+        return next;
+      });
+    };
+  const measured = blockH[0] > 0 && blockH[1] > 0 && blockH[2] > 0;
+  // + the two minimum gaps, so the header sizing sees the same number it used
+  // to when `topContent` carried `gap: 18`.
+  const topH = measured ? blockH[0] + blockH[1] + blockH[2] + SPREAD_MIN * 2 : 0;
   const bodyNeed = BODY_PADDING + topH + BODY_GAP + FOOTER_RESERVE;
   const headerHeight =
     height == null || topH === 0
@@ -86,15 +107,7 @@ export function TypeSummaryCard({
 
         {/* Body */}
         <View style={styles.body}>
-          {/* Measured top content — its height drives the header sizing above. */}
-          <View
-            style={styles.topContent}
-            onLayout={(e) => {
-              const h = Math.round(e.nativeEvent.layout.height);
-              setTopH((prev) => (prev === h ? prev : h));
-            }}
-          >
-            <Text style={styles.headline}>
+            <Text style={styles.headline} onLayout={measure(0)}>
               As {article(typeDisplay)}{" "}
               <Text style={[styles.headlineType, { color: primary }]}>
                 {typeDisplay},
@@ -102,8 +115,10 @@ export function TypeSummaryCard({
               {tagline}.
             </Text>
 
+            <View style={styles.spread} />
+
             {/* Your goal */}
-            <View>
+            <View onLayout={measure(1)}>
             <Eyebrow label="Your goal" dotColor={primary} />
             <TouchableOpacity
               style={[styles.blueCard, { backgroundColor: anchor }]}
@@ -126,8 +141,10 @@ export function TypeSummaryCard({
             </TouchableOpacity>
           </View>
 
+          <View style={styles.spread} />
+
           {/* Strength + weakness */}
-          <View style={styles.strengthRow}>
+          <View style={styles.strengthRow} onLayout={measure(2)}>
             <View style={styles.strengthCol}>
               <Eyebrow label="Your biggest strength" dotColor={primary} />
               <TouchableOpacity
@@ -186,7 +203,8 @@ export function TypeSummaryCard({
               </TouchableOpacity>
             </View>
           </View>
-          </View>
+
+          <View style={styles.spread} />
 
           {/* Reassurance + swipe prompt */}
           <View style={styles.footer}>
@@ -278,6 +296,12 @@ const HEADER_MIN = 150;
 // the body's real need (which drives header sizing).
 const BODY_PADDING = 44; // body paddingTop 20 + paddingBottom 24
 const BODY_GAP = 18; // gap between the measured top content and the footer
+// Minimum spacing between the three body blocks — what `topContent`'s old
+// fixed `gap: 18` gave. There is deliberately no maximum: the card itself is
+// already clamped to CARD_H (812), so the slack these gaps share is bounded by
+// the design height rather than by the device, and a cap here just pushed the
+// remainder back down into the band under the bubbles.
+const SPREAD_MIN = 18;
 const FOOTER_RESERVE = 76; // footer natural height: reassure (2 lines) + swipe
 
 const styles = StyleSheet.create({
@@ -332,11 +356,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 24,
-    gap: 18,
+    // No `gap` — the three `spread` spacers carry the rhythm now, and a gap
+    // here would stack on top of them.
   },
-  // Headline + goal + strength/weakness, measured to size the header. Keeps the
-  // same 18px rhythm the body gap used to provide between these blocks.
-  topContent: { gap: 18 },
+  /**
+   * 🔑 The body's children are FLAT — headline, gap, goal, gap, strength row,
+   * gap, footer — with the three gaps the only flexible elements. That is what
+   * makes them share the slack evenly.
+   *
+   * The previous shape wrapped the first three in a flexed `topContent` and
+   * gave the footer `flex: 1`. That does NOT split the leftover: `flex` sets
+   * `flexBasis: 0`, so the two containers divided the WHOLE body height, and
+   * the footer kept claiming a third of everything regardless of how little it
+   * had to show. On a full-height card (812pt — any phone from an iPhone 16
+   * Pro up) that left a measured 161pt of white in one band under the
+   * strength and weakness bubbles.
+   */
+  /**
+   * 🔑 `flexBasis` rather than `minHeight`. The basis makes each gap START at
+   * the old fixed 18 and grow from there; `flexShrink` lets it give that back
+   * when the body is over-full. A `minHeight` would pin the gaps open and push
+   * the footer off a short card — which is what the old `footer: { flex: 1 }`
+   * had been quietly absorbing, since `flex` grants shrink as well as grow.
+   */
+  spread: { flexGrow: 1, flexShrink: 1, flexBasis: SPREAD_MIN },
+  // Natural height now — it no longer absorbs the slack, the spacer above it
+  // does. `flex-end` is gone with the flex; the content sits where it falls.
+
   headline: {
     fontFamily: fonts.catalogue,
     fontSize: 22,
@@ -444,8 +490,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   footer: {
-    flex: 1,
-    justifyContent: "flex-end",
     alignItems: "center",
     gap: 10,
   },
