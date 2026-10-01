@@ -143,3 +143,13 @@ export function GuidanceIcon({ size = GLYPH, color = "#FAFDFE" }: { size?: numbe
   );
 }
 
+// The check glyph inside the consent checkbox — Figma 5266:68045's `check`,
+// exported at 16x16. Inlined as a path because Metro has no SVG transformer
+// here, same as the icons above.
+export function CheckIcon({ size = 16, color = "#FAFDFE" }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <Path d="M6.36667 10.3437L12.1257 4.58467C12.2248 4.48544 12.3408 4.43478 12.4737 4.43267C12.6066 4.43056 12.7247 4.48122 12.8282 4.58467C12.9316 4.68811 12.9833 4.80689 12.9833 4.941C12.9833 5.07522 12.9316 5.19406 12.8282 5.2975L6.7885 11.3475C6.66794 11.4679 6.52733 11.5282 6.36667 11.5282C6.206 11.5282 6.06539 11.4679 5.94483 11.3475L3.1615 8.56417C3.06239 8.46494 3.0135 8.34717 3.01483 8.21083C3.01606 8.07461 3.06839 7.95478 3.17183 7.85133C3.27528 7.74789 3.39406 7.69617 3.52817 7.69617C3.66239 7.69617 3.78122 7.74789 3.88467 7.85133L6.36667 10.3437Z" fill={color} />
+    </Svg>
+  );
+}

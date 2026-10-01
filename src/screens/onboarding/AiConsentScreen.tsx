@@ -13,6 +13,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { OnboardingCta } from "../../components";
+import { CheckIcon } from "../../components/PaywallIcons";
 import { useApp } from "../../context/AppContext";
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { AI_DISCLOSURE_URL, PRIVACY_POLICY_URL } from "../../constants/legal";
@@ -145,7 +146,24 @@ export function AiConsentScreen({ navigation }: Props) {
           hitSlop={8}
         >
           <View style={[styles.checkbox, agreed && styles.checkboxOn]}>
-            {agreed ? <Text style={styles.checkMark}>✓</Text> : null}
+            {agreed ? (
+              <>
+                {/* The fill's white top sheen. An SVG overlay rather than a
+                    style — RN has no cross-platform `backgroundImage`. */}
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Svg width="100%" height="100%" preserveAspectRatio="none">
+                    <Defs>
+                      <LinearGradient id="cbSheen" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
+                        <Stop offset="0.63275" stopColor="#FFFFFF" stopOpacity="0" />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#cbSheen)" />
+                  </Svg>
+                </View>
+                <CheckIcon size={16} />
+              </>
+            ) : null}
           </View>
           <Text style={styles.checkLabel}>
             I agree to Reset sharing this information with these providers to
@@ -304,16 +322,23 @@ const styles = StyleSheet.create({
     borderColor: DIVIDER,
     alignItems: "center",
     justifyContent: "center",
+    // Clips the checked state's sheen to the circle.
+    overflow: "hidden",
   },
+  /**
+   * Checked state, Figma 5266:68045. Not just a filled circle:
+   *  - the fill carries a white top sheen, rgba(255,255,255,0.5) fading out
+   *    by 63.275%, over the flat #7E6869
+   *  - "Inset Bubble (Dark)" — an inner shadow plus a 1px lift above
+   *  - no border; the fill IS the shape once it is on
+   * It was a flat fill with the unchecked border left on, and the tick was a
+   * text "✓" in the system font rather than the 16pt glyph she drew.
+   */
   checkboxOn: {
     backgroundColor: DIVIDER,
-    borderColor: DIVIDER,
-  },
-  checkMark: {
-    color: K.white,
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 16,
+    borderColor: "transparent",
+    boxShadow:
+      "inset 0 0 4px 0 rgba(0,0,0,0.22), 0 -1px 2px 0 rgba(0,0,0,0.16)",
   },
   checkLabel: {
     fontFamily: fonts.catalogue,
