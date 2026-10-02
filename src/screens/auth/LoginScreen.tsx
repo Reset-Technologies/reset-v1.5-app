@@ -211,12 +211,21 @@ export function LoginScreen() {
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
-      // Onboarding entry point ("I already have an account" on PreScan) —
-      // return the user to the PreScan screen.
-      navigation.navigate("PreScan");
+      // 🔴 `goBack()`, NOT a hardcoded destination. This used to be
+      // `navigate("PreScan")`, written when Pre-scan's "I already have an
+      // account" was the only way in. There are now two entry points —
+      // Opening's "Log in" and the account gate's "Already have a Reset
+      // account? Sign in." — and Pre-scan is no longer one of them at all,
+      // so the hardcoded route was wrong from both.
+      //
+      // From the account gate it was also DESTRUCTIVE: `navigate` to a route
+      // already below in the stack pops back to it, so backing out of login
+      // threw away a completed survey and dropped the member at the start of
+      // the scan flow.
+      navigation.goBack();
     } else {
-      // No history (session-expired entry point, where PreScan doesn't
-      // exist) — fall back to a clean reset so the user isn't stranded.
+      // No history (session-expired entry point) — fall back to a clean
+      // reset so the user isn't stranded.
       resetState();
     }
   };
