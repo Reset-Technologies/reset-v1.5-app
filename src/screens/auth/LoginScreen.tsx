@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { OnboardingBackButton } from "../../components";
 import {
   View,
   Text,
@@ -21,7 +22,6 @@ import { loginWithEmail, loginWithApple, loginWithGoogle } from "../../services/
 import { logEvent } from "../../services/braze";
 import { getProfile } from "../../services/profile";
 import {
-  BackArrow,
   ResetWordmark,
   EyeIcon,
   BG_LOGO,
@@ -259,9 +259,7 @@ export function LoginScreen() {
         >
           {/* Top bar */}
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={handleBack} hitSlop={10} style={styles.iconBtn}>
-              <BackArrow />
-            </TouchableOpacity>
+            <OnboardingBackButton onPress={handleBack} />
             <ResetWordmark />
             <View style={styles.iconBtn} />
           </View>
