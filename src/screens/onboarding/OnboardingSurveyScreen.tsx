@@ -125,6 +125,44 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     else navigation.replace("AccountGate");
   };
 
+  // undefined = still resolving · null = resolved to nothing (skip it) ·
+  // string = ready to show. The three are distinct because "pending" must hold
+  // the typing beat while "nothing" must advance, and collapsing them is what
+  // produced a blank screen between the question and the reflection.
+  const [reflection, setReflection] = useState<string | null | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (step.kind !== "reflection") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const leader: ProvisionalLeader = await getProvisionalLeader({
+          q1: state.user.quizAnswers.q1 ?? null,
+          q2: state.user.quizAnswers.q2 ?? null,
+          q3: state.user.quizAnswers.q3 ?? null,
+        });
+        if (!cancelled) {
+          setReflection(REFLECTIONS[leader] ?? null);
+          logEvent("onboarding_survey_reflection", { leader });
+        }
+      } catch {
+        // null, not undefined — "we tried and there is nothing", which lets the
+        // advance timer move on instead of waiting forever.
+        if (!cancelled) setReflection(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stepIndex]);
+
+  // 🔑 A reflection step has nothing to show until its fetch lands, so it is
+  // not "ready" the moment the typing beat ends like every other step is.
+  // Revealing on the timer alone left the content area EMPTY until the network
+  // returned — a blank flash between the question and the line.
+  const contentReady = step.kind !== "reflection" || reflection !== undefined;
+
   // Reveal: brief "typing" beat, then fade the content in.
   useEffect(() => {
     setRevealed(false);
@@ -134,17 +172,22 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       setRevealed(true);
       return;
     }
-    const t = setTimeout(() => {
-      setRevealed(true);
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 320,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    }, 850);
+    const t = setTimeout(() => setRevealed(true), 850);
     return () => clearTimeout(t);
   }, [stepIndex]);
+
+  // The fade is its own effect so it waits for BOTH the typing beat and the
+  // content. The typing dots simply stay up a little longer on a slow fetch,
+  // which is what a typing indicator is for.
+  useEffect(() => {
+    if (!revealed || !contentReady) return;
+    Animated.timing(contentOpacity, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [revealed, contentReady]);
 
   // Auto-advance for the non-interactive beats.
   //
@@ -179,10 +222,23 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       };
     }
 
+    // 🔑 A reflection holds the step open until its text has landed, so the
+    // member gets the full `durationMs` to READ it rather than however much is
+    // left after the fetch. `undefined` is still resolving — wait. `null`
+    // resolved to nothing (the call failed), so move on immediately rather
+    // than sit on a typing indicator for three seconds.
+    if (step.kind === "reflection") {
+      if (reflection === undefined) return;
+      if (reflection === null) {
+        const skip = setTimeout(goNext, 0);
+        return () => clearTimeout(skip);
+      }
+    }
+
     // message beat: no video, fixed timer.
     const t = setTimeout(goNext, (step as any).durationMs ?? 2000);
     return () => clearTimeout(t);
-  }, [stepIndex]);
+  }, [stepIndex, reflection]);
 
   /**
    * Proof of listening (row 8). Resolved when the step is reached rather than
@@ -192,30 +248,6 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
    * rather than blocking the survey behind a network hop that exists purely to
    * show one sentence. `null` renders nothing and the timer still advances.
    */
-  const [reflection, setReflection] = useState<string | null>(null);
-  useEffect(() => {
-    if (step.kind !== "reflection") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const leader: ProvisionalLeader = await getProvisionalLeader({
-          q1: state.user.quizAnswers.q1 ?? null,
-          q2: state.user.quizAnswers.q2 ?? null,
-          q3: state.user.quizAnswers.q3 ?? null,
-        });
-        if (!cancelled) {
-          setReflection(REFLECTIONS[leader] ?? null);
-          logEvent("onboarding_survey_reflection", { leader });
-        }
-      } catch {
-        if (!cancelled) setReflection(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [stepIndex]);
-
   const [infoOpen, setInfoOpen] = useState(false);
 
   const finalizeAnswer = (ids: string[]) => {
