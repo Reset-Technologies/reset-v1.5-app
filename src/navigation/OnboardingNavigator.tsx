@@ -1,7 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
-  EducationCarouselScreen,
+  OpeningScreen,
   PreScanScreen,
   NoScanEmptyStateScreen,
   CalibrationScreen,
@@ -32,7 +32,7 @@ import { K } from "../constants/colors";
 // its own camera permission, and the question content has been folded into the
 // config-driven OnboardingSurveyScreen.
 export type OnboardingStackParamList = {
-  Education: undefined;
+  Opening: undefined;
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
@@ -69,7 +69,7 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Education"
+      initialRouteName="Opening"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
@@ -77,8 +77,8 @@ export function OnboardingNavigator() {
       }}
     >
       <Stack.Screen
-        name="Education"
-        component={EducationCarouselScreen}
+        name="Opening"
+        component={OpeningScreen}
         options={{ contentStyle: { backgroundColor: K.brown } }}
       />
       <Stack.Screen
@@ -88,7 +88,10 @@ export function OnboardingNavigator() {
           contentStyle: { backgroundColor: K.brown },
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
-          animation: "none",
+          // Was "none" because the carousel's fifth page rendered a PreScanView
+          // "peek" and did the transition itself. Opening is a plain screen, so
+          // PreScan takes the stack's normal push animation again.
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen
@@ -149,6 +152,28 @@ export function OnboardingNavigator() {
         component={OnboardingSurveyScreen}
         options={{
           contentStyle: { backgroundColor: K.brown },
+          // Each survey step is its own pushed route, so this runs on every
+          // question — eight times in a row.
+          //
+          // 🔴 ON ANDROID THIS DOES NOT ANIMATE. react-native-screens 4.24.0
+          // cuts straight to the next screen; `fade_from_bottom` does too,
+          // while `slide_from_right` ramps properly. Measured at 30fps on an
+          // S24, content leaving the screen:
+          //     fade              16% -> 0%  in ONE 33ms frame
+          //     slide_from_right  ramps down over ~165ms
+          // On iOS the fade is correct and looks right.
+          //
+          // ⚠️ NOT a regression — the same cut was measured on e8daa35, before
+          // any of the V1 onboarding work, on the same device. It has always
+          // been this way; it only became obvious once the flow was walked end
+          // to end on Android instead of the simulator.
+          //
+          // ▶ Left as "fade" deliberately (Cole, 2026-10-02): a slide is not
+          // the fade he wants. The real fix is an in-screen crossfade with
+          // Animated — fade the outgoing content out, then push with
+          // `animation: "none"` — so both platforms match. That is the task,
+          // not another navigator-option swap; `none`, `fade_from_bottom` and
+          // `slide_from_right` have all been tried.
           animation: "fade",
         }}
       />

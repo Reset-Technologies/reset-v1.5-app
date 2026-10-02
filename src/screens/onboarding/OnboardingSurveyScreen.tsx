@@ -23,6 +23,11 @@ import { useApp } from "../../context/AppContext";
 import { FastingInfoSheet } from "./FastingInfoSheet";
 import { logEvent } from "../../services/braze";
 import {
+  REFLECTIONS,
+  getProvisionalLeader,
+  type ProvisionalLeader,
+} from "../../services/reflections";
+import {
   SURVEY_STEPS,
   SurveyOption,
   resolveOptions,
@@ -120,6 +125,44 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
     else navigation.replace("AccountGate");
   };
 
+  // undefined = still resolving · null = resolved to nothing (skip it) ·
+  // string = ready to show. The three are distinct because "pending" must hold
+  // the typing beat while "nothing" must advance, and collapsing them is what
+  // produced a blank screen between the question and the reflection.
+  const [reflection, setReflection] = useState<string | null | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (step.kind !== "reflection") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const leader: ProvisionalLeader = await getProvisionalLeader({
+          q1: state.user.quizAnswers.q1 ?? null,
+          q2: state.user.quizAnswers.q2 ?? null,
+          q3: state.user.quizAnswers.q3 ?? null,
+        });
+        if (!cancelled) {
+          setReflection(REFLECTIONS[leader] ?? null);
+          logEvent("onboarding_survey_reflection", { leader });
+        }
+      } catch {
+        // null, not undefined — "we tried and there is nothing", which lets the
+        // advance timer move on instead of waiting forever.
+        if (!cancelled) setReflection(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stepIndex]);
+
+  // 🔑 A reflection step has nothing to show until its fetch lands, so it is
+  // not "ready" the moment the typing beat ends like every other step is.
+  // Revealing on the timer alone left the content area EMPTY until the network
+  // returned — a blank flash between the question and the line.
+  const contentReady = step.kind !== "reflection" || reflection !== undefined;
+
   // Reveal: brief "typing" beat, then fade the content in.
   useEffect(() => {
     setRevealed(false);
@@ -129,17 +172,22 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       setRevealed(true);
       return;
     }
-    const t = setTimeout(() => {
-      setRevealed(true);
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 320,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    }, 850);
+    const t = setTimeout(() => setRevealed(true), 850);
     return () => clearTimeout(t);
   }, [stepIndex]);
+
+  // The fade is its own effect so it waits for BOTH the typing beat and the
+  // content. The typing dots simply stay up a little longer on a slow fetch,
+  // which is what a typing indicator is for.
+  useEffect(() => {
+    if (!revealed || !contentReady) return;
+    Animated.timing(contentOpacity, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [revealed, contentReady]);
 
   // Auto-advance for the non-interactive beats.
   //
@@ -174,11 +222,32 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       };
     }
 
+    // 🔑 A reflection holds the step open until its text has landed, so the
+    // member gets the full `durationMs` to READ it rather than however much is
+    // left after the fetch. `undefined` is still resolving — wait. `null`
+    // resolved to nothing (the call failed), so move on immediately rather
+    // than sit on a typing indicator for three seconds.
+    if (step.kind === "reflection") {
+      if (reflection === undefined) return;
+      if (reflection === null) {
+        const skip = setTimeout(goNext, 0);
+        return () => clearTimeout(skip);
+      }
+    }
+
     // message beat: no video, fixed timer.
     const t = setTimeout(goNext, (step as any).durationMs ?? 2000);
     return () => clearTimeout(t);
-  }, [stepIndex]);
+  }, [stepIndex, reflection]);
 
+  /**
+   * Proof of listening (row 8). Resolved when the step is reached rather than
+   * precomputed, because it depends on the answer the member gave moments ago.
+   *
+   * 🔑 Fails OPEN, not closed: if the call errors the reflection is skipped
+   * rather than blocking the survey behind a network hop that exists purely to
+   * show one sentence. `null` renders nothing and the timer still advances.
+   */
   const [infoOpen, setInfoOpen] = useState(false);
 
   const finalizeAnswer = (ids: string[]) => {
@@ -318,11 +387,26 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
           ) : (
             <Animated.View style={{ opacity: contentOpacity }}>
               {step.kind === "message" &&
-                step.lines.map((l, i) => (
+                /* 🔴 Keyed on BIOMETRICS, not `startingRead`. startingRead is
+                   only set from the typing response, which lands AFTER account
+                   creation — i.e. after this screen — so it is undefined here
+                   and branching on it silently did nothing. A scan is the only
+                   thing that populates `biometrics`, so its absence is what
+                   "skipped" means at this point in the flow. (The reveal's
+                   insight fallback DOES use startingRead, correctly: it runs
+                   after typing.) */
+                (state.biometrics === null && step.linesNoScan
+                  ? step.linesNoScan
+                  : step.lines
+                ).map((l, i) => (
                   <Text key={i} style={[styles.messageLine, i > 0 && { marginTop: 12 }]}>
                     {l}
                   </Text>
                 ))}
+              {step.kind === "reflection" && reflection ? (
+                <Text style={styles.messageLine}>{reflection}</Text>
+              ) : null}
+
               {step.kind === "question" && (
                 <>
                   <Text style={styles.question}>{questionText}</Text>
@@ -355,6 +439,22 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       {isQuestion && step.kind === "question" && step.multiSelect && selected.length > 0 && (
         <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
           <View style={styles.continueRow}>
+            {/* Screen Copy row 7 `Advance control`: the copy is "Continue",
+                and the row's `Figma shows now` is "Continue + arrow (one
+                frame)" — a labelled control, not a bare glyph. The styles for
+                it were already here and unreferenced; this wires them up. The
+                behaviour the row describes ("Continue appears only on P1 and
+                P2"; single-select advances on tap) is what the surrounding
+                guard already does. */}
+            <TouchableOpacity
+              onPress={commitAnswer}
+              style={styles.continuePill}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+            >
+              <Text style={styles.continueText}>Continue</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={commitAnswer} style={styles.arrowBtn} activeOpacity={0.85}>
               <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
                 <Path
@@ -570,16 +670,31 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingBottom: 24,
   },
+  // Row 7's Figma cell is "Continue + arrow (ONE frame)", so the label and the
+  // round arrow butt together into a single continuous bar: no gap, and the
+  // pill carries the left half of the arrow's 28 radius. Centred rather than
+  // bottom-aligned, or the 56 circle and the shorter label sit on different
+  // baselines and the seam shows.
   continueRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    alignItems: "flex-end",
-    gap: 4,
+    alignItems: "center",
+    gap: 0,
   },
+  // 🔑 The pill runs 28 UNDER the arrow (negative margin + matching padding)
+  // instead of butting against it. Abutting leaves a crescent of background
+  // above and below the single point where a square edge touches a circle;
+  // overlapping fuses the two whites into one capsule, which is what "one
+  // frame" means here.
   continuePill: {
     backgroundColor: WHITE,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    height: 56,
+    justifyContent: "center",
+    paddingLeft: 24,
+    paddingRight: 44,
+    marginRight: -28,
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
   },
   continueText: {
     fontFamily: fonts.dmSans,

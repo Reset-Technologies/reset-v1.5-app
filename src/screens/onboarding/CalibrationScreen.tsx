@@ -18,6 +18,7 @@ import { TYPE_MASCOT } from "../../constants/mascots";
 import { fonts, radius } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { logEvent } from "../../services/braze";
+import { OnboardingBackButton } from "../../components";
 
 type Props = NativeStackScreenProps<any, "Calibration">;
 
@@ -60,7 +61,7 @@ export function CalibrationScreen({ navigation, route }: Props) {
     stored?.age &&
     stored?.biologicalSex
   );
-  const weightOnly = isRescan && hasStoredBody; // hide Height + Age + Gender
+  const weightOnly = isRescan && hasStoredBody; // hide Height + Age + Sex
 
   // Weight-only re-scan opens on a decision screen ("is your weight the same?")
   // rather than a forced input — tapping "update my weight" reveals the field.
@@ -255,6 +256,31 @@ export function CalibrationScreen({ navigation, route }: Props) {
         </Svg>
       </View>
 
+      {/* Screen Copy row 3: "Only after Start scan. Back returns to Pre-scan."
+          Flow row 3 says the same — "Continue → Camera permission. Back →
+          Pre-scan." Onboarding had NO back control at all here: the header
+          below is gated on `weightOnly`, which is the re-scan path. Android's
+          hardware back happened to work, so the gap only bit on iOS, where
+          there was no way out of this screen but forwards.
+          `goBack()` rather than a named route, because Calibration is also
+          pushed from WelcomeBack — popping returns to whichever one sent us. */}
+      {!weightOnly && (
+        <View
+          style={[styles.onboardingBackRow, { top: insets.top + 8 }]}
+          pointerEvents="box-none"
+        >
+          {/* 🔑 The shared control, not a local chevron. This was a hand-drawn
+              stroked arrow with no circle behind it, so one screen after
+              Pre-scan the back button visibly changed shape. */}
+          <OnboardingBackButton
+            onPress={() => {
+              logEvent("onboarding_calibration_back");
+              navigation.goBack();
+            }}
+          />
+        </View>
+      )}
+
       {weightOnly && (
         <View
           style={[styles.rescanHeader, { top: insets.top + 6 }]}
@@ -300,10 +326,17 @@ export function CalibrationScreen({ navigation, route }: Props) {
               <Text style={styles.headline}>
                 {weightOnly ? "Update your weight" : "A few quick details"}
               </Text>
+              {/* Screen Copy row 3 `Scan setup · Supporting` (Final): "These
+                  help tune the scan to you." What was here is the row's
+                  `Figma shows now` placeholder verbatim — Bryan's note on the
+                  row is "Short rationale. Don't explain BMR or TDEE", and
+                  "accurate to your body" is the reading-accuracy claim that
+                  rationale is meant to avoid. The weight-only variant is a
+                  rescan, not Scan setup, so the Sheet doesn't govern it. */}
               <Text style={styles.subhead}>
                 {weightOnly
                   ? "So today's scan reflects your current weight."
-                  : "This calibrates your scan so the reading is accurate to your body."}
+                  : "These help tune the scan to you."}
               </Text>
             </View>
 
@@ -383,8 +416,13 @@ export function CalibrationScreen({ navigation, route }: Props) {
                 </Field>
               )}
 
+              {/* Screen Copy row 3 `Fields` lists "Height · Weight · Age ·
+                  Sex", and its Figma cell spells out "Sex (Female, Male)".
+                  The options here have always been Female/Male and the state
+                  behind them is already `sex` — only the label said Gender —
+                  and the value feeds Shen's biological-sex parameter. */}
               {!weightOnly && (
-                <Field label="Gender">
+                <Field label="Sex">
                   <View style={styles.sexRow}>
                     {(["female", "male"] as const).map((option) => (
                       <TouchableOpacity
@@ -510,6 +548,23 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     letterSpacing: -0.15,
     paddingVertical: 4,
+  },
+  /**
+   * 🔑 Matches Pre-scan exactly — 24 in from the left, 8 below the safe area,
+   * which is Lang's x24/y60 on both frames (5262:67220 and 5251:59411).
+   * It previously borrowed `rescanHeader` (20 and +6), which put the same
+   * button 4pt further left and 10pt higher than it sits one screen earlier,
+   * so stepping Pre-scan → Scan setup made it visibly jump. Kept separate from
+   * `rescanHeader` because that one carries a second button and lays out
+   * space-between.
+   */
+  onboardingBackRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 24,
+    alignItems: "flex-start",
   },
   rescanHeader: {
     position: "absolute",

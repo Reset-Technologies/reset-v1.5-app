@@ -20,7 +20,23 @@ export type SurveyOption = { id: string; label: string };
 
 export type SurveyStep =
   | { kind: "logo"; durationMs: number }
-  | { kind: "message"; lines: string[]; durationMs: number }
+  | {
+      kind: "message";
+      lines: string[];
+      /**
+       * Lines to use when the member SKIPPED the scan. Optional: only the
+       * steps that actually assert something about a scan need it.
+       */
+      linesNoScan?: string[];
+      durationMs: number;
+    }
+  /**
+   * Proof of listening — Screen Copy row 8, Flow row 8 (`v1_reflection`).
+   * One of R1–R5, chosen from the provisional archetype leader after the three
+   * scored questions. The text is not held here because it depends on answers
+   * the member has only just given; the screen resolves it at render time.
+   */
+  | { kind: "reflection"; durationMs: number }
   | {
       kind: "question";
       /** AppContext key this answer writes to. */
@@ -50,10 +66,20 @@ export const SURVEY_STEPS: SurveyStep[] = [
   { kind: "logo", durationMs: 9500 },
   {
     kind: "message",
+    // Screen Copy row 6 `Ester intro`. Bryan wrote BOTH variants as Final, so
+    // the skip branch is no longer the shipped line with the thanks removed —
+    // each path has its own authored ending. The scanned one hands off to row
+    // 12's loading line on purpose ("put the pieces together" → "Putting it
+    // together…"), and the skipped one promises a "starting Type" rather than
+    // "the most accurate type", which is the same softening the reveal card
+    // already makes with STARTING_READ_TAGLINE.
     lines: [
-      "Hello, I'm Ester!",
-      "Your Reset guide. Thanks for completing the scan!",
-      "I have just a few more questions, so I can give you the most accurate type.",
+      "Hi, I'm Ester.",
+      "I'll ask a few quick questions about what usually happens in your day, then I'll put the pieces together.",
+    ],
+    linesNoScan: [
+      "Hi, I'm Ester.",
+      "I'll ask a few quick questions about what usually happens in your day. That's enough to find your starting Type.",
     ],
     durationMs: 2800,
   },
@@ -94,6 +120,16 @@ export const SURVEY_STEPS: SurveyStep[] = [
     options: QUIZ_Q3.options.map((o) => ({ id: o.value, label: o.label })),
     eventName: "onboarding_survey_q3",
   },
+  // 🔑 Here, and only here. Row 8: "Exactly one R1–R5 after U3." Our q3 IS the
+  // third scored question — the wording differs from the Sheet's U1–U3 until
+  // the V1 question set is rebuilt, but it feeds the same scorer, and the
+  // lines describe the pattern rather than quoting the answer.
+  // ✅ Row 8 also says "then P2 on the same screen". We have no goal-weight
+  // step yet (it ships with the V1 questions). Bryan RATIFIED standing alone
+  // (2026-10-01): "ship the reflection on its own. P2 should come after it
+  // once the goal-weight step is built, but it doesn't need to hold up the
+  // reflection now." ⇒ when P2 lands it goes IMMEDIATELY AFTER this step.
+  { kind: "reflection", durationMs: 3200 },
   {
     kind: "question",
     key: "restrict",
@@ -126,7 +162,9 @@ export const SURVEY_STEPS: SurveyStep[] = [
   },
   {
     kind: "analyzing",
-    text: "Analyzing your responses",
+    // Screen Copy row 12 (`type_processing.line`, Final). Brief, and it names
+    // no Type — the Type is not revealed until after the paywall.
+    text: "Putting it together\u2026",
     // Same video as the post-scan intro (~8.9s). Advances on playToEnd;
     // durationMs is only the fallback cap (see the "logo" step above).
     durationMs: 9500,

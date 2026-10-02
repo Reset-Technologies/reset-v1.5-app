@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Image,
   ScrollView,
   Dimensions,
@@ -14,10 +13,12 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { logEvent } from "../../services/braze";
+import { PreScanIllustration } from "../../components/PreScanIllustration";
+import { OnboardingBackButton } from "../../components";
+import { OnboardingCta } from "../../components";
 
 type Props = NativeStackScreenProps<any, "PreScan">;
 
-const TYPES_GRAPHIC = require("../../../assets/images/onboarding/prescan-types.png");
 // The exported PNG is 1206×1002. Render it at full screen width so the fanned
 // cards reach (and bleed past) the screen edges; explicit numeric dimensions
 // avoid <Image> falling back to its (huge) intrinsic point size.
@@ -99,13 +100,13 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 // swipe → navigate handoff has no visible swap.
 export function PreScanView({
   onScan,
-  onClose,
-  onLogin,
+  onSkip,
+  onBack,
   interactive = true,
 }: {
   onScan: () => void;
-  onClose: () => void;
-  onLogin?: () => void;
+  onSkip: () => void;
+  onBack: () => void;
   interactive?: boolean;
 }) {
   return (
@@ -127,27 +128,41 @@ export function PreScanView({
         edges={["top", "bottom"]}
         pointerEvents={interactive ? "auto" : "none"}
       >
+        {/* 🔑 PINNED, not in the content flow. Lang puts this at x24/y60 in
+            BOTH this frame (5251:59411) and Scan setup (5262:67220) — the same
+            spot, so the control does not move as you step between them. It
+            used to be the first child of `content`, which is `flex-end`, so it
+            floated with the content and sat ~43pt lower than Scan setup's.
+            🔴 This is BACK, not skip. It used to call onSkip — the same
+            handler as "Continue without scanning" — because the control here
+            was once an ✕ and skipping really was the only thing it could do.
+            Lang's frame makes it a back ARROW, and once Opening existed there
+            was somewhere to go, so an arrow that silently dropped people into
+            the survey was lying about itself. */}
+        <View style={styles.backRow} pointerEvents="box-none">
+          <OnboardingBackButton onPress={onBack} />
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
         >
-          <View style={styles.closeRow}>
-            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeGlyph}>×</Text>
-            </TouchableOpacity>
-          </View>
-
+          {/* 🔑 The frame's own artwork. This screen used to show the Type-cards
+              fan (`prescan-types.png`), which the design never had here — and
+              which still carries the OLD drifted Type taglines that #148 fixed
+              in code. Switching to the frame's illustration removes that stale
+              asset from the screen. */}
           <View style={styles.graphicWrap}>
-            <Image
-              source={TYPES_GRAPHIC}
-              style={{ width: GRAPHIC_W, height: GRAPHIC_H }}
-              resizeMode="contain"
-            />
+            <PreScanIllustration />
           </View>
 
-          <Text style={styles.headline}>Ready to discover your type?</Text>
-          <Text style={styles.subhead}>We'll start off with a scan to assess your:</Text>
+          <View style={styles.copyBlock}>
+            <Text style={styles.headline}>Start with a 30-second scan.</Text>
+            <Text style={styles.subhead}>
+              It captures a few signals from your face. Your answers do the rest.
+            </Text>
+          </View>
 
           <View style={styles.grid}>
             <View style={styles.gridRow}>
@@ -169,17 +184,18 @@ export function PreScanView({
           </View>
 
           <View style={styles.btnGroup}>
-            <TouchableOpacity style={styles.scanBtn} onPress={onScan} activeOpacity={0.85}>
-              <Text style={styles.scanBtnText}>Scan now</Text>
-            </TouchableOpacity>
+            <OnboardingCta title="Start scan" onPress={onScan} />
 
-            <TouchableOpacity
-              style={styles.loginBtn}
-              onPress={onLogin}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.loginBtnText}>I already have an account</Text>
-            </TouchableOpacity>
+            {/* 🔴 The skip used to exist ONLY as the × in the corner. Declining
+                the scan is a legitimate path (Screen Copy row 2, `pre_scan.skip`,
+                Final) and 179 members a month take it — making it findable is the
+                point, not decoration. Deliberately quieter than "Start scan". */}
+            <OnboardingCta
+              title="Continue without scanning"
+              variant="ghost"
+              onPress={onSkip}
+            />
+
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -199,7 +215,12 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Calibration");
   };
 
-  const handleClose = () => {
+  // 🔑 Named SKIP, not "close". It was `handleClose`/`onClose`, and that name
+  // is why the rebuilt back ARROW got wired to it — a control that reads as
+  // "dismiss" but actually declines the scan and jumps the member forward into
+  // the survey. Back is `handleBack`; this is the "Continue without scanning"
+  // action and nothing else should call it.
+  const handleSkip = () => {
     logEvent("onboarding_pre_scan_skip");
     // Skipping the scan goes straight to the questions (Bryan, 2026-09-29).
     //
@@ -216,16 +237,16 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Survey");
   };
 
-  const handleLogin = () => {
-    logEvent("onboarding_pre_scan_loginCTA");
-    navigation.navigate("Login");
+  const handleBack = () => {
+    logEvent("onboarding_pre_scan_back");
+    navigation.goBack();
   };
 
   return (
     <PreScanView
       onScan={handleScan}
-      onClose={handleClose}
-      onLogin={handleLogin}
+      onSkip={handleSkip}
+      onBack={handleBack}
     />
   );
 }
@@ -236,41 +257,50 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
+    paddingTop: 16,
+    // Frame is 48. We carry a third button it does not have (log-in), which
+    // pushed that button under the fold, so the bottom inset gives some back.
+    paddingBottom: 24,
+    // The frame pins the body to the BOTTOM and spaces its blocks by 24.
+    justifyContent: "flex-end",
+    gap: 24,
+  },
+  // Back — top-LEFT and its own row, so it does not sit in the bottom-pinned
+  // stack. Same rounded control as the paywall's.
+  // x24 / y60 in the frame — pinned just below the status bar, matching Scan
+  // setup exactly. The SafeAreaView above already insets past the status bar,
+  // so this is the frame's remaining 1pt rounded to a usable tap gap.
+  backRow: {
+    paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: 8,
-    justifyContent: "center",
-    // 8px between every block — also gives the X an exact 8px gap to the
-    // type-cards graphic without a margin hack.
-    gap: 8,
+    alignItems: "flex-start",
   },
-  // close — right-aligned, in flow directly above the type-cards graphic.
-  closeRow: { alignItems: "flex-end" },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  // Fanned type-cards graphic. The negative margin cancels the parent's side
-  // padding so the full-screen-width image sits flush with the screen edges.
   graphicWrap: {
-    marginHorizontal: -24,
+    // Frame is 237; trimmed to buy back room for the extra button. The
+    // illustration keeps its own size — this is whitespace, not scale.
+    height: 200,
     alignItems: "center",
+    justifyContent: "center",
   },
+  copyBlock: { gap: 16 },
   // headline / subhead
   headline: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 40,
-    lineHeight: 42,
-    color: BONE,
+    // Room for descenders — see the paywall headline; never set
+    // includeFontPadding:false to fix a clip.
+    lineHeight: 48,
+    color: WHITE,
     letterSpacing: -0.4,
   },
   subhead: {
-    fontFamily: fonts.dmSans,
-    fontSize: 17,
-    lineHeight: 22,
-    color: BONE,
-    letterSpacing: -0.17,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    color: WHITE,
+    // The frame runs the supporting line at 80%.
+    opacity: 0.8,
+    letterSpacing: -0.2,
   },
   // feature grid
   grid: { gap: 8 },
@@ -290,44 +320,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   featureLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: WHITE,
     letterSpacing: -0.16,
   },
-  // scan button
-  scanBtn: {
-    backgroundColor: WHITE,
-    borderRadius: 4,
-    minHeight: 44,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  scanBtnText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    color: MAROON,
-    letterSpacing: -0.2,
-  },
-  // "Scan now" + "I already have an account" grouped so the gap between
-  // them is exactly 8px (independent of the content container's gap).
-  btnGroup: { gap: 8 },
-  // "I already have an account" — ghost button below "Scan now"
-  loginBtn: {
-    backgroundColor: "rgba(250,253,254,0.24)",
-    borderRadius: 4,
-    minHeight: 44,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loginBtnText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    color: WHITE,
-    letterSpacing: -0.2,
-  },
+
+  // "Start scan" + "Continue without scanning", grouped so the gap between them
+  // is independent of the content container's gap.
+  // 🔑 "I already have an account" used to sit here as a third button. It moved
+  // to Opening, where Flow row 1 puts it. Its fill — rgba(250,253,254,0.24),
+  // radius 4 — is now the `ghostFilled` variant on OnboardingCta.
+  btnGroup: { gap: 12 },
   closeGlyph: { fontSize: 28, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
 });

@@ -1,9 +1,9 @@
 import React from "react";
+import { OnboardingBackButton } from "../../components";
 import {
   View,
   StyleSheet,
   Image,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -49,20 +49,6 @@ export function ResetWordmark() {
       <Path
         d="M65.6062 4.73897H70.6285V10.1912H69.3675C67.4096 10.1912 66.042 9.04662 65.6068 7.24411V15.5323L70.6285 15.4827L70.6278 15.4834V19.9044H66.1097C62.722 19.9043 61.0794 18.2883 61.0794 14.8693V1.37134H65.6062V4.73897Z"
         fill={WHITE}
-      />
-    </Svg>
-  );
-}
-
-export function BackArrow() {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M19 12H5M11 19l-7-7 7-7"
-        stroke={WHITE}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </Svg>
   );
@@ -140,13 +126,7 @@ export function AuthScaffold({
           style={styles.keyboardView}
         >
           <View style={styles.topBar}>
-            <TouchableOpacity
-              onPress={onBack}
-              hitSlop={10}
-              style={styles.iconBtn}
-            >
-              <BackArrow />
-            </TouchableOpacity>
+            <OnboardingBackButton onPress={onBack} />
             <ResetWordmark />
             <View style={styles.iconBtn} />
           </View>
