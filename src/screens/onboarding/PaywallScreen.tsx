@@ -381,17 +381,24 @@ export function PaywallScreen({ navigation }: Props) {
   // Ester's line. Bryan signed off on the design WITH this card (2026-09-30),
   // so it renders.
   //
-  // 🔴 THE STRING IS LANG'S PLACEHOLDER FROM THE FRAME, NOT APPROVED COPY, and
-  // it is the same for everyone — the opposite of what Bryan actually asked
-  // for ("generated in the moment… specific to that person"). It ships as a
-  // holding line because it is the one thing here that is true for every
-  // member regardless of path: every member answers the energy question, and
-  // it claims nothing about a scan, so it is safe for scanners and skippers
-  // alike. That is the ONLY reason it is safe to render today.
+  // ✅ DECIDED, Bryan 2026-10-01: "ship the two pre-written Ester lines for now
+  // rather than scope the generated version. We can revisit true
+  // personalization after this is live." So the static line is the CHOSEN
+  // behaviour for V1, not a stopgap someone forgot to finish.
+  // (For the record: the signed-off frame 5283:17117 contains exactly ONE
+  // line, this one. "Two pre-written lines" came from our side of that thread
+  // and does not correspond to anything in the file.)
   //
-  // ▶ Replace with the generator once `scan-insights` reads onboarding answers
-  // (see the notes on that service). Until then, do not let this line grow
-  // into anything that asserts a reading we have not actually taken.
+  // 🔑 Why this particular sentence is the safe one, if it is ever reworded:
+  // it is true for every member regardless of path. Every member answers the
+  // energy question (q1 is literally "When does your energy usually drop?"),
+  // and it claims nothing about a scan, so it holds for scanners and skippers
+  // alike. Anything that asserts a reading we have not taken breaks that.
+  //
+  // ▶ The generated version — the same `scan-insights` change that would fix
+  // the Deep Read takeaway card for skipped-scan members — is deliberately
+  // AFTER release. Do both from one change when it comes, and not before the
+  // Deep Read claim rules land (Open Check #7).
   const esterLine: string | null = "Your energy levels are telling me something.";
 
   const plans = buildPlanDisplay(monthlyPkg, annualPkg);
