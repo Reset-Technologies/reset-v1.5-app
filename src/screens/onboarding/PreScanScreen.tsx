@@ -100,12 +100,12 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 // swipe → navigate handoff has no visible swap.
 export function PreScanView({
   onScan,
-  onClose,
+  onSkip,
   onBack,
   interactive = true,
 }: {
   onScan: () => void;
-  onClose: () => void;
+  onSkip: () => void;
   onBack: () => void;
   interactive?: boolean;
 }) {
@@ -133,7 +133,7 @@ export function PreScanView({
             spot, so the control does not move as you step between them. It
             used to be the first child of `content`, which is `flex-end`, so it
             floated with the content and sat ~43pt lower than Scan setup's.
-            🔴 This is BACK, not skip. It used to call onClose — the same
+            🔴 This is BACK, not skip. It used to call onSkip — the same
             handler as "Continue without scanning" — because the control here
             was once an ✕ and skipping really was the only thing it could do.
             Lang's frame makes it a back ARROW, and once Opening existed there
@@ -193,7 +193,7 @@ export function PreScanView({
             <OnboardingCta
               title="Continue without scanning"
               variant="ghost"
-              onPress={onClose}
+              onPress={onSkip}
             />
 
           </View>
@@ -215,7 +215,12 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Calibration");
   };
 
-  const handleClose = () => {
+  // 🔑 Named SKIP, not "close". It was `handleClose`/`onClose`, and that name
+  // is why the rebuilt back ARROW got wired to it — a control that reads as
+  // "dismiss" but actually declines the scan and jumps the member forward into
+  // the survey. Back is `handleBack`; this is the "Continue without scanning"
+  // action and nothing else should call it.
+  const handleSkip = () => {
     logEvent("onboarding_pre_scan_skip");
     // Skipping the scan goes straight to the questions (Bryan, 2026-09-29).
     //
@@ -240,7 +245,7 @@ export function PreScanScreen({ navigation }: Props) {
   return (
     <PreScanView
       onScan={handleScan}
-      onClose={handleClose}
+      onSkip={handleSkip}
       onBack={handleBack}
     />
   );
