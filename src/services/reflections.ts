@@ -49,9 +49,10 @@ export const REFLECTIONS: Record<ProvisionalLeader, string> = {
  * Runs BEFORE the account exists, hence an unauthenticated route.
  */
 export async function getProvisionalLeader(answers: {
-  q1?: string | null;
-  q2?: string | null;
-  q3?: string | null;
+  /** Fixed V1 — the first three scored questions (ROUTING step 2). */
+  U1?: string | null;
+  U2?: string | null;
+  U3?: string | null;
 }): Promise<ProvisionalLeader> {
   const res = await apiClient<{ leader: ProvisionalLeader }>(
     "/api/typing/provisional-leader",

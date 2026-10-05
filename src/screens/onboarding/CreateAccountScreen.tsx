@@ -17,12 +17,13 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { pickV1Answers } from "../../constants/v1Questions";
 import { useApp } from "../../context/AppContext";
 import { registerWithEmail } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
-import { OnboardingBackButton } from "../../components";
+import { OnboardingBackButton, ConsentCheckbox } from "../../components";
 import { OnboardingCta } from "../../components";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
@@ -148,11 +149,7 @@ export function CreateAccountScreen({ navigation }: Props) {
         const { primaryBucket, startingRead, glp1Flag } =
           await syncOnboardingToBackend({
             goal: state.user.goal,
-            behaviorAnswers: {
-              q1: state.user.quizAnswers.q1,
-              q2: state.user.quizAnswers.q2,
-              q3: state.user.quizAnswers.q3,
-            },
+            behaviorAnswers: pickV1Answers(state.user.quizAnswers),
             tastePreferences: state.user.tastePreferences,
             dietaryRestrictions: state.user.dietaryRestrictions,
           });
@@ -302,8 +299,12 @@ export function CreateAccountScreen({ navigation }: Props) {
                 without it. */}
             <View style={styles.bottomRow}>
             <View style={styles.checkRow}>
+              {/* 🔑 The SAME control as the AI-consent screen, one screen
+                  later — see ConsentCheckbox. This used to be a flat white
+                  square with a system-font "✓" in it, so the two agreement
+                  checkboxes in a row looked like different controls. */}
               <Pressable
-                style={[styles.checkbox, agreed && styles.checkboxOn]}
+                style={styles.checkboxHit}
                 onPress={() => setAgreed((v) => !v)}
                 disabled={isLoading}
                 hitSlop={10}
@@ -311,7 +312,7 @@ export function CreateAccountScreen({ navigation }: Props) {
                 accessibilityState={{ checked: agreed }}
                 accessibilityLabel="I confirm I am 18 or older and agree to the Terms of Use and Privacy Policy"
               >
-                {agreed ? <Text style={styles.checkMark}>✓</Text> : null}
+                <ConsentCheckbox checked={agreed} />
               </Pressable>
               <Text style={styles.checkLabel} onPress={() => setAgreed((v) => !v)}>
                 I confirm I am 18 or older and agree to the{" "}
@@ -452,26 +453,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: TEXT_ALT,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  checkboxOn: {
-    backgroundColor: WHITE,
-    borderColor: WHITE,
-  },
-  checkMark: {
-    color: MAROON,
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 17,
-  },
+  // Optical nudge so the circle sits on the label's first line.
+  checkboxHit: { marginTop: 1 },
   checkLabel: {
     flex: 1,
     fontFamily: fonts.dmSans,

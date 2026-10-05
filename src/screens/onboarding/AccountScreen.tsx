@@ -21,6 +21,7 @@ import {
   PasswordRules,
   usePasswordRules,
 } from "../../components";
+import { pickV1Answers } from "../../constants/v1Questions";
 import { useApp } from "../../context/AppContext";
 import { registerWithEmail, loginWithApple, loginWithGoogle } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
@@ -121,11 +122,7 @@ export function AccountScreen({ navigation }: Props) {
       try {
         await syncOnboardingToBackend({
           goal: state.user.goal,
-          behaviorAnswers: {
-            q1: state.user.quizAnswers.q1,
-            q2: state.user.quizAnswers.q2,
-            q3: state.user.quizAnswers.q3,
-          },
+          behaviorAnswers: pickV1Answers(state.user.quizAnswers),
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });
@@ -178,11 +175,7 @@ export function AccountScreen({ navigation }: Props) {
       try {
         await syncOnboardingToBackend({
           goal: state.user.goal,
-          behaviorAnswers: {
-            q1: state.user.quizAnswers.q1,
-            q2: state.user.quizAnswers.q2,
-            q3: state.user.quizAnswers.q3,
-          },
+          behaviorAnswers: pickV1Answers(state.user.quizAnswers),
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });
@@ -231,11 +224,7 @@ export function AccountScreen({ navigation }: Props) {
       try {
         await syncOnboardingToBackend({
           goal: state.user.goal,
-          behaviorAnswers: {
-            q1: state.user.quizAnswers.q1,
-            q2: state.user.quizAnswers.q2,
-            q3: state.user.quizAnswers.q3,
-          },
+          behaviorAnswers: pickV1Answers(state.user.quizAnswers),
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });

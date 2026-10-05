@@ -527,7 +527,19 @@ export function AppProvider({ children }: AppProviderProps) {
           if (!savedParsed?.user?.hasCompletedOnboarding) {
             try {
               const profile = await getProfile();
-              if (profile.layer1.primaryBucket) {
+              // 🔴 Keyed on `onboardingCompletedAt`, NOT `primaryBucket`.
+              // The Type is written at ACCOUNT CREATION now — the survey
+              // answers are submitted as soon as the account exists — so
+              // "has a Type" is also true for someone still on the AI-consent
+              // screen or the paywall. Restoring their session as complete
+              // skipped both, and skipping consent is a compliance screen
+              // gone missing. Reported on an S24, 2026-10-02.
+              //
+              // 🔑 Profiles that predate the field were backfilled from
+              // `updatedAt` in seed-and-start.sh, bounded by `createdAt`, so a
+              // returning or migrating member is not marched through
+              // onboarding a second time.
+              if (profile.layer1.onboardingCompletedAt) {
                 dispatch({
                   type: "SET_METABOLIC_TYPE",
                   payload: profile.layer1.primaryBucket as MetabolicType,

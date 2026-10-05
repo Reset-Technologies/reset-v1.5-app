@@ -16,6 +16,7 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { GoogleMark } from "../../components/GoogleMark";
+import { pickV1Answers } from "../../constants/v1Questions";
 import { useApp } from "../../context/AppContext";
 import { loginWithApple, loginWithGoogle } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
@@ -94,11 +95,7 @@ export function AccountGateScreen({ navigation }: Props) {
       const { primaryBucket, startingRead, glp1Flag } =
         await syncOnboardingToBackend({
           goal: state.user.goal,
-          behaviorAnswers: {
-            q1: state.user.quizAnswers.q1,
-            q2: state.user.quizAnswers.q2,
-            q3: state.user.quizAnswers.q3,
-          },
+          behaviorAnswers: pickV1Answers(state.user.quizAnswers),
           tastePreferences: state.user.tastePreferences,
           dietaryRestrictions: state.user.dietaryRestrictions,
         });
