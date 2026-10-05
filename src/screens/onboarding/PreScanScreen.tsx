@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,20 @@ type Props = NativeStackScreenProps<any, "PreScan">;
 // cards reach (and bleed past) the screen edges; explicit numeric dimensions
 // avoid <Image> falling back to its (huge) intrinsic point size.
 const SCREEN_W = Dimensions.get("window").width;
+
+// The illustration's own size, straight from the Figma export
+// (PreScanIllustration's viewBox). The frame's box around it is 237 tall; we
+// already carry 200, so the box holds 8.714pt of padding and NOT the 64 an
+// earlier version of the fit logic assumed.
+const ART_W = 198.884;
+const ART_H = 191.286;
+const ART_BOX_PAD = 200 - ART_H;
+// The art never goes below 60% of the frame — at that point it stops reading as
+// a face scan and a scroll is the better trade.
+const MAX_ART_CUT = ART_H * 0.4;
+const MAX_GAP_CUT = 8; // 24 -> 16, across three gaps
+const MAX_RECLAIM = MAX_GAP_CUT * 3 + ART_BOX_PAD + MAX_ART_CUT;
+
 const GRAPHIC_W = SCREEN_W;
 const GRAPHIC_H = Math.round(SCREEN_W * (880 / 1206));
 
@@ -109,6 +123,64 @@ export function PreScanView({
   onBack: () => void;
   interactive?: boolean;
 }) {
+  // 🔑 MEASURED, not guessed at from the window height. The first version of
+  // this keyed off `874 - Dimensions.get("window").height` — the iPhone 16 Pro
+  // — so every shorter iPhone (13/14/15 at 844, 16 at 852) was tightened too,
+  // whether it needed it or not. This ships Lang's frame values verbatim and
+  // only reclaims space once the stack has been measured against the real
+  // viewport and genuinely does not fit.
+  //
+  // 🔑 Reclaims only the OVERFLOW, not a fixed amount. Measured on an S24 the
+  // stack was 758pt in a 683pt viewport, so "Continue without scanning" sat
+  // entirely below the fold — that one needs ~75pt back. An iPhone 16 (851pt)
+  // overflows by about 5pt, and a fixed reduction moved its illustration 134px
+  // for no reason.
+  //
+  // 🔑 `shrink` only ever GROWS, which is what makes this terminate: each pass
+  // adds whatever still doesn't fit, so it converges in a frame or two and can
+  // never oscillate between fits / doesn't-fit.
+  //
+  // 🔴 BOTH measurements are state, and the decision lives in an effect that
+  // depends on both. They were a ref plus a callback, and `onLayout` can land
+  // AFTER `onContentSizeChange` — so the first content measurement was thrown
+  // away with viewport still 0, and nothing ever re-fired to reconsider it.
+  // The screen then stayed un-shrunk and the skip button stayed clipped.
+  //
+  // ⇒ On any screen where the frame's own values already fit, `shrink` stays 0
+  // and every value below is the frame's. Nothing changes at all — verified
+  // byte-identical on a 411x891pt screen.
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const [shrink, setShrink] = useState(0);
+
+  useEffect(() => {
+    if (viewportH > 0 && contentH > viewportH) {
+      setShrink((s) => Math.min(MAX_RECLAIM, s + Math.ceil(contentH - viewportH)));
+    }
+  }, [viewportH, contentH]);
+
+  // 🔴 Taken in order of what costs the design least, and the ART IS LAST.
+  // An earlier pass shrank only the illustration's CONTAINER, on the assumption
+  // that the 200pt frame box held 64pt of slack around the art. It does not —
+  // the art is 191.286pt tall, so the box holds 8.7pt. Shrinking it to 136 left
+  // the art overflowing its own container, and the top of the face scan was
+  // clipped by the ScrollView on the S24. Cole caught it on the device.
+  //
+  //   1. the three inter-block gaps   24 → 16   (24pt)
+  //   2. the box's own padding        8.7pt
+  //   3. SCALE the art, aspect kept, floor 60% of the frame  (~76pt)
+  //
+  // Scaling it is what keeps it whole: the box is always derived from the art's
+  // height below, so the art can never overflow and can never be clipped again.
+  const gapCut = Math.min(MAX_GAP_CUT, Math.ceil(shrink / 3));
+  const afterGaps = Math.max(0, shrink - gapCut * 3);
+  const padCut = Math.min(ART_BOX_PAD, afterGaps);
+  const artCut = Math.min(MAX_ART_CUT, Math.max(0, afterGaps - padCut));
+
+  const artH = ART_H - artCut;
+  const artW = ART_W * (artH / ART_H);
+  const artBoxH = artH + (ART_BOX_PAD - padCut);
+
   return (
     <View style={styles.container}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -144,17 +216,19 @@ export function PreScanView({
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { gap: 24 - gapCut }]}
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
+          onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+          onContentSizeChange={(_w, h) => setContentH(h)}
         >
           {/* 🔑 The frame's own artwork. This screen used to show the Type-cards
               fan (`prescan-types.png`), which the design never had here — and
               which still carries the OLD drifted Type taglines that #148 fixed
               in code. Switching to the frame's illustration removes that stale
               asset from the screen. */}
-          <View style={styles.graphicWrap}>
-            <PreScanIllustration />
+          <View style={[styles.graphicWrap, { height: artBoxH }]}>
+            <PreScanIllustration width={artW} height={artH} />
           </View>
 
           <View style={styles.copyBlock}>
@@ -282,6 +356,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   copyBlock: { gap: 16 },
   // headline / subhead
   headline: {

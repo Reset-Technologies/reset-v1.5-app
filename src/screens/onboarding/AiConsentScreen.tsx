@@ -12,8 +12,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
-import { OnboardingCta } from "../../components";
-import { CheckIcon } from "../../components/PaywallIcons";
+import { OnboardingCta, ConsentCheckbox } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { AI_DISCLOSURE_URL, PRIVACY_POLICY_URL } from "../../constants/legal";
@@ -47,10 +46,18 @@ export function AiConsentScreen({ navigation }: Props) {
   // is that string minus the two claims. Anyone tempted to "fill in" the gap
   // for skippers is authoring legal copy.
   //
-  // `startingRead` is set by CreateAccountScreen from the typing response
-  // immediately before it routes here, and is true exactly when the backend
-  // typed the member with no scan.
-  const scanned = state.user.startingRead !== true;
+  // 🔴 Keyed on BIOMETRICS FIRST, and `startingRead` only as a backstop. The
+  // same mistake OnboardingSurveyScreen already fixed: `startingRead` comes
+  // back from the typing round trip that CreateAccountScreen fires in a
+  // `catch {}`, so ANY failure of that call leaves it undefined — and an
+  // undefined `startingRead` made this screen fall back to the SCANNED copy,
+  // i.e. it failed open into the two claims a skipper must not be shown.
+  // Observed for real on the 2026-10-02 device walk, where a profile-insert
+  // race 500'd the sync and a skipper was told their face video stayed on
+  // their device. `biometrics` is local, is populated only by an actual scan,
+  // and cannot be lost to a network failure — so it decides.
+  const scanned =
+    state.biometrics !== null && state.user.startingRead !== true;
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -118,9 +125,15 @@ export function AiConsentScreen({ navigation }: Props) {
         ) : null}
 
         <Text style={styles.body}>
+          {/* Row 11 `consent.body`, status LOCKED. The Sheet punctuates this
+              "our AI partners, OpenAI and ElevenLabs when you use voice:" — we
+              had an em dash and a stray comma after OpenAI. Consent copy is
+              not ours to repunctuate. The bold on the two provider names is
+              the production rendering the Sheet's note defers to. */}
           To create your type and personalize your meals, Reset shares a few
-          things with our AI partners — <Text style={styles.strong}>OpenAI</Text>
-          , and <Text style={styles.strong}>ElevenLabs</Text> when you use voice:
+          things with our AI partners,{" "}
+          <Text style={styles.strong}>OpenAI</Text> and{" "}
+          <Text style={styles.strong}>ElevenLabs</Text> when you use voice:
         </Text>
 
         <View style={styles.list}>
@@ -148,26 +161,7 @@ export function AiConsentScreen({ navigation }: Props) {
           accessibilityState={{ checked: agreed }}
           hitSlop={8}
         >
-          <View style={[styles.checkbox, agreed && styles.checkboxOn]}>
-            {agreed ? (
-              <>
-                {/* The fill's white top sheen. An SVG overlay rather than a
-                    style — RN has no cross-platform `backgroundImage`. */}
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                  <Svg width="100%" height="100%" preserveAspectRatio="none">
-                    <Defs>
-                      <LinearGradient id="cbSheen" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
-                        <Stop offset="0.63275" stopColor="#FFFFFF" stopOpacity="0" />
-                      </LinearGradient>
-                    </Defs>
-                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#cbSheen)" />
-                  </Svg>
-                </View>
-                <CheckIcon size={16} />
-              </>
-            ) : null}
-          </View>
+          <ConsentCheckbox checked={agreed} />
           <Text style={styles.checkLabel}>
             I agree to Reset sharing this information with these providers to
             personalize my experience.
@@ -316,32 +310,6 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingLeft: 12,
     paddingRight: 16,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: DIVIDER,
-    alignItems: "center",
-    justifyContent: "center",
-    // Clips the checked state's sheen to the circle.
-    overflow: "hidden",
-  },
-  /**
-   * Checked state, Figma 5266:68045. Not just a filled circle:
-   *  - the fill carries a white top sheen, rgba(255,255,255,0.5) fading out
-   *    by 63.275%, over the flat #7E6869
-   *  - "Inset Bubble (Dark)" — an inner shadow plus a 1px lift above
-   *  - no border; the fill IS the shape once it is on
-   * It was a flat fill with the unchecked border left on, and the tick was a
-   * text "✓" in the system font rather than the 16pt glyph she drew.
-   */
-  checkboxOn: {
-    backgroundColor: DIVIDER,
-    borderColor: "transparent",
-    boxShadow:
-      "inset 0 0 4px 0 rgba(0,0,0,0.22), 0 -1px 2px 0 rgba(0,0,0,0.16)",
   },
   checkLabel: {
     fontFamily: fonts.catalogue,

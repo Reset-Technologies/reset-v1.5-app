@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  ScrollView,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { PurchasesPackage } from "react-native-purchases";
@@ -38,6 +39,8 @@ import {
   GuidanceIcon,
 } from "../../components/PaywallIcons";
 import { OnboardingBackButton } from "../../components";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { markAppOpenFlowShown } from "../../utils/appOpenFlowGate";
 
 type Props = NativeStackScreenProps<any, "Paywall">;
 
@@ -52,6 +55,37 @@ const SCREEN_H = Dimensions.get("window").height;
 const TOP_PAD = Math.round(
   Math.max(36, Math.min(60, 36 + (SCREEN_H - 780) * (24 / 72))),
 );
+
+// 🔴 TOP_PAD is measured from the SCREEN TOP, status bar included — Lang's
+// frames draw a 62pt `System UI` band at y=0 and put the top row at y=60
+// (confirmed on 5266:68078). So the 60 already allows for a notch; it is not a
+// gap below one.
+//
+// That is what makes the shrink above dangerous. The card stack is 64x83 and
+// sits CENTRED in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
+// the three cards' rotations are counted. Dropping TOP_PAD to 36 on a short
+// screen therefore put the top of the stack 9pt from the screen top, and on a
+// Galaxy S24 (status bar ~34) it ran up UNDER THE FRONT CAMERA CUTOUT and was
+// cut off. This screen has no SafeAreaView, so nothing else was going to catch
+// it. At the design's own 60 the stack starts at 33pt and clears it.
+const STACK_OVERHANG = 27;
+
+// 🔴 Short-screen fit, same measured approach as Pre-scan. Lang's frame is an
+// iPhone at 874pt; on a 780pt S24 the stack did not fit and "Unlock my Type"
+// was pushed past the bottom edge. Reclaimed in order of what the design misses
+// least — all of it is padding, nothing here scales type or the plan cards:
+//   1. the three benefit rows' vertical padding   12/16 -> 5/9   (42pt)
+//   2. the gap under the headline                 32 -> 20       (12pt)
+//   3. the body's top padding                     54 -> 36       (18pt)
+//   4. the gap above the purchase block           24 -> 16       (8pt)
+const MAX_ROW_CUT = 14;
+const MAX_HEAD_CUT = 12;
+const MAX_TOP_CUT = 18;
+const MAX_PURCHASE_CUT = 8;
+const MAX_RECLAIM =
+  MAX_ROW_CUT * 3 + MAX_HEAD_CUT + MAX_TOP_CUT + MAX_PURCHASE_CUT;
+// The design value the shrink is allowed to walk back towards, never past.
+const DESIGN_TOP_PAD = 60;
 
 const MAROON_ALT = "#513436"; // page-surface-(alt)
 const MAROON = "#361416";
@@ -291,6 +325,41 @@ function PlanCard({
 }
 
 export function PaywallScreen({ navigation }: Props) {
+  // 🔑 READ from the system, not assumed — the inset varies per device and the
+  // S24's cutout is centred, exactly where the stack is.
+  //
+  // 🔑 Clamped to DESIGN_TOP_PAD so this can only ever UNDO the shrink, never
+  // push past what Lang drew. On the S24 it restores the full 60; on an iPhone,
+  // where TOP_PAD is already 60, it is a no-op. Without the clamp an iPhone 16
+  // Pro (59pt inset) would have computed 86 and dropped the whole title block
+  // 26pt below the design, on a screen that was never broken.
+  const insets = useSafeAreaInsets();
+  const topPad = Math.min(
+    DESIGN_TOP_PAD,
+    Math.max(TOP_PAD, Math.round(insets.top) + STACK_OVERHANG),
+  );
+
+  // 🔑 Measured against the real viewport, latched so it only ever grows — see
+  // the same pattern and the reasons for it in PreScanScreen. On any screen
+  // where the frame's own values already fit, `shrink` stays 0 and every value
+  // below is the frame's.
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const [shrink, setShrink] = useState(0);
+
+  useEffect(() => {
+    if (viewportH > 0 && contentH > viewportH) {
+      setShrink((s) => Math.min(MAX_RECLAIM, s + Math.ceil(contentH - viewportH)));
+    }
+  }, [viewportH, contentH]);
+
+  const rowCut = Math.min(MAX_ROW_CUT, Math.ceil(shrink / 3));
+  let remaining = Math.max(0, shrink - rowCut * 3);
+  const headCut = Math.min(MAX_HEAD_CUT, remaining);
+  remaining -= headCut;
+  const topCut = Math.min(MAX_TOP_CUT, remaining);
+  remaining -= topCut;
+  const purchaseCut = Math.min(MAX_PURCHASE_CUT, remaining);
   const {
     state,
     setHomeV2Enabled,
@@ -303,6 +372,27 @@ export function PaywallScreen({ navigation }: Props) {
   // Main). In that mode there is no "skip into the app" — subscribing flips the
   // tier to 'pro', which re-renders RootNavigator straight into Main.
   const isGate = state.user.hasCompletedOnboarding;
+
+  // 🔴 Claim today's app-open flow while a GATE member is on this screen, for
+  // the same reason TypeRevealScreen claims it at the end of onboarding.
+  // Purchasing flips the tier to "pro", which is the last thing RootNavigator's
+  // `authReady` is waiting on (it already has isAuthenticated +
+  // hasCompletedOnboarding) — so the moment the tier flips, that effect fires
+  // `navigate("Main", { screen: "AppOpenFlow" })` with NO nested screen, lands
+  // on `Greeting`, and beats `revealAfterGatePurchase`'s deferred dispatch.
+  // The member pays and is shown the DAILY open flow instead of the reveal they
+  // just bought. Reported on an S24, 2026-10-02.
+  //
+  // Claiming on mount rather than at purchase time keeps it out of the five
+  // separate places that grant pro, and is deterministic: the gate is already
+  // taken before any of them can flip the tier. The cost is that a gate member
+  // who opens the paywall and backs out skips that day's open flow, which is a
+  // fair description of what happened anyway.
+  const gateUserId = state.auth.authUser?.id;
+  useEffect(() => {
+    if (!isGate || !gateUserId) return;
+    void markAppOpenFlowShown(gateUserId);
+  }, [isGate, gateUserId]);
 
   // Sign out — the only way off this screen for someone signed in to the WRONG
   // account. A returning member who used "Continue with Apple" (Hide My Email)
@@ -682,7 +772,7 @@ export function PaywallScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: topPad }]}>
       {/* The page background.
           🔑 This is ONE calibrated vertical gradient, not a reproduction of
           Lang's construction. Her frame builds it from two heavily blurred
@@ -745,8 +835,27 @@ export function PaywallScreen({ navigation }: Props) {
         <View style={styles.backBtnGhost} pointerEvents="none" />
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.headlineBlock}>
+      {/* 🔴 Scrollable, not a plain View. Lang's frame is an iPhone (874pt);
+          a Galaxy S24 is 780pt, and the 94pt difference fell off the BOTTOM —
+          `Privacy Policy · Restore Purchase · Terms of Use` rendered below the
+          screen with nothing to scroll, so Restore Purchase was unreachable on
+          the device. Measured on an S24 2026-10-02: the CTA ends at 2293 of
+          2340px and the footer row needs ~110px more.
+          `flexGrow: 1` keeps `space-between` doing exactly what it did on a
+          tall screen — this changes nothing where the content already fits,
+          and only becomes a scroll where it did not. */}
+      <ScrollView
+        style={styles.bodyScroll}
+        contentContainerStyle={[
+          styles.body,
+          { paddingTop: 54 - topCut },
+        ]}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!purchasing && !restoring}
+        onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_w, h) => setContentH(h)}
+      >
+        <View style={[styles.headlineBlock, { gap: 32 - headCut }]}>
           <Text style={styles.headline}>Your Type is ready.</Text>
 
           {/* 🔴 STILL A PLACEHOLDER, not a generated read — see the note on
@@ -769,19 +878,26 @@ export function PaywallScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.valueBlock}>
-          {/* Screen Copy row 14 `Paywall · Value line` (Final): "Reveal your
-              Type and put it to work." Its `Figma shows now` cell is EMPTY and
-              Bryan's note calls it a "New line above the benefit rows" — it
-              exists in no frame, so there is no layout to copy. It goes at the
-              head of the benefit block, which is the position the note
-              describes, and stays inside that block so the body still has the
-              three space-between children the frame's rhythm depends on. */}
-          <Text style={styles.valueLead}>
-            Reveal your Type and put it to work.
-          </Text>
-
+          {/* 🔴 NO value line here. Screen Copy row 14 `paywall.value`
+              ("Reveal your Type and put it to work.", Final) added one above
+              the benefit rows — its `Figma shows now` cell is empty because it
+              exists in no frame. Cole, 2026-10-02: Bryan signed off on Lang's
+              paywall as drawn, which has the Ester bubble running straight into
+              the benefits, and the extra line cluttered the screen. Lang's
+              layout wins here, so the string is deliberately unused.
+              ⚠️ The Sheet still lists it as Final — it needs marking Cut on the
+              Screen Copy tab so the next copy pass does not re-add it. */}
           {VALUE_LINES.map(({ Icon, label }) => (
-            <View key={label} style={styles.valueRow}>
+            <View
+              key={label}
+              style={[
+                styles.valueRow,
+                {
+                  paddingTop: 12 - Math.ceil(rowCut / 2),
+                  paddingBottom: 16 - Math.floor(rowCut / 2),
+                },
+              ]}
+            >
               <View style={styles.valueIcon}>
                 <Icon size={32} color={WHITE} />
               </View>
@@ -793,7 +909,7 @@ export function PaywallScreen({ navigation }: Props) {
         {/* Plans + CTA are one group so the body has THREE children under
             space-between, as the frame does — headline, value lines, purchase.
             Four children would spread the plans away from the button. */}
-        <View style={styles.purchaseGroup}>
+        <View style={[styles.purchaseGroup, { gap: 24 - purchaseCut }]}>
         <View style={styles.plansRow}>
           <PlanCard
             label="Monthly"
@@ -880,7 +996,7 @@ export function PaywallScreen({ navigation }: Props) {
           ) : null}
         </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -889,7 +1005,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: MAROON,
-    paddingTop: TOP_PAD,
     paddingBottom: 40,
     paddingHorizontal: 24,
   },
@@ -967,8 +1082,9 @@ const styles = StyleSheet.create({
   skeletonTitle: { height: 4.681, width: 33 },
 
   // Body
+  bodyScroll: { flex: 1, width: "100%" },
   body: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "space-between",
     // The frame's own value. Was 24, which sat the headline 30pt too high
@@ -1049,16 +1165,6 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   // A step above the benefit rows without competing with the 40pt headline.
-  valueLead: {
-    fontFamily: fonts.catalogue,
-    fontSize: 20,
-    lineHeight: 26,
-    letterSpacing: -0.2,
-    color: WHITE,
-    opacity: 0.85,
-    paddingHorizontal: 4,
-    paddingBottom: 14,
-  },
   valueText: {
     flex: 1,
     fontFamily: fonts.catalogue,

@@ -7,6 +7,7 @@ export { Button } from "./Button";
 export { ResetWordmark } from "./ResetWordmark";
 export { OnboardingBackButton } from "./OnboardingBackButton";
 export { OnboardingCta } from "./OnboardingCta";
+export { ConsentCheckbox } from "./ConsentCheckbox";
 export { AiConsentNudge } from "./AiConsentNudge";
 export { MealCard, MealCardSlot } from "./MealCard";
 export type { Meal } from "./MealCard";

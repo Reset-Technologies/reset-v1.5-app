@@ -27,15 +27,15 @@ import {
   navigateWhenMounted,
 } from "../../navigation/rootNavigationRef";
 import { markWindowIntroShown } from "../../utils/windowIntroGate";
+import { markAppOpenFlowShown } from "../../utils/appOpenFlowGate";
+import { markOnboardingComplete } from "../../services/onboarding";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
 import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
 import { playRevealHaptics } from "../../utils/revealHaptics";
-import { TypeSummaryCard } from "./TypeSummaryCard";
 import { shareWithLink } from "../../constants/links";
 import { WindowRecCard } from "./WindowRecCard";
-import { StatDetailSheet, StatDetailData } from "../profile/StatDetailSheet";
 import { TYPE_PRIMARY } from "../../constants/metabolicProfile";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
@@ -107,14 +107,24 @@ const CARD_SIDE_MARGIN = 12;
 // margins is already < CONTENT_MAX_WIDTH). The `left: (SCREEN_W - cardW)/2`
 // positioning below keeps the narrower card centered automatically.
 const CARD_W = Math.min(SCREEN_W - CARD_SIDE_MARGIN * 2, CONTENT_MAX_WIDTH);
-const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
+const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
 
-const TOTAL_CARDS = 5;
+/**
+ * 🔴 FOUR cards, not five. Bryan, 2026-10-04: "keep the Reset Window card, cut
+ * the profile card... So I'd go Type reveal → Deep Read → Reset Window → first
+ * meal bridge." His reasons: goal weight is now collected in the questions (P2),
+ * and the Deep Read already does the job of explaining what we learned.
+ *
+ * That also brings the stack closer to his Flow tab, which lists reveal (16) →
+ * Deep Read (17) → first meal bridge (19); the Window card is the one addition
+ * he explicitly wanted kept.
+ */
+const TOTAL_CARDS = 4;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
 // fetch fails outright (timeout, auth error, etc.).
@@ -149,13 +159,11 @@ const SWIPE_DISMISS_VX = -0.6;
 const ENTRY_POSE = [
   // idx 0 (front / type reveal): biggest fling
   { dx: SCREEN_W * 0.75, dy: -SCREEN_H * 0.55, rot: 16 },
-  // idx 1 (type summary — RES-146)
-  { dx: SCREEN_W * 0.68, dy: -SCREEN_H * 0.5, rot: 14 },
-  // idx 2 (insight)
+  // idx 1 (Deep Read insight)
   { dx: SCREEN_W * 0.42, dy: -SCREEN_H * 0.3, rot: 9 },
-  // idx 3 (Reset Window recommendation)
+  // idx 2 (Reset Window recommendation)
   { dx: SCREEN_W * 0.34, dy: -SCREEN_H * 0.25, rot: 7 },
-  // idx 5 (back / meal teaser): subtle settle
+  // idx 3 (back / meal teaser): subtle settle
   { dx: SCREEN_W * 0.28, dy: -SCREEN_H * 0.2, rot: 6 },
 ];
 
@@ -520,14 +528,11 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       ? (rawType as MetabolicType)
       : "Explorer";
 
-  // RES-146: the type-summary card (idx 1) mirrors the Profile screen; its
-  // card arrows open the shared StatDetailSheet at the screen level.
-  const userName = state.user.name?.trim() || "You";
-  const [detail, setDetail] = useState<StatDetailData | null>(null);
-  const openDetail = (d: StatDetailData) => {
-    logEvent("onboarding_type_summary_statDetail", { metric: d.metric });
-    setDetail(d);
-  };
+  // 🔴 RES-146's type-summary card, its `userName`/`openDetail` plumbing and
+  // the screen-level StatDetailSheet all went with the card (Bryan,
+  // 2026-10-04). The sheet had no remaining opener, so leaving it would have
+  // shipped UI nothing could reach — the #148 dead-code trap. TypeSummaryCard
+  // and StatDetailSheet are both still used by the Profile tab.
 
   // Two-beat scan takeaway (split format): "what we noticed" + "your meal
   // because of that". Pre-paywall the meal half is generic (no dish named).
@@ -631,6 +636,10 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     ).start();
   }, [loaded]);
 
+  // One-shot guard for the end-of-onboarding handoff below. A ref, not effect
+  // cleanup — see the comment there.
+  const handoffStarted = useRef(false);
+
   const advance = () => {
     setActiveIdx((i) => Math.min(i + 1, TOTAL_CARDS));
   };
@@ -662,18 +671,58 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     const uid = state.auth.authUser?.id;
     const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
     if (uid && sawWindowInOnboarding) markWindowIntroShown(uid);
-    completeOnboarding();
 
-    // Deferred because completeOnboarding() re-renders the root into a new
-    // stack, and dispatching before Main exists is a silent no-op — see
-    // navigateWhenMounted, which waits for the route rather than guessing a
-    // delay. A fixed timeout here lost the first-meal handoff on a slow device.
-    return navigateWhenMounted("Main", () => {
-      (rootNavigationRef as any).navigate("Main", {
-        screen: "AppOpenFlow",
-        params: { screen: "NextMeal", params: { fromOnboarding: true } },
+    // 🔴 Deliberately NOT cancelled on unmount, and deliberately guarded by a
+    // ref instead. The handoff below is a GLOBAL side effect whose whole job is
+    // to survive the unmount that triggers it: `completeOnboarding()` swaps the
+    // root stack, which unmounts THIS screen, which is exactly when the "Main"
+    // route it is polling for appears. Returning the poller as the effect's
+    // cleanup — which is what this did — therefore cancelled it at the precise
+    // moment it was about to succeed, and the member landed on Home instead of
+    // their first meal. The ref stops a re-run; nothing stops the handoff.
+    if (handoffStarted.current) return;
+    handoffStarted.current = true;
+
+    void (async () => {
+      // 🔴 Claim the daily app-open flow BEFORE completing onboarding, and
+      // await it. RootNavigator fires the flow the instant its `authReady`
+      // goes true — and `authReady` requires `hasCompletedOnboarding`, which
+      // is exactly what completeOnboarding() flips one line below. That effect
+      // navigates to AppOpenFlow with NO nested screen, so it lands on
+      // `Greeting`, and Greeting wins the race against the NextMeal handoff
+      // here. The member who just paid was shown the DAILY open flow instead
+      // of their first meal — greeted with "Your score is out of date — let's
+      // refresh it" and a scan prompt, on the day they signed up. Reproduced
+      // on two S24 walks, 2026-10-02.
+      //
+      // Marking it shown first means `shouldShowAppOpenFlow` is already false
+      // when that effect runs, so there is no second navigation to race. A
+      // member who just finished onboarding has had their open flow — this
+      // reveal stack IS it.
+      if (uid) await markAppOpenFlowShown(uid);
+
+      // 🔴 Tell the BACKEND onboarding is finished, here and only here. The
+      // profile sync at account creation used to claim it, which was false —
+      // and session-restore read "has a primaryBucket" as "has finished", so a
+      // member who closed the app on the consent screen or the paywall came
+      // back marked complete and skipped both. Fire-and-forget: the local
+      // completeOnboarding() below is what moves them on, and this only has to
+      // land before their next cold start.
+      void markOnboardingComplete();
+
+      completeOnboarding();
+
+      // Deferred because completeOnboarding() re-renders the root into a new
+      // stack, and dispatching before Main exists is a silent no-op — see
+      // navigateWhenMounted, which waits for the route rather than guessing a
+      // delay. A fixed timeout here lost the first-meal handoff on a slow device.
+      navigateWhenMounted("Main", () => {
+        (rootNavigationRef as any).navigate("Main", {
+          screen: "AppOpenFlow",
+          params: { screen: "NextMeal", params: { fromOnboarding: true } },
+        });
       });
-    });
+    })();
   }, [activeIdx, totalCards, revealOnly, navigation, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
 
   const dismissActive = () => {
@@ -725,7 +774,7 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     [pan]
   );
 
-  const renderCard = (idx: 0 | 1 | 2 | 3 | 4) => {
+  const renderCard = (idx: 0 | 1 | 2 | 3) => {
     const isActive = idx === activeIdx;
     const isDismissed = idx < activeIdx;
     const pose = ENTRY_POSE[idx];
@@ -820,24 +869,26 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           }}
         />
       );
+      // 🔴 The TypeSummaryCard (goal / strength / weakness) was card 1 and is
+      // CUT — Bryan, 2026-10-04. The component is still used by the profile
+      // tab, so only this call site went.
     } else if (idx === 1) {
-      content = (
-        <TypeSummaryCard
-          type={metabolicType}
-          userName={userName}
-          goalSlug={state.user.goal ?? null}
-          width={CARD_WIDTHS[1]}
-          height={cardH}
-          onOpenDetail={openDetail}
-        />
-      );
-    } else if (idx === 2) {
       content = (
         <InsightCard
           type={metabolicType}
           noticed={
             insightNoticed ??
-            (state.user.startingRead === true
+            // 🔴 Keyed on BIOMETRICS, not `startingRead`. Same correction the
+            // AI-consent screen needed, for a sharper reason now: fixed V1
+            // types everyone from answers, so `startingRead` is ALWAYS false —
+            // which meant a member who skipped the scan would be told "Your
+            // scan gives me a first read on where your body is today."
+            //
+            // Bryan's Deep Read guardrails (2026-10-02) forbid exactly that:
+            // "don't say the scan measured something it didn't." `biometrics`
+            // is local, is populated only by a real scan, and cannot be lost to
+            // a failed round trip.
+            (state.biometrics === null
               ? INSIGHT_NOTICED_FALLBACK_NO_SCAN
               : INSIGHT_NOTICED_FALLBACK)
           }
@@ -849,10 +900,10 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           bodyMaxHeight={Math.max(80, Math.floor((cardH - 340) / 2))}
         />
       );
-    } else if (idx === 3) {
+    } else if (idx === 2) {
       content = (
         <WindowRecCard
-          width={CARD_WIDTHS[3]}
+          width={CARD_WIDTHS[2]}
           height={cardH}
           typeLogo={TYPE_LOGO[metabolicType]}
         />
@@ -935,7 +986,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           {/* Reveal-only shows card 0 alone — no Deep Read or meal teaser
               stacked behind it, since those are what we are deliberately not
               replaying for a returning member. */}
-          {revealOnly ? null : renderCard(4)}
           {revealOnly ? null : renderCard(3)}
           {revealOnly ? null : renderCard(2)}
           {revealOnly ? null : renderCard(1)}
@@ -943,18 +993,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
         </>
       )}
 
-      {/* Stat-detail tooltip for the summary card's arrows — rendered at the
-          screen level so it isn't clipped/rotated by the card stack. */}
-      <StatDetailSheet
-        visible={detail != null}
-        data={detail}
-        accent={TYPE_PRIMARY[metabolicType]}
-        evening={false}
-        typeLogo={TYPE_LOGO[metabolicType]}
-        hideChat
-        onClose={() => setDetail(null)}
-        onStartChat={() => setDetail(null)}
-      />
     </View>
   );
 }

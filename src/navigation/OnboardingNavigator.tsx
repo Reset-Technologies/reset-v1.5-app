@@ -152,29 +152,25 @@ export function OnboardingNavigator() {
         component={OnboardingSurveyScreen}
         options={{
           contentStyle: { backgroundColor: K.brown },
-          // Each survey step is its own pushed route, so this runs on every
-          // question — eight times in a row.
+          // 🔑 "none" ON PURPOSE — the crossfade is done IN THE SCREEN with
+          // `Animated` (see `screenOpacity` in OnboardingSurveyScreen), not by
+          // the native stack.
           //
-          // 🔴 ON ANDROID THIS DOES NOT ANIMATE. react-native-screens 4.24.0
-          // cuts straight to the next screen; `fade_from_bottom` does too,
-          // while `slide_from_right` ramps properly. Measured at 30fps on an
-          // S24, content leaving the screen:
+          // 🔴 Why: `animation: "fade"` does not animate on Android in
+          // react-native-screens 4.24.0. Measured at 30fps on an S24, content
+          // leaving the screen:
           //     fade              16% -> 0%  in ONE 33ms frame
-          //     slide_from_right  ramps down over ~165ms
-          // On iOS the fade is correct and looks right.
+          //     fade_from_bottom  same, a cut
+          //     slide_from_right  ramps over ~165ms
+          // On iOS the native fade was correct — but a JS fade is the only way
+          // to get the SAME motion on both, and this screen pushes a route per
+          // question, so the cut repeated eight times and read as flashing.
           //
-          // ⚠️ NOT a regression — the same cut was measured on e8daa35, before
-          // any of the V1 onboarding work, on the same device. It has always
-          // been this way; it only became obvious once the flow was walked end
-          // to end on Android instead of the simulator.
-          //
-          // ▶ Left as "fade" deliberately (Cole, 2026-10-02): a slide is not
-          // the fade he wants. The real fix is an in-screen crossfade with
-          // Animated — fade the outgoing content out, then push with
-          // `animation: "none"` — so both platforms match. That is the task,
-          // not another navigator-option swap; `none`, `fade_from_bottom` and
-          // `slide_from_right` have all been tried.
-          animation: "fade",
+          // ⚠️ It was never a regression: the identical cut was measured on
+          // e8daa35, before any of the V1 onboarding work, on the same device.
+          // It only became visible once the flow was walked end to end on
+          // Android rather than on the simulator.
+          animation: "none",
         }}
       />
       <Stack.Screen
