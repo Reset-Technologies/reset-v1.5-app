@@ -120,7 +120,8 @@ export function PreScanView({
 }: {
   onScan: () => void;
   onSkip: () => void;
-  onBack: () => void;
+  /** Omitted when there is nowhere to go back to — see PreScanScreen. */
+  onBack?: () => void;
   interactive?: boolean;
 }) {
   // 🔑 MEASURED, not guessed at from the window height. The first version of
@@ -211,9 +212,19 @@ export function PreScanView({
             Lang's frame makes it a back ARROW, and once Opening existed there
             was somewhere to go, so an arrow that silently dropped people into
             the survey was lying about itself. */}
-        <View style={styles.backRow} pointerEvents="box-none">
-          <OnboardingBackButton onPress={onBack} />
-        </View>
+        {/* 🔴 Rendered ONLY when something is actually behind us. The comment
+            above called this: the arrow made sense "once Opening existed",
+            and Opening is now gone — PreScan is the first screen. A back
+            control on the first screen is a dead affordance; tapping it does
+            nothing, which is worse than not offering it. Verified on an S24,
+            2026-10-06: before this, Back was visible and inert.
+            🔑 Still shown when PreScan IS pushed onto something (e.g. returning
+            from the no-scan state), because then it has a real destination. */}
+        {onBack ? (
+          <View style={styles.backRow} pointerEvents="box-none">
+            <OnboardingBackButton onPress={onBack} />
+          </View>
+        ) : null}
 
         <ScrollView
           contentContainerStyle={[styles.content, { gap: 24 - gapCut }]}
@@ -316,11 +327,16 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.goBack();
   };
 
+  // PreScan is now the FIRST onboarding screen, so usually there is nothing
+  // behind it. Ask the navigator rather than assuming — this screen is also
+  // reachable as a push, and the control is correct in that case.
+  const canGoBack = navigation.canGoBack();
+
   return (
     <PreScanView
       onScan={handleScan}
       onSkip={handleSkip}
-      onBack={handleBack}
+      onBack={canGoBack ? handleBack : undefined}
     />
   );
 }
