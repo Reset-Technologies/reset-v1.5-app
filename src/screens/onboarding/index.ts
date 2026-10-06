@@ -9,7 +9,6 @@ export { ScanScreen } from "./ScanScreen";
 export { ScanRevealScreen } from "./ScanRevealScreen";
 export { TypeReadyScreen } from "./TypeReadyScreen";
 export { TypeRevealScreen } from "./TypeRevealScreen";
-export { ShareScreen } from "./ShareScreen";
 export { TasteScreen } from "./TasteScreen";
 export { RestrictScreen } from "./RestrictScreen";
 export { AccountScreen } from "./AccountScreen";

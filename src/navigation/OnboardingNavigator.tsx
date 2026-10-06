@@ -7,7 +7,6 @@ import {
   ScanScreen,
   OnboardingSurveyScreen,
   TypeRevealScreen,
-  ShareScreen,
   AccountScreen,
   AccountGateScreen,
   CreateAccountScreen,
@@ -223,7 +222,6 @@ export function OnboardingNavigator() {
           gestureEnabled: false,
         }}
       />
-      <Stack.Screen name="Share" component={ShareScreen} />
       <Stack.Screen name="Account" component={AccountScreen} />
     </Stack.Navigator>
   );

@@ -122,9 +122,10 @@ export function article(word: string): string {
  * Drops a `TYPE_CONFIGS[...].tagline` into the middle of a sentence.
  *
  * 🔑 The taglines are authored as STANDALONE sentences — "Your signals are
- * quiet — easier for me to read." — and two of their four consumers still use
- * them that way, correctly (ShareScreen displays one on its own and starts a
- * share sentence with another). The other two embed them after a comma, in
+ * quiet — easier for me to read." — and one consumer still uses them that way,
+ * correctly: the TypeReveal share sentence. (ShareScreen was the other, and is
+ * deleted — it was unreachable and shared scan-derived claims.) The embedding
+ * sites use them after a comma, in
  * "As a {Type}, {tagline}.", where the authored capital reads as a typo:
  * "As an Explorer, Your signals are quiet…". The embedding sites already
  * stripped the trailing full stop; this is the other half of the same job.

@@ -362,15 +362,34 @@ function InsightCard({
   bodyMaxHeight: number;
 }) {
   const logo = TYPE_LOGO[type];
-  // The scan takeaway, broken into two beats: "what we noticed" (the scan/
-  // check-in observation) then "your meal because of that" (the generic meal
-  // direction). Each beat is its own eyebrow + bubble. Each bubble scrolls
-  // internally (overflow hidden + capped height) so a long beat never runs its
-  // outline off the card edge; the horizontal card-swipe still wins gesture
-  // negotiation because the parent PanResponder only claims on |dx| > |dy|.
+  // The takeaway, broken into two beats, each its own eyebrow + bubble. Each
+  // bubble scrolls internally (overflow hidden + capped height) so a long beat
+  // never runs its outline off the card edge; the horizontal card-swipe still
+  // wins gesture negotiation because the parent PanResponder only claims on
+  // |dx| > |dy|.
+  //
+  // 🔑 Screen Copy row 17 `deep_read.sections` (Existing), which quotes the
+  // Deep Read spec §4's Day 1 table verbatim:
+  //   "Why this is my read · What this means for your first plan ·
+  //    What I am still learning"
+  // The old labels were ours, not Bryan's: "What we noticed" spoke in the
+  // WE-voice the spec's claim rules reserve for measurements, and the read is
+  // now built mostly from the member's own answers — so "why this is my read"
+  // is both the approved string and the accurate one.
+  //
+  // 🔴 Only TWO beats, deliberately. §4 lists a third section, "What I am still
+  // learning", as "one unresolved item WHEN IT AFFECTS THE PLAN" — conditional,
+  // not required. The backend's split format returns `noticed` + `mealBecause`
+  // and nothing else, so there is no third field to render. Inventing a heading
+  // and filling it would be authoring the exact unsupported content §4 is
+  // written to prevent. It stays out until the engine emits it.
+  //
+  // 🔴 This is the Day 1 card only. `ScanInsightsScreen` carries the same two
+  // labels, but row 17 is Screen "Deep Read" / Path "Paid" — the post-scan
+  // insights screen is a different surface and is NOT governed by this row.
   const beats: Array<{ label: string; body: string }> = [
-    { label: "What we noticed", body: noticed },
-    { label: "Your meal because of that", body: mealBecause },
+    { label: "Why this is my read", body: noticed },
+    { label: "What this means for your first plan", body: mealBecause },
   ];
   return (
     <View style={[styles.card, { width: CARD_WIDTHS[2], backgroundColor: CARD_BG_FRONT }]}>
