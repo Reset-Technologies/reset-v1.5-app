@@ -59,6 +59,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
+  // 🔑 The ROOT view background, not just the splash's. Without it the root
+  // defaults to white, and there is a split-second white frame between the
+  // native splash hiding and the first JS screen painting — observed on an
+  // iPhone 11, 2026-10-06. On a maroon app that reads as a flicker, and it
+  // lands on the very first screen a new member sees.
+  backgroundColor: "#361416",
   splash: {
     image: "./assets/splash-reset.png",
     resizeMode: "contain",

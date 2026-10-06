@@ -1,4 +1,3 @@
-export { OpeningScreen } from "./OpeningScreen";
 export { PreScanScreen } from "./PreScanScreen";
 export { NoScanEmptyStateScreen } from "./NoScanEmptyStateScreen";
 export { CalibrationScreen } from "./CalibrationScreen";

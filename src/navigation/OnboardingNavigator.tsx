@@ -1,7 +1,6 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
-  OpeningScreen,
   PreScanScreen,
   NoScanEmptyStateScreen,
   CalibrationScreen,
@@ -32,7 +31,6 @@ import { K } from "../constants/colors";
 // its own camera permission, and the question content has been folded into the
 // config-driven OnboardingSurveyScreen.
 export type OnboardingStackParamList = {
-  Opening: undefined;
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
@@ -69,18 +67,13 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Opening"
+      initialRouteName="PreScan"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
         animation: "slide_from_right",
       }}
     >
-      <Stack.Screen
-        name="Opening"
-        component={OpeningScreen}
-        options={{ contentStyle: { backgroundColor: K.brown } }}
-      />
       <Stack.Screen
         name="PreScan"
         component={PreScanScreen}
