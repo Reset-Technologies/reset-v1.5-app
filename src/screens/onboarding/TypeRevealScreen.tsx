@@ -454,7 +454,23 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
           {/* Screen Copy row 19 cuts the "Based on your score" label: there is
               no Reset Score on Day 1 (first score lands ~Day 21), so the label
               claimed a number that does not exist. */}
-          <View style={styles.mealTeaser}>
+          {/* 🔴 THE WHOLE BANNER IS THE CTA, not just the arrow.
+              Until 2026-10-06 "Show me" was a plain <Text> and the only
+              `onPress` was the 40x40 arrow — under the 44dp minimum target and
+              the smaller of the two things on screen. Caught on an S24 walk by
+              tapping the big label twice and going nowhere, which is exactly
+              what a member does. It is the LAST step before the app opens and
+              they have already paid by this point, so anything lost here is
+              lost at the worst possible moment.
+              Lang's frame already treats the title and arrow as one CTA; this
+              makes the tap target match that. The arrow is now decorative. */}
+          <TouchableOpacity
+            style={styles.mealTeaser}
+            onPress={onTap}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Show me"
+          >
             <Image
               source={MEAL_TEASER_BG}
               style={styles.mealTeaserImage}
@@ -477,13 +493,10 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
             </View>
             {/* Row 19's Action / CTA column: "Show me". It sits where Lang
                 put the title, with her arrow button to its right — the two
-                together are the labelled CTA. */}
+                together are the labelled CTA, and now the whole banner
+                presses. */}
             <Text style={styles.mealTeaserTitle}>Show me</Text>
-            <TouchableOpacity
-              onPress={onTap}
-              style={styles.mealArrowBtn}
-              activeOpacity={0.85}
-            >
+            <View style={styles.mealArrowBtn} pointerEvents="none">
               <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
                 <Path
                   d="M5 12h14M13 5l7 7-7 7"
@@ -493,8 +506,8 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
                   strokeLinejoin="round"
                 />
               </Svg>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
         </View>
         <Text style={styles.swipeHint}>Swipe left to continue</Text>
       </View>
