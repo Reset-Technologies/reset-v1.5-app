@@ -58,7 +58,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 3.7.0: the onboarding V1 rebuild — the first build to send the six scored
   // workbook answers (U1…M11) instead of legacy q1/q2/q3. Needs reset-api
   // `e762c14` (the V1 engine), which deployed 2026-10-06 12:15, AHEAD of this.
-  version: "3.7.0",
+  // 3.7.1: react-native-purchases 10.2.0 → 10.11.0, which clears the Google
+  // Play wall (after 2026-11-02 Play accepts NO release, not even a hotfix).
+  // 🔴 Deliberately a release of its own — this is the paywall, and a
+  // RevenueCat bump has produced a billing-period bug here before, so a
+  // regression must have exactly one candidate cause.
+  version: "3.7.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
