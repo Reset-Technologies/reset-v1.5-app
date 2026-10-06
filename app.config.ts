@@ -55,7 +55,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // including a one-line analytics one, costs a store release. Batch them —
   // unless, as with 3.1.1, the fix is worthless if it lands after the data.
   // 3.2.0: Reset Window (needs reset-api #123 deployed first).
-  version: "3.6.0",
+  // 3.7.0: the onboarding V1 rebuild — the first build to send the six scored
+  // workbook answers (U1…M11) instead of legacy q1/q2/q3. Needs reset-api
+  // `e762c14` (the V1 engine), which deployed 2026-10-06 12:15, AHEAD of this.
+  version: "3.7.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
