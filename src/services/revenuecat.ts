@@ -123,12 +123,37 @@ export async function logoutRevenueCat(): Promise<void> {
  * store prices). Null when unconfigured or no offering is set as current.
  */
 export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
-  if (!configured) return null;
+  return (await getCurrentOfferingDetailed()).offering;
+}
+
+/**
+ * Why there is no offering to sell. Three very different failures used to
+ * collapse into one silent `null`, so the paywall could not tell "the SDK was
+ * never configured" from "RevenueCat errored" from "nobody published a current
+ * offering" — and logged none of them.
+ *
+ * 🔴 That blindness is what let the no-offering path run unnoticed for a week
+ * of paid acquisition: at least 13 Android members reached the app without
+ * paying and nothing recorded it. Every branch now names itself.
+ */
+export type OfferingUnavailableReason =
+  | "not_configured"
+  | "fetch_failed"
+  | "no_current_offering"
+  | "no_packages";
+
+export async function getCurrentOfferingDetailed(): Promise<{
+  offering: PurchasesOffering | null;
+  reason: OfferingUnavailableReason | null;
+}> {
+  if (!configured) return { offering: null, reason: "not_configured" };
   try {
     const offerings = await Purchases.getOfferings();
-    return offerings.current ?? null;
+    const current = offerings.current ?? null;
+    if (!current) return { offering: null, reason: "no_current_offering" };
+    return { offering: current, reason: null };
   } catch {
-    return null;
+    return { offering: null, reason: "fetch_failed" };
   }
 }
 

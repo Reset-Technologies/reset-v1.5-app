@@ -20,7 +20,7 @@ import { useToast } from "../../context/ToastContext";
 import { logEvent } from "../../services/braze";
 import { logout } from "../../services/auth";
 import {
-  getCurrentOffering,
+  getCurrentOfferingDetailed,
   purchasePackage,
   restorePurchases,
 } from "../../services/revenuecat";
@@ -444,29 +444,60 @@ export function PaywallScreen({ navigation }: Props) {
     logEvent("onboarding_paywall_view");
   }, []);
 
-  // Load the current RevenueCat offering for live, localized prices. Returns
-  // null until the dashboard is configured — the cards then keep their static
-  // fallback prices and Subscribe just completes onboarding.
+  /**
+   * Whether we actually have something to sell.
+   *
+   * 🔴 This used to be invisible. `getCurrentOffering()` returned null on
+   * failure, the effect silently returned, the cards kept their HARDCODED
+   * fallback prices, and Subscribe stayed tappable — so a member saw
+   * "$19.99 / $149.99", tapped, and was let into the app for free with no
+   * event recorded anywhere. Measured 28 Sep - 4 Oct: 25 Android members
+   * tapped Subscribe, 1 purchased, and at least 13 reached the app. Nothing
+   * logged it, which is why it survived a week of paid acquisition.
+   */
+  const [offeringsState, setOfferingsState] = React.useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+
+  const loadOfferings = React.useCallback(async () => {
+    setOfferingsState("loading");
+    const { offering, reason } = await getCurrentOfferingDetailed();
+    if (!offering) {
+      // 🔑 Named reason, not a bare null — "never configured", "RevenueCat
+      // errored" and "nobody published an offering" need different fixes.
+      logEvent("onboarding_paywall_offerings_unavailable", {
+        reason: reason ?? "unknown",
+      });
+      setOfferingsState("unavailable");
+      return;
+    }
+    const pkgs = offering.availablePackages;
+    const monthly =
+      offering.monthly ?? pkgs.find((p) => p.packageType === "MONTHLY") ?? null;
+    const annual =
+      offering.annual ?? pkgs.find((p) => p.packageType === "ANNUAL") ?? null;
+    setMonthlyPkg(monthly);
+    setAnnualPkg(annual);
+    if (!monthly && !annual) {
+      // An offering with no purchasable package is the same outcome as none.
+      logEvent("onboarding_paywall_offerings_unavailable", {
+        reason: "no_packages",
+      });
+      setOfferingsState("unavailable");
+      return;
+    }
+    setOfferingsState("ready");
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
-    getCurrentOffering().then((offering) => {
-      if (cancelled || !offering) return;
-      const pkgs = offering.availablePackages;
-      const monthly =
-        offering.monthly ??
-        pkgs.find((p) => p.packageType === "MONTHLY") ??
-        null;
-      const annual =
-        offering.annual ??
-        pkgs.find((p) => p.packageType === "ANNUAL") ??
-        null;
-      setMonthlyPkg(monthly);
-      setAnnualPkg(annual);
+    void loadOfferings().catch(() => {
+      if (!cancelled) setOfferingsState("unavailable");
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadOfferings]);
 
   // Ester's line. Bryan signed off on the design WITH this card (2026-09-30),
   // so it renders.
@@ -683,13 +714,27 @@ export function PaywallScreen({ navigation }: Props) {
 
     const pkg = selectedPlan === "monthly" ? monthlyPkg : annualPkg;
     if (!pkg) {
-      // No live package. In onboarding we never block the flow; in the gate we
-      // must not grant free access, so surface an error and stay on the wall.
-      if (isGate) {
-        toast.show({ message: "Couldn't load subscription. Please try again." });
-      } else {
-        proceedToApp();
-      }
+      // 🔴 THE LEAK, CLOSED. This used to call `proceedToApp()` in onboarding —
+      // a deliberate "no-offering safety valve" from 229bcc0 (2026-06-05) so a
+      // RevenueCat outage could not brick new installs, with the gate kept
+      // strict. Two things made that trade-off wrong in practice:
+      //
+      //   1. It was NOT rare. 28 Sep - 4 Oct: 25 Android members tapped
+      //      Subscribe, 1 purchased, at least 13 reached the app anyway.
+      //   2. It logged NOTHING. Every other branch here emits an event, so an
+      //      absence was the only trace — which is why a week of paid spend ran
+      //      against it before anyone could see it.
+      //
+      // Onboarding now behaves like the gate: no purchase, no entry. The member
+      // is told and we retry the fetch rather than leaving them on a dead
+      // button. They keep Restore Purchase, and the back control still works.
+      logEvent("onboarding_paywall_no_offering", {
+        plan: selectedPlan,
+        offerings_state: offeringsState,
+        is_gate: isGate,
+      });
+      toast.show({ message: "Couldn't load subscription. Please try again." });
+      void loadOfferings();
       return;
     }
     setPurchasing(true);
@@ -739,14 +784,24 @@ export function PaywallScreen({ navigation }: Props) {
       // and it means someone may have paid and not been let in.
       logEvent("onboarding_paywall_no_entitlement", packageProps(pkg));
     }
-    // 🔴 A gate member proceeds ONLY on a real entitlement. Onboarding still
-    // always continues (it never blocks the flow on a paywall outcome), but
-    // showing the reveal to someone the store did not actually grant pro would
-    // hand out the very thing the gate exists to sell.
-    if (isGate) {
-      if (outcome.isPro) revealAfterGatePurchase();
-    } else {
-      proceedToApp();
+    // 🔴 NOBODY proceeds without a real entitlement — gate or onboarding.
+    //
+    // Onboarding used to call `proceedToApp()` here unconditionally: "it never
+    // blocks the flow on a paywall outcome". That meant CANCELLING the store
+    // sheet, a failed payment, or a success with no entitlement all ended with
+    // the member inside the paid app. It is the same hole as the no-offering
+    // valve above, on the other side of the purchase call, and a wider one —
+    // it did not need RevenueCat to be broken, only for someone to tap
+    // Subscribe and then change their mind.
+    //
+    // 🔑 This restores the intent of the commit that introduced the wall
+    // (229bcc0, "hard-gate the app for non-subscribers"): "Remove the X/skip
+    // entirely so the paywall is a hard wall in BOTH onboarding and the gate."
+    // Cancelling now leaves them on the wall, where back still returns to Type
+    // ready and Restore Purchase is still available.
+    if (outcome.isPro) {
+      if (isGate) revealAfterGatePurchase();
+      else proceedToApp();
     }
   };
 
@@ -933,13 +988,22 @@ export function PaywallScreen({ navigation }: Props) {
 
         <View style={styles.ctaBlock}>
           <Text style={styles.cancelHint}>Cancel anytime</Text>
+          {/* 🔴 Disabled while offerings are LOADING, not just while purchasing.
+              The prices on the cards are hardcoded fallbacks until the store
+              answers, so a tap in that window used to find no package at all —
+              the race that made the no-offering path routine rather than an
+              outage-only edge case.
+              🔑 Still tappable when offerings are UNAVAILABLE: that tap is how
+              a member retries, and handleSubscribe logs and re-fetches. A dead
+              button would leave them with nothing to do. */}
           <TouchableOpacity
             onPress={handleSubscribe}
             activeOpacity={0.85}
-            disabled={purchasing || restoring}
+            disabled={purchasing || restoring || offeringsState === "loading"}
             style={[
               styles.subscribeBtn,
-              (purchasing || restoring) && styles.subscribeBtnDisabled,
+              (purchasing || restoring || offeringsState === "loading") &&
+                styles.subscribeBtnDisabled,
             ]}
           >
             {/* Sheen down the top ~40% of the button, per the frame. */}
@@ -954,7 +1018,12 @@ export function PaywallScreen({ navigation }: Props) {
                 <Rect x="0" y="0" width="100%" height="100%" fill="url(#ctaSheen)" />
               </Svg>
             </View>
-            {purchasing ? (
+            {/* 🔴 The spinner must also cover offeringsState === "loading", not
+                just `purchasing`. That is the race the free-access fix closed:
+                the cards show hardcoded fallback prices until the store answers,
+                so a fast tap used to find no package at all. Lang's sheen is the
+                layout; this condition is the behaviour — keep both. */}
+            {purchasing || offeringsState === "loading" ? (
               <ActivityIndicator color={MAROON} />
             ) : (
               <Text style={styles.subscribeText}>Unlock my Type</Text>

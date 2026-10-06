@@ -122,6 +122,12 @@ export const SURVEY_STEPS: SurveyStep[] = [
       "Hi, I'm Ester.",
       "I'll ask a few quick questions about what usually happens in your day, then I'll put the pieces together.",
     ],
+    // 🔴 Ester's FIRST words cannot assert a scan the member declined. Until the
+    // skip fix (2026-09-29) scanners were the only people who reached this
+    // screen; skippers land on it now. Chosen on `state.biometrics === null`,
+    // not `startingRead` — V1 types everyone from answers, so startingRead is
+    // always false. Copy here is the LOCKED Screen Copy, not the carousel-era
+    // wording that the 2026-10-05 cherry-pick carried onto main.
     linesNoScan: [
       "Hi, I'm Ester.",
       "I'll ask a few quick questions about what usually happens in your day. That's enough to find your starting Type.",
