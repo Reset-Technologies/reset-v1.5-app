@@ -22,7 +22,10 @@ import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 // (set by CreateAccountScreen after the backend's TypingService runs on
 // the submitted behaviorAnswers). The FE no longer computes the type.
 import { useApp } from "../../context/AppContext";
-import { rootNavigationRef } from "../../navigation/rootNavigationRef";
+import {
+  rootNavigationRef,
+  navigateWhenMounted,
+} from "../../navigation/rootNavigationRef";
 import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 import { ScoreRing } from "../../components/survey/ScoreRing";
@@ -721,18 +724,16 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     if (uid && sawWindowInOnboarding) markWindowIntroShown(uid);
     completeOnboarding();
 
-    // Deferred for the same reason it was deferred in the paywall: the root
-    // re-render mounts a new stack, and dispatching before it exists is a
-    // silent no-op. The module-level ref survives this screen unmounting.
-    const t = setTimeout(() => {
-      if (rootNavigationRef.isReady()) {
-        (rootNavigationRef as any).navigate("Main", {
-          screen: "AppOpenFlow",
-          params: { screen: "NextMeal", params: { fromOnboarding: true } },
-        });
-      }
-    }, 80);
-    return () => clearTimeout(t);
+    // Deferred because completeOnboarding() re-renders the root into a new
+    // stack, and dispatching before Main exists is a silent no-op — see
+    // navigateWhenMounted, which waits for the route rather than guessing a
+    // delay. A fixed timeout here lost the first-meal handoff on a slow device.
+    return navigateWhenMounted("Main", () => {
+      (rootNavigationRef as any).navigate("Main", {
+        screen: "AppOpenFlow",
+        params: { screen: "NextMeal", params: { fromOnboarding: true } },
+      });
+    });
   }, [activeIdx, totalCards, revealOnly, navigation, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
 
   const dismissActive = () => {

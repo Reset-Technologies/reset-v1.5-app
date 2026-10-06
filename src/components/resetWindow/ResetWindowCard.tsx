@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { K } from "../../constants/colors";
@@ -77,6 +77,7 @@ export function ResetWindowCard({
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
   const [planOpen, setPlanOpen] = useState(false);
+  const isFocused = useIsFocused();
   const [introOpen, setIntroOpen] = useState(false);
   const [tonightOpen, setTonightOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -123,8 +124,18 @@ export function ResetWindowCard({
 
   // The one-time introduction: only with no Window set, and only until the
   // member has seen it once. Dismissing leaves the card's "Set Window" CTA.
+  //
+  // 🔴 Gated on Home being FOCUSED. This is a <Modal>, so it draws above the
+  // whole app — including a screen stacked on top of Home. That is not
+  // hypothetical: `RootNavigator` keeps free members out of Main entirely
+  // ("free users can't reach Main"), so EVERY gate purchaser reaches Home for
+  // the first time with the intro still unseen and no Window set — and Home
+  // mounts underneath the post-purchase Type reveal. Without this guard the
+  // intro covers the reveal they just paid for, every single time.
+  // Focus (not mount) is the right trigger: it fires again the moment they
+  // dismiss the reveal and Home actually becomes the visible screen.
   useEffect(() => {
-    if (!userId || state?.status !== "UNASSIGNED") return;
+    if (!isFocused || !userId || state?.status !== "UNASSIGNED") return;
     let alive = true;
     shouldShowWindowIntro(userId).then((show) => {
       if (alive && show) setIntroOpen(true);
@@ -132,7 +143,7 @@ export function ResetWindowCard({
     return () => {
       alive = false;
     };
-  }, [userId, state?.status]);
+  }, [isFocused, userId, state?.status]);
 
   useEffect(() => {
     if (!notice) return;
