@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   Pressable,
-  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -18,11 +17,14 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { pickV1Answers } from "../../constants/v1Questions";
 import { useApp } from "../../context/AppContext";
 import { registerWithEmail } from "../../services/auth";
 import { syncOnboardingToBackend } from "../../services/onboarding";
 import { submitScanResults } from "../../services/profile";
 import { logEvent } from "../../services/braze";
+import { OnboardingBackButton, ConsentCheckbox } from "../../components";
+import { OnboardingCta } from "../../components";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
 type Props = NativeStackScreenProps<any, "CreateAccount">;
@@ -32,7 +34,6 @@ const BONE = "#F3EFE3";
 const WHITE = "#FAFDFE";
 const TEXT_ALT = "#B0A3A4";
 
-const ESTER_AVATAR = require("../../../assets/images/ester-avatar-silver.png");
 
 function VisibilityIcon({ off, size = 24 }: { off: boolean; size?: number }) {
   if (off) {
@@ -148,11 +149,7 @@ export function CreateAccountScreen({ navigation }: Props) {
         const { primaryBucket, startingRead, glp1Flag } =
           await syncOnboardingToBackend({
             goal: state.user.goal,
-            behaviorAnswers: {
-              q1: state.user.quizAnswers.q1,
-              q2: state.user.quizAnswers.q2,
-              q3: state.user.quizAnswers.q3,
-            },
+            behaviorAnswers: pickV1Answers(state.user.quizAnswers),
             tastePreferences: state.user.tastePreferences,
             dietaryRestrictions: state.user.dietaryRestrictions,
           });
@@ -192,11 +189,11 @@ export function CreateAccountScreen({ navigation }: Props) {
           style={styles.kbView}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          {/* Top bar (spacers keep the logo centered). */}
+          {/* Back, top-left. 🔑 The frame carries the Ester avatar at OPACITY
+              0 — she is not present on this screen — so it is dropped rather
+              than centred here. */}
           <View style={styles.topBar}>
-            <View style={{ width: 28 }} />
-            <Image source={ESTER_AVATAR} style={styles.avatar} resizeMode="contain" />
-            <View style={{ width: 28 }} />
+            <OnboardingBackButton onPress={() => navigation.goBack()} />
           </View>
 
           <ScrollView
@@ -204,7 +201,9 @@ export function CreateAccountScreen({ navigation }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.title}>Create account</Text>
+            {/* Screen Copy row 10 — the SCREEN is "Enter account details"; the
+                button below it is "Create account". */}
+            <Text style={styles.title}>Enter account details</Text>
 
             <View style={styles.row}>
               <View style={[styles.field, styles.rowField]}>
@@ -288,14 +287,24 @@ export function CreateAccountScreen({ navigation }: Props) {
             </View>
 
             {error && <Text style={styles.errorText}>{error}</Text>}
-          </ScrollView>
 
-          {/* RES-196: 18+ / Terms attestation pinned above the CTA (outside the
-              ScrollView) so it's always visible and can't be scrolled past. */}
-          <View style={styles.bottomRow}>
+            {/* 🔑 INSIDE the ScrollView, directly under the form — the frame
+                (5265:67848) ends the form with the button 40pt below the
+                password helper and leaves the rest of the screen empty. This
+                used to be pinned outside the ScrollView, which stretched the
+                content and pushed the CTA to the bottom edge with a void in
+                between.
+                RES-196's attestation still can't be scrolled past: it sits
+                immediately above the CTA, so the button cannot be on screen
+                without it. */}
+            <View style={styles.bottomRow}>
             <View style={styles.checkRow}>
+              {/* 🔑 The SAME control as the AI-consent screen, one screen
+                  later — see ConsentCheckbox. This used to be a flat white
+                  square with a system-font "✓" in it, so the two agreement
+                  checkboxes in a row looked like different controls. */}
               <Pressable
-                style={[styles.checkbox, agreed && styles.checkboxOn]}
+                style={styles.checkboxHit}
                 onPress={() => setAgreed((v) => !v)}
                 disabled={isLoading}
                 hitSlop={10}
@@ -303,7 +312,7 @@ export function CreateAccountScreen({ navigation }: Props) {
                 accessibilityState={{ checked: agreed }}
                 accessibilityLabel="I confirm I am 18 or older and agree to the Terms of Use and Privacy Policy"
               >
-                {agreed ? <Text style={styles.checkMark}>✓</Text> : null}
+                <ConsentCheckbox checked={agreed} />
               </Pressable>
               <Text style={styles.checkLabel} onPress={() => setAgreed((v) => !v)}>
                 I confirm I am 18 or older and agree to the{" "}
@@ -328,30 +337,16 @@ export function CreateAccountScreen({ navigation }: Props) {
               </Text>
             </View>
 
-            <View style={styles.arrowWrap}>
-              <TouchableOpacity
-                style={[styles.arrowBtn, !isValid && styles.arrowBtnDisabled]}
-                onPress={handleSubmit}
-                disabled={!isValid || isLoading}
-                activeOpacity={0.85}
-                accessibilityLabel="Create account"
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={MAROON} />
-                ) : (
-                  <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
-                    <Path
-                      d="M5 12h14M13 5l7 7-7 7"
-                      stroke={MAROON}
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </Svg>
-                )}
-              </TouchableOpacity>
+            {/* The frame ends the form with a full-width "Create account"
+                button, not a circular arrow. */}
+            <OnboardingCta
+              title="Create account"
+              onPress={handleSubmit}
+              disabled={!isValid || isLoading}
+              loading={isLoading}
+            />
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -365,20 +360,44 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     paddingHorizontal: 24,
-    paddingTop: 8,
+    /**
+     * 🔑 24, NOT the 8 that Pre-scan and Scan setup use — this screen really
+     * does sit lower in Lang's frames, and it is not a slip on her part.
+     * There the back button is pinned at the SLOT's own origin (y=60, flush
+     * with the status bar). Here it is a child INSIDE the SLOT, at y=24
+     * within it, so it lands at y=84 — 22pt below the 62pt status bar.
+     * Matching Pre-scan's 8 here would be copying the wrong screen.
+     */
+    paddingTop: 24,
   },
-  avatar: { width: 40, height: 40 },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#513436",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   content: {
-    flexGrow: 1,
+    /**
+     * TOP-anchored, as the frame has it (5265:67848): content runs y84→606 on
+     * an 874 canvas and the rest of the screen is simply empty. Briefly
+     * centred this; Cole chose Lang's anchoring instead.
+     *
+     * `paddingTop: 40` is the frame's gap between the back button and the
+     * headline — the button ends at y124 and the title starts at y164. It was
+     * 24, which is why the arrow sat tight against the heading.
+     */
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 40,
+    paddingBottom: 24,
     gap: 24,
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
     fontSize: 40,
     lineHeight: 44,
@@ -400,7 +419,7 @@ const styles = StyleSheet.create({
   rowField: { flex: 1 },
   passwordField: { flexDirection: "row", alignItems: "center", paddingRight: 8 },
   input: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
     fontSize: 16,
     letterSpacing: -0.16,
@@ -408,7 +427,7 @@ const styles = StyleSheet.create({
   },
   eyeBtn: { padding: 4 },
   helperText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: TEXT_ALT,
     fontSize: 12,
     letterSpacing: -0.12,
@@ -423,9 +442,10 @@ const styles = StyleSheet.create({
   },
 
   bottomRow: {
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    paddingTop: 8,
+    // Inside `content` now, so it inherits the 24 side padding. The frame puts
+    // 40 between the password helper and the button; `content`'s gap supplies
+    // 24, this adds the remaining 16.
+    marginTop: 16,
   },
   checkRow: {
     flexDirection: "row",
@@ -433,26 +453,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: TEXT_ALT,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  checkboxOn: {
-    backgroundColor: WHITE,
-    borderColor: WHITE,
-  },
-  checkMark: {
-    color: MAROON,
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 17,
-  },
+  // Optical nudge so the circle sits on the label's first line.
+  checkboxHit: { marginTop: 1 },
   checkLabel: {
     flex: 1,
     fontFamily: fonts.dmSans,
@@ -465,16 +467,4 @@ const styles = StyleSheet.create({
     color: WHITE,
     textDecorationLine: "underline",
   },
-  arrowWrap: {
-    alignItems: "flex-end",
-  },
-  arrowBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: WHITE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  arrowBtnDisabled: { opacity: 0.5 },
 });

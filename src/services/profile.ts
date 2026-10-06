@@ -13,6 +13,12 @@ export interface Layer1 {
   currentPhase: "follicular" | "luteal" | null;
   phaseStartDate: string | null;
   cycleLengthDays: number | null;
+  /**
+   * When the member finished the onboarding reveal; null means they have not.
+   * 🔑 This, NOT `primaryBucket`, is what session-restore must check — the Type
+   * is written at account creation, long before onboarding ends.
+   */
+  onboardingCompletedAt?: string | null;
 }
 
 export interface Layer2 {
@@ -102,7 +108,22 @@ export interface UpdateProfileData {
   // RES-121 typing-survey answers — replaces local `determineType`. The
   // backend computes `primaryBucket` from these and returns it in the
   // PATCH response.
-  behaviorAnswers?: { q1?: string; q2?: string; q3?: string };
+  /**
+   * 🔑 Fixed V1 sends the six scored question ids, each holding an ANSWER
+   * WEIGHTS row id (`U1_A2`). The legacy `q1/q2/q3` keys are still accepted by
+   * the backend for rows written before the cutover.
+   */
+  behaviorAnswers?: {
+    U1?: string;
+    U2?: string;
+    U3?: string;
+    M1?: string;
+    M6?: string;
+    M11?: string;
+    q1?: string;
+    q2?: string;
+    q3?: string;
+  };
   quizAnswers?: Record<string, string>;
   onboardingStep?: string;
   onboardingComplete?: boolean;

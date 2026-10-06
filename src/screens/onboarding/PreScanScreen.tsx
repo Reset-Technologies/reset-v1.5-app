@@ -1,9 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Image,
   ScrollView,
   Dimensions,
@@ -14,14 +13,30 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { logEvent } from "../../services/braze";
+import { PreScanIllustration } from "../../components/PreScanIllustration";
+import { OnboardingBackButton } from "../../components";
+import { OnboardingCta } from "../../components";
 
 type Props = NativeStackScreenProps<any, "PreScan">;
 
-const TYPES_GRAPHIC = require("../../../assets/images/onboarding/prescan-types.png");
 // The exported PNG is 1206×1002. Render it at full screen width so the fanned
 // cards reach (and bleed past) the screen edges; explicit numeric dimensions
 // avoid <Image> falling back to its (huge) intrinsic point size.
 const SCREEN_W = Dimensions.get("window").width;
+
+// The illustration's own size, straight from the Figma export
+// (PreScanIllustration's viewBox). The frame's box around it is 237 tall; we
+// already carry 200, so the box holds 8.714pt of padding and NOT the 64 an
+// earlier version of the fit logic assumed.
+const ART_W = 198.884;
+const ART_H = 191.286;
+const ART_BOX_PAD = 200 - ART_H;
+// The art never goes below 60% of the frame — at that point it stops reading as
+// a face scan and a scroll is the better trade.
+const MAX_ART_CUT = ART_H * 0.4;
+const MAX_GAP_CUT = 8; // 24 -> 16, across three gaps
+const MAX_RECLAIM = MAX_GAP_CUT * 3 + ART_BOX_PAD + MAX_ART_CUT;
+
 const GRAPHIC_W = SCREEN_W;
 const GRAPHIC_H = Math.round(SCREEN_W * (880 / 1206));
 
@@ -99,15 +114,73 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 // swipe → navigate handoff has no visible swap.
 export function PreScanView({
   onScan,
-  onClose,
-  onLogin,
+  onSkip,
+  onBack,
   interactive = true,
 }: {
   onScan: () => void;
-  onClose: () => void;
-  onLogin?: () => void;
+  onSkip: () => void;
+  onBack: () => void;
   interactive?: boolean;
 }) {
+  // 🔑 MEASURED, not guessed at from the window height. The first version of
+  // this keyed off `874 - Dimensions.get("window").height` — the iPhone 16 Pro
+  // — so every shorter iPhone (13/14/15 at 844, 16 at 852) was tightened too,
+  // whether it needed it or not. This ships Lang's frame values verbatim and
+  // only reclaims space once the stack has been measured against the real
+  // viewport and genuinely does not fit.
+  //
+  // 🔑 Reclaims only the OVERFLOW, not a fixed amount. Measured on an S24 the
+  // stack was 758pt in a 683pt viewport, so "Continue without scanning" sat
+  // entirely below the fold — that one needs ~75pt back. An iPhone 16 (851pt)
+  // overflows by about 5pt, and a fixed reduction moved its illustration 134px
+  // for no reason.
+  //
+  // 🔑 `shrink` only ever GROWS, which is what makes this terminate: each pass
+  // adds whatever still doesn't fit, so it converges in a frame or two and can
+  // never oscillate between fits / doesn't-fit.
+  //
+  // 🔴 BOTH measurements are state, and the decision lives in an effect that
+  // depends on both. They were a ref plus a callback, and `onLayout` can land
+  // AFTER `onContentSizeChange` — so the first content measurement was thrown
+  // away with viewport still 0, and nothing ever re-fired to reconsider it.
+  // The screen then stayed un-shrunk and the skip button stayed clipped.
+  //
+  // ⇒ On any screen where the frame's own values already fit, `shrink` stays 0
+  // and every value below is the frame's. Nothing changes at all — verified
+  // byte-identical on a 411x891pt screen.
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const [shrink, setShrink] = useState(0);
+
+  useEffect(() => {
+    if (viewportH > 0 && contentH > viewportH) {
+      setShrink((s) => Math.min(MAX_RECLAIM, s + Math.ceil(contentH - viewportH)));
+    }
+  }, [viewportH, contentH]);
+
+  // 🔴 Taken in order of what costs the design least, and the ART IS LAST.
+  // An earlier pass shrank only the illustration's CONTAINER, on the assumption
+  // that the 200pt frame box held 64pt of slack around the art. It does not —
+  // the art is 191.286pt tall, so the box holds 8.7pt. Shrinking it to 136 left
+  // the art overflowing its own container, and the top of the face scan was
+  // clipped by the ScrollView on the S24. Cole caught it on the device.
+  //
+  //   1. the three inter-block gaps   24 → 16   (24pt)
+  //   2. the box's own padding        8.7pt
+  //   3. SCALE the art, aspect kept, floor 60% of the frame  (~76pt)
+  //
+  // Scaling it is what keeps it whole: the box is always derived from the art's
+  // height below, so the art can never overflow and can never be clipped again.
+  const gapCut = Math.min(MAX_GAP_CUT, Math.ceil(shrink / 3));
+  const afterGaps = Math.max(0, shrink - gapCut * 3);
+  const padCut = Math.min(ART_BOX_PAD, afterGaps);
+  const artCut = Math.min(MAX_ART_CUT, Math.max(0, afterGaps - padCut));
+
+  const artH = ART_H - artCut;
+  const artW = ART_W * (artH / ART_H);
+  const artBoxH = artH + (ART_BOX_PAD - padCut);
+
   return (
     <View style={styles.container}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -127,27 +200,43 @@ export function PreScanView({
         edges={["top", "bottom"]}
         pointerEvents={interactive ? "auto" : "none"}
       >
+        {/* 🔑 PINNED, not in the content flow. Lang puts this at x24/y60 in
+            BOTH this frame (5251:59411) and Scan setup (5262:67220) — the same
+            spot, so the control does not move as you step between them. It
+            used to be the first child of `content`, which is `flex-end`, so it
+            floated with the content and sat ~43pt lower than Scan setup's.
+            🔴 This is BACK, not skip. It used to call onSkip — the same
+            handler as "Continue without scanning" — because the control here
+            was once an ✕ and skipping really was the only thing it could do.
+            Lang's frame makes it a back ARROW, and once Opening existed there
+            was somewhere to go, so an arrow that silently dropped people into
+            the survey was lying about itself. */}
+        <View style={styles.backRow} pointerEvents="box-none">
+          <OnboardingBackButton onPress={onBack} />
+        </View>
+
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { gap: 24 - gapCut }]}
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
+          onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+          onContentSizeChange={(_w, h) => setContentH(h)}
         >
-          <View style={styles.closeRow}>
-            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn}>
-              <Text style={styles.closeGlyph}>×</Text>
-            </TouchableOpacity>
+          {/* 🔑 The frame's own artwork. This screen used to show the Type-cards
+              fan (`prescan-types.png`), which the design never had here — and
+              which still carries the OLD drifted Type taglines that #148 fixed
+              in code. Switching to the frame's illustration removes that stale
+              asset from the screen. */}
+          <View style={[styles.graphicWrap, { height: artBoxH }]}>
+            <PreScanIllustration width={artW} height={artH} />
           </View>
 
-          <View style={styles.graphicWrap}>
-            <Image
-              source={TYPES_GRAPHIC}
-              style={{ width: GRAPHIC_W, height: GRAPHIC_H }}
-              resizeMode="contain"
-            />
+          <View style={styles.copyBlock}>
+            <Text style={styles.headline}>Start with a 30-second scan.</Text>
+            <Text style={styles.subhead}>
+              It captures a few signals from your face. Your answers do the rest.
+            </Text>
           </View>
-
-          <Text style={styles.headline}>Ready to discover your type?</Text>
-          <Text style={styles.subhead}>We'll start off with a scan to assess your:</Text>
 
           <View style={styles.grid}>
             <View style={styles.gridRow}>
@@ -169,17 +258,18 @@ export function PreScanView({
           </View>
 
           <View style={styles.btnGroup}>
-            <TouchableOpacity style={styles.scanBtn} onPress={onScan} activeOpacity={0.85}>
-              <Text style={styles.scanBtnText}>Scan now</Text>
-            </TouchableOpacity>
+            <OnboardingCta title="Start scan" onPress={onScan} />
 
-            <TouchableOpacity
-              style={styles.loginBtn}
-              onPress={onLogin}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.loginBtnText}>I already have an account</Text>
-            </TouchableOpacity>
+            {/* 🔴 The skip used to exist ONLY as the × in the corner. Declining
+                the scan is a legitimate path (Screen Copy row 2, `pre_scan.skip`,
+                Final) and 179 members a month take it — making it findable is the
+                point, not decoration. Deliberately quieter than "Start scan". */}
+            <OnboardingCta
+              title="Continue without scanning"
+              variant="ghost"
+              onPress={onSkip}
+            />
+
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -199,7 +289,12 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Calibration");
   };
 
-  const handleClose = () => {
+  // 🔑 Named SKIP, not "close". It was `handleClose`/`onClose`, and that name
+  // is why the rebuilt back ARROW got wired to it — a control that reads as
+  // "dismiss" but actually declines the scan and jumps the member forward into
+  // the survey. Back is `handleBack`; this is the "Continue without scanning"
+  // action and nothing else should call it.
+  const handleSkip = () => {
     logEvent("onboarding_pre_scan_skip");
     // Skipping the scan goes straight to the questions (Bryan, 2026-09-29).
     //
@@ -216,16 +311,16 @@ export function PreScanScreen({ navigation }: Props) {
     navigation.navigate("Survey");
   };
 
-  const handleLogin = () => {
-    logEvent("onboarding_pre_scan_loginCTA");
-    navigation.navigate("Login");
+  const handleBack = () => {
+    logEvent("onboarding_pre_scan_back");
+    navigation.goBack();
   };
 
   return (
     <PreScanView
       onScan={handleScan}
-      onClose={handleClose}
-      onLogin={handleLogin}
+      onSkip={handleSkip}
+      onBack={handleBack}
     />
   );
 }
@@ -236,41 +331,51 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
+    paddingTop: 16,
+    // Frame is 48. We carry a third button it does not have (log-in), which
+    // pushed that button under the fold, so the bottom inset gives some back.
+    paddingBottom: 24,
+    // The frame pins the body to the BOTTOM and spaces its blocks by 24.
+    justifyContent: "flex-end",
+    gap: 24,
+  },
+  // Back — top-LEFT and its own row, so it does not sit in the bottom-pinned
+  // stack. Same rounded control as the paywall's.
+  // x24 / y60 in the frame — pinned just below the status bar, matching Scan
+  // setup exactly. The SafeAreaView above already insets past the status bar,
+  // so this is the frame's remaining 1pt rounded to a usable tap gap.
+  backRow: {
+    paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: 8,
-    justifyContent: "center",
-    // 8px between every block — also gives the X an exact 8px gap to the
-    // type-cards graphic without a margin hack.
-    gap: 8,
+    alignItems: "flex-start",
   },
-  // close — right-aligned, in flow directly above the type-cards graphic.
-  closeRow: { alignItems: "flex-end" },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  // Fanned type-cards graphic. The negative margin cancels the parent's side
-  // padding so the full-screen-width image sits flush with the screen edges.
   graphicWrap: {
-    marginHorizontal: -24,
+    // Frame is 237; trimmed to buy back room for the extra button. The
+    // illustration keeps its own size — this is whitespace, not scale.
+    height: 200,
     alignItems: "center",
+    justifyContent: "center",
   },
+
+  copyBlock: { gap: 16 },
   // headline / subhead
   headline: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 40,
-    lineHeight: 42,
-    color: BONE,
+    // Room for descenders — see the paywall headline; never set
+    // includeFontPadding:false to fix a clip.
+    lineHeight: 48,
+    color: WHITE,
     letterSpacing: -0.4,
   },
   subhead: {
-    fontFamily: fonts.dmSans,
-    fontSize: 17,
-    lineHeight: 22,
-    color: BONE,
-    letterSpacing: -0.17,
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    color: WHITE,
+    // The frame runs the supporting line at 80%.
+    opacity: 0.8,
+    letterSpacing: -0.2,
   },
   // feature grid
   grid: { gap: 8 },
@@ -290,44 +395,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   featureLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: WHITE,
     letterSpacing: -0.16,
   },
-  // scan button
-  scanBtn: {
-    backgroundColor: WHITE,
-    borderRadius: 4,
-    minHeight: 44,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  scanBtnText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    color: MAROON,
-    letterSpacing: -0.2,
-  },
-  // "Scan now" + "I already have an account" grouped so the gap between
-  // them is exactly 8px (independent of the content container's gap).
-  btnGroup: { gap: 8 },
-  // "I already have an account" — ghost button below "Scan now"
-  loginBtn: {
-    backgroundColor: "rgba(250,253,254,0.24)",
-    borderRadius: 4,
-    minHeight: 44,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loginBtnText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    color: WHITE,
-    letterSpacing: -0.2,
-  },
+
+  // "Start scan" + "Continue without scanning", grouped so the gap between them
+  // is independent of the content container's gap.
+  // 🔑 "I already have an account" used to sit here as a third button. It moved
+  // to Opening, where Flow row 1 puts it. Its fill — rgba(250,253,254,0.24),
+  // radius 4 — is now the `ghostFilled` variant on OnboardingCta.
+  btnGroup: { gap: 12 },
   closeGlyph: { fontSize: 28, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
 });

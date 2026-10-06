@@ -27,17 +27,15 @@ import {
   navigateWhenMounted,
 } from "../../navigation/rootNavigationRef";
 import { markWindowIntroShown } from "../../utils/windowIntroGate";
+import { markAppOpenFlowShown } from "../../utils/appOpenFlowGate";
+import { markOnboardingComplete } from "../../services/onboarding";
 import { logEvent, setCustomAttribute } from "../../services/braze";
-import { ScoreRing } from "../../components/survey/ScoreRing";
-import { getResetScore, ResetScore } from "../../services/resetScore";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
 import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
 import { playRevealHaptics } from "../../utils/revealHaptics";
-import { TypeSummaryCard } from "./TypeSummaryCard";
 import { shareWithLink } from "../../constants/links";
 import { WindowRecCard } from "./WindowRecCard";
-import { StatDetailSheet, StatDetailData } from "../profile/StatDetailSheet";
 import { TYPE_PRIMARY } from "../../constants/metabolicProfile";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
@@ -109,14 +107,24 @@ const CARD_SIDE_MARGIN = 12;
 // margins is already < CONTENT_MAX_WIDTH). The `left: (SCREEN_W - cardW)/2`
 // positioning below keeps the narrower card centered automatically.
 const CARD_W = Math.min(SCREEN_W - CARD_SIDE_MARGIN * 2, CONTENT_MAX_WIDTH);
-const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W, CARD_W, CARD_W];
+const CARD_WIDTHS = [CARD_W, CARD_W, CARD_W, CARD_W];
 // Figma 1916-17871 card layout height: 738, bumped ~10% taller (812).
 const CARD_H = 812;
 // The stack is centered vertically; each card behind the front sits 6px lower
 // so a thin sliver peeks at the bottom (front = idx 0, back = idx 3).
 const CARD_STACK_STEP = 6;
 
-const TOTAL_CARDS = 6;
+/**
+ * 🔴 FOUR cards, not five. Bryan, 2026-10-04: "keep the Reset Window card, cut
+ * the profile card... So I'd go Type reveal → Deep Read → Reset Window → first
+ * meal bridge." His reasons: goal weight is now collected in the questions (P2),
+ * and the Deep Read already does the job of explaining what we learned.
+ *
+ * That also brings the stack closer to his Flow tab, which lists reveal (16) →
+ * Deep Read (17) → first meal bridge (19); the Window card is the one addition
+ * he explicitly wanted kept.
+ */
+const TOTAL_CARDS = 4;
 
 // Mirrors the backend's fallback text — used only if the parallel LLM
 // fetch fails outright (timeout, auth error, etc.).
@@ -151,15 +159,11 @@ const SWIPE_DISMISS_VX = -0.6;
 const ENTRY_POSE = [
   // idx 0 (front / type reveal): biggest fling
   { dx: SCREEN_W * 0.75, dy: -SCREEN_H * 0.55, rot: 16 },
-  // idx 1 (type summary — RES-146)
-  { dx: SCREEN_W * 0.68, dy: -SCREEN_H * 0.5, rot: 14 },
-  // idx 2 (reset score)
-  { dx: SCREEN_W * 0.6, dy: -SCREEN_H * 0.45, rot: 13 },
-  // idx 3 (insight)
+  // idx 1 (Deep Read insight)
   { dx: SCREEN_W * 0.42, dy: -SCREEN_H * 0.3, rot: 9 },
-  // idx 4 (Reset Window recommendation)
+  // idx 2 (Reset Window recommendation)
   { dx: SCREEN_W * 0.34, dy: -SCREEN_H * 0.25, rot: 7 },
-  // idx 5 (back / meal teaser): subtle settle
+  // idx 3 (back / meal teaser): subtle settle
   { dx: SCREEN_W * 0.28, dy: -SCREEN_H * 0.2, rot: 6 },
 ];
 
@@ -251,7 +255,7 @@ function FrontCard({
     <View style={[styles.card, { width: CARD_WIDTHS[0], backgroundColor: CARD_BG_FRONT }]}>
       <View style={styles.cardContentTight}>
         <View style={styles.innerStack}>
-          <Text style={styles.headerText}>Here is your type!</Text>
+          <Text style={styles.headerText}>Here’s your Type.</Text>
 
           <View
             style={styles.typeBoneCard}
@@ -346,57 +350,6 @@ function FrontCard({
   );
 }
 
-function MiddleCard({
-  type,
-  score,
-  confidence,
-  daysToFull,
-}: {
-  type: MetabolicType;
-  score: number;
-  confidence: number;
-  daysToFull: number;
-}) {
-  const logo = TYPE_LOGO[type];
-  // ScoreRing renders into a 320×200 box at width=BASE_W. The card's blue
-  // score surface is `cardW - cardPadding*2 - surfacePadding*2` wide; size
-  // the ring just under that so the SVG sits flush.
-  const ringWidth = CARD_WIDTHS[1] - 24 * 2 - 16 * 2;
-
-  return (
-    <View style={[styles.card, { width: CARD_WIDTHS[1], backgroundColor: CARD_BG_FRONT }]}>
-      <View style={styles.cardContent}>
-        <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
-
-        <Text style={styles.midGreeting}>
-          Thanks for checking in!{"\n\n"}Great to know you're a{" "}
-          <Text style={styles.midGreetingBold}>{TYPE_DISPLAY[type]}.</Text>
-          {"\n\n"}Here's how you're looking today:
-        </Text>
-
-        <View style={styles.scoreBlock}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrowText}>Today's Reset Score</Text>
-          </View>
-          <View style={styles.scoreSurface}>
-            <ScoreRing score={score} animate={false} width={ringWidth} />
-          </View>
-          <View style={styles.confidenceRow}>
-            {daysToFull > 0 ? (
-              <Text style={styles.confidenceHint}>
-                Estimated {daysToFull} days til near 100% confidence
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <Text style={styles.swipeHint}>Swipe left to continue</Text>
-      </View>
-    </View>
-  );
-}
-
 function InsightCard({
   type,
   noticed,
@@ -424,8 +377,14 @@ function InsightCard({
       <View style={styles.insightCardContent}>
         <View style={styles.insightTop}>
           <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
+          {/* Screen Copy row 17 `deep_read.takeaway` (Final, New):
+              "Here's my biggest takeaway." Lang's frame (5266:68492) still
+              shows "…from your scan." — the `Figma shows now` column marks it
+              as the placeholder to replace, and Bryan's note says why: "Drops
+              'from your scan': skipped users didn't scan, and most evidence
+              comes from answers." The old string here asserted a scan too. */}
           <Text style={styles.midGreeting}>
-            Here's what I'm thinking about your scan.
+            Here's my biggest takeaway.
           </Text>
           {beats.map((beat) => (
             <View key={beat.label} style={styles.insightWrap}>
@@ -458,17 +417,24 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
       <View style={styles.backCardContent}>
         <View style={styles.backCardTop}>
           <Image source={logo} style={styles.middleTypeLogo} resizeMode="contain" />
-          <Text style={styles.midGreeting}>
-            Based on your scan and {TYPE_DISPLAY[type].toLowerCase()} archetype, I have your{" "}
-            <Text style={styles.midGreetingBold}>first</Text> meal rec ready!
+          {/* Screen Copy row 19 `first_plan.headline` / `first_plan.body`,
+              both Final. What was here was the `Figma shows now` placeholder
+              verbatim — "Based on your scan and restorer archetype, I have
+              your first meal rec ready!" — which breaks two of Bryan's rules
+              at once: it asserts a scan to members who skipped it, and it says
+              "archetype", which his note bans outright ("No 'archetype.'").
+              The body replaces the lost specificity without claiming the meal
+              is medically prescribed or uniquely optimal. */}
+          <Text style={styles.midGreeting}>Your first meal is ready.</Text>
+          <Text style={styles.bridgeBody}>
+            I picked it to fit the pattern behind your Type.
           </Text>
         </View>
 
         <View style={styles.mealTeaserWrap}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrowText}>Based on your score</Text>
-          </View>
+          {/* Screen Copy row 19 cuts the "Based on your score" label: there is
+              no Reset Score on Day 1 (first score lands ~Day 21), so the label
+              claimed a number that does not exist. */}
           <View style={styles.mealTeaser}>
             <Image
               source={MEAL_TEASER_BG}
@@ -490,7 +456,10 @@ function BackCard({ type, onTap }: { type: MetabolicType; onTap: () => void }) {
                 <Rect x="0" y="0" width="100%" height="100%" fill="url(#mealMaroon)" />
               </Svg>
             </View>
-            <Text style={styles.mealTeaserTitle}>Want to see it?</Text>
+            {/* Row 19's Action / CTA column: "Show me". It sits where Lang
+                put the title, with her arrow button to its right — the two
+                together are the labelled CTA. */}
+            <Text style={styles.mealTeaserTitle}>Show me</Text>
             <TouchableOpacity
               onPress={onTap}
               style={styles.mealArrowBtn}
@@ -559,23 +528,12 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       ? (rawType as MetabolicType)
       : "Explorer";
 
-  // RES-146: the type-summary card (idx 1) mirrors the Profile screen; its
-  // card arrows open the shared StatDetailSheet at the screen level.
-  const userName = state.user.name?.trim() || "You";
-  const [detail, setDetail] = useState<StatDetailData | null>(null);
-  const openDetail = (d: StatDetailData) => {
-    logEvent("onboarding_type_summary_statDetail", { metric: d.metric });
-    setDetail(d);
-  };
+  // 🔴 RES-146's type-summary card, its `userName`/`openDetail` plumbing and
+  // the screen-level StatDetailSheet all went with the card (Bryan,
+  // 2026-10-04). The sheet had no remaining opener, so leaving it would have
+  // shipped UI nothing could reach — the #148 dead-code trap. TypeSummaryCard
+  // and StatDetailSheet are both still used by the Profile tab.
 
-  // Pull the same Reset Score the Home screen will show, so the number on
-  // the middle card matches Home exactly (rather than the raw SDK wellness).
-  // Backend lazily computes/persists if the fire-and-forget recompute kicked
-  // off by submitScanResults hasn't landed yet, so the fetch always succeeds
-  // when a scan exists. The insight blurb is fetched in parallel — the LLM
-  // call dominates total latency, so kicking it off alongside the score
-  // keeps the loading window tight.
-  const [resetScore, setResetScore] = useState<ResetScore | null>(null);
   // Two-beat scan takeaway (split format): "what we noticed" + "your meal
   // because of that". Pre-paywall the meal half is generic (no dish named).
   const [insightNoticed, setInsightNoticed] = useState<string | null>(null);
@@ -589,8 +547,7 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       // declined third-party-AI consent, we skip it entirely and show the
       // static type (the reset score is a deterministic backend calc, kept).
       const aiGranted = state.user.aiConsentGranted === true;
-      const [scoreRes, insightRes] = await Promise.allSettled([
-        getResetScore(),
+      const [insightRes] = await Promise.allSettled([
         // No meal slots pre-paywall; request the SPLIT format so the takeaway
         // renders as two beats ("what we noticed" + "your meal because of that")
         // instead of one wall of text. The long prose stays post-paywall.
@@ -599,9 +556,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           : Promise.reject(new Error("ai_consent_declined")),
       ]);
       if (cancelled) return;
-      if (scoreRes.status === "fulfilled") {
-        setResetScore(scoreRes.value.score ?? null);
-      }
       if (insightRes.status === "fulfilled") {
         setInsightNoticed(insightRes.value.noticed ?? null);
         setInsightMeal(insightRes.value.mealBecause ?? null);
@@ -612,15 +566,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       cancelled = true;
     };
   }, []);
-
-  const score = Math.round(
-    resetScore?.score ?? state.biometrics?.wellness ?? 70
-  );
-  const confidence = Math.round(resetScore?.confidence ?? 15);
-  // Same formula HomeScreenV2 uses for the ConfidenceCard, so the days
-  // estimate stays consistent between TypeReveal and Home.
-  const daysToFull =
-    confidence < 100 ? Math.max(1, Math.ceil(100 - confidence)) : 0;
 
   useEffect(() => {
     logEvent("onboarding_type_reveal", { metabolic_type: metabolicType });
@@ -691,6 +636,10 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     ).start();
   }, [loaded]);
 
+  // One-shot guard for the end-of-onboarding handoff below. A ref, not effect
+  // cleanup — see the comment there.
+  const handoffStarted = useRef(false);
+
   const advance = () => {
     setActiveIdx((i) => Math.min(i + 1, TOTAL_CARDS));
   };
@@ -722,18 +671,58 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     const uid = state.auth.authUser?.id;
     const sawWindowInOnboarding = !!state.user.quizAnswers?.fastingInterest;
     if (uid && sawWindowInOnboarding) markWindowIntroShown(uid);
-    completeOnboarding();
 
-    // Deferred because completeOnboarding() re-renders the root into a new
-    // stack, and dispatching before Main exists is a silent no-op — see
-    // navigateWhenMounted, which waits for the route rather than guessing a
-    // delay. A fixed timeout here lost the first-meal handoff on a slow device.
-    return navigateWhenMounted("Main", () => {
-      (rootNavigationRef as any).navigate("Main", {
-        screen: "AppOpenFlow",
-        params: { screen: "NextMeal", params: { fromOnboarding: true } },
+    // 🔴 Deliberately NOT cancelled on unmount, and deliberately guarded by a
+    // ref instead. The handoff below is a GLOBAL side effect whose whole job is
+    // to survive the unmount that triggers it: `completeOnboarding()` swaps the
+    // root stack, which unmounts THIS screen, which is exactly when the "Main"
+    // route it is polling for appears. Returning the poller as the effect's
+    // cleanup — which is what this did — therefore cancelled it at the precise
+    // moment it was about to succeed, and the member landed on Home instead of
+    // their first meal. The ref stops a re-run; nothing stops the handoff.
+    if (handoffStarted.current) return;
+    handoffStarted.current = true;
+
+    void (async () => {
+      // 🔴 Claim the daily app-open flow BEFORE completing onboarding, and
+      // await it. RootNavigator fires the flow the instant its `authReady`
+      // goes true — and `authReady` requires `hasCompletedOnboarding`, which
+      // is exactly what completeOnboarding() flips one line below. That effect
+      // navigates to AppOpenFlow with NO nested screen, so it lands on
+      // `Greeting`, and Greeting wins the race against the NextMeal handoff
+      // here. The member who just paid was shown the DAILY open flow instead
+      // of their first meal — greeted with "Your score is out of date — let's
+      // refresh it" and a scan prompt, on the day they signed up. Reproduced
+      // on two S24 walks, 2026-10-02.
+      //
+      // Marking it shown first means `shouldShowAppOpenFlow` is already false
+      // when that effect runs, so there is no second navigation to race. A
+      // member who just finished onboarding has had their open flow — this
+      // reveal stack IS it.
+      if (uid) await markAppOpenFlowShown(uid);
+
+      // 🔴 Tell the BACKEND onboarding is finished, here and only here. The
+      // profile sync at account creation used to claim it, which was false —
+      // and session-restore read "has a primaryBucket" as "has finished", so a
+      // member who closed the app on the consent screen or the paywall came
+      // back marked complete and skipped both. Fire-and-forget: the local
+      // completeOnboarding() below is what moves them on, and this only has to
+      // land before their next cold start.
+      void markOnboardingComplete();
+
+      completeOnboarding();
+
+      // Deferred because completeOnboarding() re-renders the root into a new
+      // stack, and dispatching before Main exists is a silent no-op — see
+      // navigateWhenMounted, which waits for the route rather than guessing a
+      // delay. A fixed timeout here lost the first-meal handoff on a slow device.
+      navigateWhenMounted("Main", () => {
+        (rootNavigationRef as any).navigate("Main", {
+          screen: "AppOpenFlow",
+          params: { screen: "NextMeal", params: { fromOnboarding: true } },
+        });
       });
-    });
+    })();
   }, [activeIdx, totalCards, revealOnly, navigation, completeOnboarding, state.auth.authUser?.id, state.user.quizAnswers?.fastingInterest]);
 
   const dismissActive = () => {
@@ -785,7 +774,7 @@ export function TypeRevealScreen({ navigation, route }: Props) {
     [pan]
   );
 
-  const renderCard = (idx: 0 | 1 | 2 | 3 | 4 | 5) => {
+  const renderCard = (idx: 0 | 1 | 2 | 3) => {
     const isActive = idx === activeIdx;
     const isDismissed = idx < activeIdx;
     const pose = ENTRY_POSE[idx];
@@ -860,42 +849,46 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           onShareResults={async () => {
             logEvent("onboarding_type_reveal_share");
             try {
+              // Screen Copy row 16 `reveal.share` is a Check: "Shares the Type
+              // name, one-liner and art only. Never scan values, weight, goal
+              // weight or answers." Name + the locked one-liner is all this is.
+              // 🔴 And it branches the same way the card does. A member who
+              // skipped the scan sees STARTING_READ_TAGLINE on the card, not
+              // the asserted Explorer line — sharing the asserted line would
+              // put a claim in their friends' hands that the screen itself
+              // deliberately withholds.
+              const line = state.user.startingRead
+                ? STARTING_READ_TAGLINE
+                : TYPE_TAGLINE[metabolicType];
               await Share.share(
                 shareWithLink(
-                  `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${TYPE_TAGLINE[metabolicType]}`,
+                  `I'm a ${TYPE_DISPLAY[metabolicType]} on Reset — ${line}`,
                 ),
               );
             } catch {}
           }}
         />
       );
+      // 🔴 The TypeSummaryCard (goal / strength / weakness) was card 1 and is
+      // CUT — Bryan, 2026-10-04. The component is still used by the profile
+      // tab, so only this call site went.
     } else if (idx === 1) {
-      content = (
-        <TypeSummaryCard
-          type={metabolicType}
-          userName={userName}
-          goalSlug={state.user.goal ?? null}
-          width={CARD_WIDTHS[1]}
-          height={cardH}
-          onOpenDetail={openDetail}
-        />
-      );
-    } else if (idx === 2) {
-      content = (
-        <MiddleCard
-          type={metabolicType}
-          score={score}
-          confidence={confidence}
-          daysToFull={daysToFull}
-        />
-      );
-    } else if (idx === 3) {
       content = (
         <InsightCard
           type={metabolicType}
           noticed={
             insightNoticed ??
-            (state.user.startingRead === true
+            // 🔴 Keyed on BIOMETRICS, not `startingRead`. Same correction the
+            // AI-consent screen needed, for a sharper reason now: fixed V1
+            // types everyone from answers, so `startingRead` is ALWAYS false —
+            // which meant a member who skipped the scan would be told "Your
+            // scan gives me a first read on where your body is today."
+            //
+            // Bryan's Deep Read guardrails (2026-10-02) forbid exactly that:
+            // "don't say the scan measured something it didn't." `biometrics`
+            // is local, is populated only by a real scan, and cannot be lost to
+            // a failed round trip.
+            (state.biometrics === null
               ? INSIGHT_NOTICED_FALLBACK_NO_SCAN
               : INSIGHT_NOTICED_FALLBACK)
           }
@@ -907,10 +900,10 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           bodyMaxHeight={Math.max(80, Math.floor((cardH - 340) / 2))}
         />
       );
-    } else if (idx === 4) {
+    } else if (idx === 2) {
       content = (
         <WindowRecCard
-          width={CARD_WIDTHS[4]}
+          width={CARD_WIDTHS[2]}
           height={cardH}
           typeLogo={TYPE_LOGO[metabolicType]}
         />
@@ -972,6 +965,14 @@ export function TypeRevealScreen({ navigation, route }: Props) {
       {!loaded && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={WHITE} />
+          {/* Screen Copy row 15, "After purchase" (Final). The frame
+              (5251:61742) is a bare centred spinner — its `Figma shows now`
+              reads "Spinner, no text" — so the words exist only in the Sheet.
+              Bryan: "Flows straight into the reveal; no second gate", which is
+              exactly this overlay: the reveal's own load, full-screen on the
+              page surface. The paywall shows the same line while the purchase
+              resolves, so the two read as one continuous state. */}
+          <Text style={styles.loadingText}>Unlocking your Type…</Text>
         </View>
       )}
 
@@ -985,8 +986,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
           {/* Reveal-only shows card 0 alone — no Deep Read or meal teaser
               stacked behind it, since those are what we are deliberately not
               replaying for a returning member. */}
-          {revealOnly ? null : renderCard(5)}
-          {revealOnly ? null : renderCard(4)}
           {revealOnly ? null : renderCard(3)}
           {revealOnly ? null : renderCard(2)}
           {revealOnly ? null : renderCard(1)}
@@ -994,18 +993,6 @@ export function TypeRevealScreen({ navigation, route }: Props) {
         </>
       )}
 
-      {/* Stat-detail tooltip for the summary card's arrows — rendered at the
-          screen level so it isn't clipped/rotated by the card stack. */}
-      <StatDetailSheet
-        visible={detail != null}
-        data={detail}
-        accent={TYPE_PRIMARY[metabolicType]}
-        evening={false}
-        typeLogo={TYPE_LOGO[metabolicType]}
-        hideChat
-        onClose={() => setDetail(null)}
-        onStartChat={() => setDetail(null)}
-      />
     </View>
   );
 }
@@ -1016,6 +1003,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    gap: 24,
+  },
+  loadingText: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+    color: WHITE,
+    textAlign: "center",
   },
   safe: { width: "100%" },
   topBar: {
@@ -1193,9 +1189,17 @@ const styles = StyleSheet.create({
     color: MAROON,
     letterSpacing: -0.24,
   },
-  midGreetingBold: {
-    fontFamily: fonts.dmSansBold,
+  // The bridge's supporting line, a step down from the headline on the same
+  // card — matches the supporting-line relationship on the rebuilt onboarding
+  // screens rather than introducing a third size.
+  bridgeBody: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    lineHeight: 23,
     color: MAROON,
+    opacity: 0.8,
+    letterSpacing: -0.17,
+    marginTop: -12,
   },
   middleTypeLogo: {
     width: 56,
@@ -1203,8 +1207,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
 
-  // Reset Score block
-  scoreBlock: { gap: 6 },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   eyebrowDot: {
     width: 7,
@@ -1213,45 +1215,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#92B4BD",
   },
   eyebrowText: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    color: SUBTLE,
-    letterSpacing: -0.12,
-  },
-  scoreSurface: {
-    backgroundColor: BLUE_BG,
-    borderRadius: 4,
-    borderTopRightRadius: 64,
-    paddingTop: 16,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    alignItems: "center",
-  },
-  confidenceRow: {
-    backgroundColor: BLUE_BG,
-    borderRadius: 4,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  confidenceLabel: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    color: MAROON,
-    letterSpacing: -0.12,
-  },
-  confidenceValue: {
-    fontFamily: fonts.dmSans,
-    fontWeight: "700",
-    fontSize: 16,
-    color: MAROON,
-    letterSpacing: -0.16,
-  },
-  confidenceHint: {
-    flex: 1,
     fontFamily: fonts.dmSans,
     fontSize: 12,
     color: SUBTLE,

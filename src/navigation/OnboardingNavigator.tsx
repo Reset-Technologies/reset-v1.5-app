@@ -1,7 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
-  EducationCarouselScreen,
+  OpeningScreen,
   PreScanScreen,
   NoScanEmptyStateScreen,
   CalibrationScreen,
@@ -32,7 +32,7 @@ import { K } from "../constants/colors";
 // its own camera permission, and the question content has been folded into the
 // config-driven OnboardingSurveyScreen.
 export type OnboardingStackParamList = {
-  Education: undefined;
+  Opening: undefined;
   PreScan: undefined;
   NoScanEmptyState: undefined;
   Login: undefined;
@@ -69,7 +69,7 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Education"
+      initialRouteName="Opening"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: K.cream },
@@ -77,8 +77,8 @@ export function OnboardingNavigator() {
       }}
     >
       <Stack.Screen
-        name="Education"
-        component={EducationCarouselScreen}
+        name="Opening"
+        component={OpeningScreen}
         options={{ contentStyle: { backgroundColor: K.brown } }}
       />
       <Stack.Screen
@@ -88,7 +88,10 @@ export function OnboardingNavigator() {
           contentStyle: { backgroundColor: K.brown },
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
-          animation: "none",
+          // Was "none" because the carousel's fifth page rendered a PreScanView
+          // "peek" and did the transition itself. Opening is a plain screen, so
+          // PreScan takes the stack's normal push animation again.
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen
@@ -149,7 +152,25 @@ export function OnboardingNavigator() {
         component={OnboardingSurveyScreen}
         options={{
           contentStyle: { backgroundColor: K.brown },
-          animation: "fade",
+          // 🔑 "none" ON PURPOSE — the crossfade is done IN THE SCREEN with
+          // `Animated` (see `screenOpacity` in OnboardingSurveyScreen), not by
+          // the native stack.
+          //
+          // 🔴 Why: `animation: "fade"` does not animate on Android in
+          // react-native-screens 4.24.0. Measured at 30fps on an S24, content
+          // leaving the screen:
+          //     fade              16% -> 0%  in ONE 33ms frame
+          //     fade_from_bottom  same, a cut
+          //     slide_from_right  ramps over ~165ms
+          // On iOS the native fade was correct — but a JS fade is the only way
+          // to get the SAME motion on both, and this screen pushes a route per
+          // question, so the cut repeated eight times and read as flashing.
+          //
+          // ⚠️ It was never a regression: the identical cut was measured on
+          // e8daa35, before any of the V1 onboarding work, on the same device.
+          // It only became visible once the flow was walked end to end on
+          // Android rather than on the simulator.
+          animation: "none",
         }}
       />
       <Stack.Screen

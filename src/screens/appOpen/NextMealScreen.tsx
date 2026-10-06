@@ -90,9 +90,19 @@ function headingFor(fromOnboarding: boolean, hasScore: boolean): {
   strong: string;
 } {
   if (fromOnboarding) {
+    // 🔴 Screen Copy row 20 `first_meal.headline`, status Final, Changed=Edited:
+    // "Here's your first meal." The long version below was the frame's
+    // placeholder — the Sheet lists it verbatim under `Figma shows now`, which
+    // is the column that marks what engineering must replace. Bryan's note:
+    // "The bridge already said 'I picked it.'" (Row 19 is literally
+    // "I picked it to fit the pattern behind your Type.")
+    //
+    // ⚠️ Lang's treatment is a regular lead-in plus one bold clause, so the
+    // Final string is split at the noun phrase to keep it. The WORDS are
+    // Bryan's and must not change; where the bold starts is Lang's call.
     return {
-      lead: "Here's your first meal recommendation, ",
-      strong: "picked for your body.",
+      lead: "Here's your ",
+      strong: "first meal.",
     };
   }
   if (hasScore) {

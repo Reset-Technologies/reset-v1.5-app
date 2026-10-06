@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
 import { MetabolicType } from "../../constants/colors";
 
@@ -14,6 +14,14 @@ import { MetabolicType } from "../../constants/colors";
  * "Tap to reveal" frost; when `playing` flips true we kick playback via the
  * imperative `startAnimating()` so it begins exactly on reveal (in sync with
  * the haptics) rather than whenever the card mounted.
+ *
+ * 🔴 GATED ON LOAD, not just on `playing`. These are 2–4 MB WebPs of 141–267
+ * frames, and `startAnimating()` does nothing if the image has not finished
+ * decoding — so on a slow decode the reveal tap fired into the void and the
+ * artwork simply appeared, static, whenever it was ready. Every one of these
+ * files has an infinite loop count, so a frozen hero is never the asset: it
+ * means playback never started. Waiting for `onLoad` makes the tap and the
+ * decode independent of each other.
  */
 const TYPE_WEBP: Record<MetabolicType, any> = {
   Burner: require("../../../assets/animations/type-reveal-burner.webp"),
@@ -33,12 +41,15 @@ export function TypeRevealHero({
   style: object;
 }) {
   const ref = useRef<any>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (playing) {
-      ref.current?.startAnimating?.();
-    }
-  }, [playing]);
+    if (!playing || !loaded) return;
+    // 🔑 No `?.` on the method — it exists on expo-image's ref (55.0.11). If a
+    // future version drops it this should throw rather than silently no-op,
+    // which is how the original failure hid.
+    ref.current?.startAnimating();
+  }, [playing, loaded]);
 
   return (
     <ExpoImage
@@ -47,6 +58,7 @@ export function TypeRevealHero({
       style={style}
       contentFit="contain"
       autoplay={false}
+      onLoad={() => setLoaded(true)}
     />
   );
 }

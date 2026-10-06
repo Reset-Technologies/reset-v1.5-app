@@ -1,4 +1,5 @@
 import { updateProfile } from "./profile";
+import type { V1AnswerMap } from "../constants/v1Questions";
 import type { MetabolicType } from "../constants/colors";
 
 /**
@@ -11,7 +12,12 @@ import type { MetabolicType } from "../constants/colors";
  */
 export async function syncOnboardingToBackend(params: {
   goal?: string;
-  behaviorAnswers: { q1?: string; q2?: string; q3?: string };
+  /**
+   * 🔑 Fixed V1 — the six scored question ids, each holding the selected
+   * ANSWER WEIGHTS row id (`U1_A2`). Sent verbatim: these ARE the scoring keys
+   * the backend's weight table is indexed by.
+   */
+  behaviorAnswers: V1AnswerMap;
   tastePreferences: string[];
   dietaryRestrictions: string[];
 }): Promise<{
@@ -28,7 +34,12 @@ export async function syncOnboardingToBackend(params: {
     tasteCluster: tastePreferences[0] ?? undefined, // First selection is primary cluster
     behaviorAnswers,
     onboardingStep: "Account",
-    onboardingComplete: true,
+    // 🔴 NO `onboardingComplete` here. This runs the moment the account
+    // exists — before AI consent, the paywall and the Type reveal — so
+    // claiming completion here was simply false, and the backend now stamps
+    // `onboardingCompletedAt` from it. `markOnboardingComplete()` below is
+    // sent once, from the end of the reveal stack, which is where onboarding
+    // actually ends.
   });
 
   return {
@@ -37,4 +48,25 @@ export async function syncOnboardingToBackend(params: {
     startingRead: !!updated?.profile?.startingRead,
     glp1Flag: !!updated?.profile?.glp1Flag,
   };
+}
+
+/**
+ * Mark onboarding finished. Sent once, from the end of the Type reveal stack.
+ *
+ * 🔴 This exists because `primaryBucket` stopped being a usable proxy for "has
+ * finished onboarding". The Type is written at account creation now, so a
+ * member who closes the app on the consent screen or the paywall and reopens it
+ * had their session restored as complete — skipping the AI-consent screen and
+ * the paywall. Reported on an S24, 2026-10-02.
+ *
+ * 🔑 Fire-and-forget on purpose. The local `completeOnboarding()` is what moves
+ * the member on; this only has to win before their NEXT cold start, and the
+ * backend latches it so a retry is harmless.
+ */
+export async function markOnboardingComplete(): Promise<void> {
+  try {
+    await updateProfile({ onboardingComplete: true });
+  } catch {
+    // Non-fatal — see above.
+  }
 }

@@ -245,8 +245,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "expo-camera",
       {
+        // Screen Copy row 4, Final. This is a PRIVACY CLAIM shown in the iOS
+        // system prompt and read at App Store review, so it is the Sheet's
+        // wording verbatim — the on-device promise is the point of it.
         cameraPermission:
-          "Reset uses your camera to read biometric signals from your face.",
+          "Reset uses your camera for the 30-second face scan. Your face video stays on your device.",
       },
     ],
     [

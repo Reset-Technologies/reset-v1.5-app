@@ -8,6 +8,7 @@ import {
   Image,
   Animated,
   Easing,
+  TextInput,
 } from "react-native";
 import {
   SafeAreaView,
@@ -21,7 +22,13 @@ import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { FastingInfoSheet } from "./FastingInfoSheet";
+import { useIsFocused } from "@react-navigation/native";
 import { logEvent } from "../../services/braze";
+import {
+  REFLECTIONS,
+  getProvisionalLeader,
+  type ProvisionalLeader,
+} from "../../services/reflections";
 import {
   SURVEY_STEPS,
   SurveyOption,
@@ -96,11 +103,64 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const contentOpacity = useRef(new Animated.Value(0)).current;
 
+  /**
+   * The step-to-step crossfade, done HERE rather than by the navigator.
+   *
+   * 🔴 `animation: "fade"` on the native stack does not animate on Android
+   * (react-native-screens 4.24.0) — it cuts in a single frame, measured at
+   * 30fps on an S24, and measured the same on the pre-rebuild commit. It is
+   * correct on iOS. Driving the fade in JS makes both platforms identical and
+   * takes the native stack out of it entirely (the route is `animation:
+   * "none"`).
+   *
+   * Everything except the page background rides this: the top bar, the body
+   * and the Continue bar. The background stays solid so the content dissolves
+   * over a steady maroon page instead of punching a hole through to whatever
+   * is underneath.
+   */
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const leaving = useRef(false);
+
+  /**
+   * 🔴 The auto-advancing beats (logo, Ester intro, reflection, analyzing) are
+   * driven by a timer in an effect keyed on the STEP. Navigating back to one
+   * does not remount it and does not change the step, so the effect never
+   * re-ran and its original timer was long spent — the screen simply sat
+   * there, and the only way out was going back far enough to remount the
+   * whole survey. Focus is the missing dependency.
+   *
+   * It also stops a BLURRED step's timer from firing underneath whatever is
+   * on top of it.
+   */
+  const isFocused = useIsFocused();
+
   const introPlayer = useVideoPlayer(POST_SCAN_VIDEO, (player) => {
     player.muted = true;
     player.loop = false;
     if (step.kind === "logo" || step.kind === "analyzing") player.play();
   });
+
+  /**
+   * 🔴 Replay the intro clip when the step is focused, not just when the
+   * player is created. `useVideoPlayer`'s initializer runs ONCE per screen
+   * instance, so navigating back to the logo beat returned to a player sitting
+   * paused on its last frame — the animation simply never played again.
+   *
+   * 🔑 `currentTime = 0` before `play()`: calling play() on a finished clip
+   * does nothing. Same pattern as TypeRevealHero.
+   *
+   * Pausing on blur stops the clip decoding underneath whatever was pushed on
+   * top of it — the survey keeps every step mounted.
+   */
+  useEffect(() => {
+    if (step.kind !== "logo" && step.kind !== "analyzing") return;
+    if (!isFocused) {
+      introPlayer.pause();
+      return;
+    }
+    introPlayer.currentTime = 0;
+    introPlayer.play();
+  }, [isFocused, stepIndex]);
 
   const isQuestion = step.kind === "question";
 
@@ -115,10 +175,91 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
   );
 
   const goNext = () => {
-    const next = stepIndex + 1;
-    if (next < SURVEY_STEPS.length) navigation.push("Survey", { step: next });
-    else navigation.replace("AccountGate");
+    // Guarded: the fade-out is ~180ms of live screen, and a second tap in that
+    // window would push twice.
+    if (leaving.current) return;
+    leaving.current = true;
+    Animated.timing(screenOpacity, {
+      toValue: 0,
+      duration: EXIT_MS,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => {
+      const next = stepIndex + 1;
+      if (next < SURVEY_STEPS.length) navigation.push("Survey", { step: next });
+      else navigation.replace("AccountGate");
+    });
   };
+
+  // undefined = still resolving · null = resolved to nothing (skip it) ·
+  // string = ready to show. The three are distinct because "pending" must hold
+  // the typing beat while "nothing" must advance, and collapsing them is what
+  // produced a blank screen between the question and the reflection.
+  const [reflection, setReflection] = useState<string | null | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (step.kind !== "reflection") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const leader: ProvisionalLeader = await getProvisionalLeader({
+          U1: state.user.quizAnswers.U1 ?? null,
+          U2: state.user.quizAnswers.U2 ?? null,
+          U3: state.user.quizAnswers.U3 ?? null,
+        });
+        if (!cancelled) {
+          setReflection(REFLECTIONS[leader] ?? null);
+          logEvent("onboarding_survey_reflection", { leader });
+        }
+      } catch {
+        // null, not undefined — "we tried and there is nothing", which lets the
+        // advance timer move on instead of waiting forever.
+        if (!cancelled) setReflection(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stepIndex]);
+
+  // 🔑 A reflection step has nothing to show until its fetch lands, so it is
+  // not "ready" the moment the typing beat ends like every other step is.
+  // Revealing on the timer alone left the content area EMPTY until the network
+  // returned — a blank flash between the question and the line.
+  const contentReady = step.kind !== "reflection" || reflection !== undefined;
+
+  // Fade the screen in on mount — this is the second half of the crossfade.
+  useEffect(() => {
+    leaving.current = false;
+    screenOpacity.setValue(0);
+    Animated.timing(screenOpacity, {
+      toValue: 1,
+      duration: ENTER_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [stepIndex]);
+
+  /**
+   * 🔴 AND ON FOCUS, not just on mount. `goNext` fades this screen to 0 before
+   * pushing the next step — but the screen stays MOUNTED underneath. Coming
+   * back to it (the ✕, or Android's hardware back) returned to a screen still
+   * sitting at opacity 0: a blank page. Mount alone cannot cover this, because
+   * returning does not remount.
+   */
+  useEffect(() => {
+    const unsub = navigation.addListener("focus", () => {
+      leaving.current = false;
+      Animated.timing(screenOpacity, {
+        toValue: 1,
+        duration: ENTER_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    });
+    return unsub;
+  }, [navigation]);
 
   // Reveal: brief "typing" beat, then fade the content in.
   useEffect(() => {
@@ -129,17 +270,22 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       setRevealed(true);
       return;
     }
-    const t = setTimeout(() => {
-      setRevealed(true);
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 320,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    }, 850);
+    const t = setTimeout(() => setRevealed(true), 850);
     return () => clearTimeout(t);
   }, [stepIndex]);
+
+  // The fade is its own effect so it waits for BOTH the typing beat and the
+  // content. The typing dots simply stay up a little longer on a slow fetch,
+  // which is what a typing indicator is for.
+  useEffect(() => {
+    if (!revealed || !contentReady) return;
+    Animated.timing(contentOpacity, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [revealed, contentReady]);
 
   // Auto-advance for the non-interactive beats.
   //
@@ -149,7 +295,10 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
   // behavior answers; the analyzing beat just pauses for the animation
   // and hands off to AccountGate.
   useEffect(() => {
-    if (step.kind === "question") return;
+    // Interactive beats wait for the member. `goalWeight` (P2) is one of them —
+    // without this it would fall through to the message timer and skip itself.
+    if (step.kind === "question" || step.kind === "goalWeight") return;
+    if (!isFocused) return;
 
     const advance =
       step.kind === "analyzing"
@@ -174,12 +323,50 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       };
     }
 
+    // 🔑 A reflection holds the step open until its text has landed, so the
+    // member gets the full `durationMs` to READ it rather than however much is
+    // left after the fetch. `undefined` is still resolving — wait. `null`
+    // resolved to nothing (the call failed), so move on immediately rather
+    // than sit on a typing indicator for three seconds.
+    if (step.kind === "reflection") {
+      if (reflection === undefined) return;
+      if (reflection === null) {
+        const skip = setTimeout(goNext, 0);
+        return () => clearTimeout(skip);
+      }
+    }
+
     // message beat: no video, fixed timer.
     const t = setTimeout(goNext, (step as any).durationMs ?? 2000);
     return () => clearTimeout(t);
-  }, [stepIndex]);
+  }, [stepIndex, reflection, isFocused]);
 
+  /**
+   * Proof of listening (row 8). Resolved when the step is reached rather than
+   * precomputed, because it depends on the answer the member gave moments ago.
+   *
+   * 🔑 Fails OPEN, not closed: if the call errors the reflection is skipped
+   * rather than blocking the survey behind a network hop that exists purely to
+   * show one sentence. `null` renders nothing and the timer still advances.
+   */
   const [infoOpen, setInfoOpen] = useState(false);
+
+  /**
+   * P2 — goal weight. Non-scoring (ROUTING step 3), so it never reaches the
+   * typing engine; it is profile data the meal side uses. Kept as a string
+   * because an empty input is a real state and `0` is not the same as blank.
+   */
+  const [goalWeight, setGoalWeightInput] = useState("");
+  const goalWeightValid = /^\d{2,3}$/.test(goalWeight.trim());
+
+  const commitGoalWeight = (value: string | null) => {
+    if (step.kind !== "goalWeight") return;
+    logEvent(step.eventName, { value: value ?? "not_sure" });
+    // "Not sure yet" is an answer, not an abandonment — record it as one so the
+    // funnel can tell the two apart.
+    if (value) setQuizAnswer("goalWeight", value);
+    goNext();
+  };
 
   const finalizeAnswer = (ids: string[]) => {
     if (step.kind !== "question" || ids.length === 0) return;
@@ -188,15 +375,6 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       case "goal":
         setGoal(ids[0]);
         break;
-      case "q1":
-        setQuizAnswer("q1", ids[0]);
-        break;
-      case "q2":
-        setQuizAnswer("q2", ids[0]);
-        break;
-      case "q3":
-        setQuizAnswer("q3", ids[0]);
-        break;
       case "restrict":
         setDietaryRestrictions(ids);
         break;
@@ -204,6 +382,12 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
       // only {q1,q2,q3}, so these stay client-side. The durable record of a
       // member's Window is the plan itself (window_assigned), not these.
       case "fastingInterest":
+        setQuizAnswer(step.key, ids[0]);
+        break;
+      // 🔑 The six SCORED V1 questions. Stored under the workbook's own
+      // question id, with the workbook's answer id as the value — both go to
+      // the typing engine verbatim, so neither may be remapped on the way.
+      default:
         setQuizAnswer(step.key, ids[0]);
         break;
     }
@@ -264,6 +448,9 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#surveyBg)" />
         </Svg>
       </View>
+
+      {/* Everything but the background crossfades — see `screenOpacity`. */}
+      <Animated.View style={[styles.fadeLayer, { opacity: screenOpacity }]} pointerEvents="box-none">
 
       {/* Top bar: close · Ester badge · mute. */}
       <SafeAreaView edges={["top"]} style={styles.topBar} pointerEvents="box-none">
@@ -334,6 +521,40 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
                     {l}
                   </Text>
                 ))}
+              {step.kind === "reflection" && reflection ? (
+                <Text style={styles.messageLine}>{reflection}</Text>
+              ) : null}
+
+              {step.kind === "goalWeight" && (
+                <>
+                  <Text style={styles.question}>{step.question}</Text>
+                  <View style={styles.options}>
+                    <View style={styles.weightRow}>
+                      <TextInput
+                        style={styles.weightInput}
+                        value={goalWeight}
+                        onChangeText={(t) => setGoalWeightInput(t.replace(/[^0-9]/g, ""))}
+                        keyboardType="number-pad"
+                        maxLength={3}
+                        placeholder="—"
+                        placeholderTextColor="rgba(250,253,254,0.4)"
+                        accessibilityLabel="Goal weight in pounds"
+                        returnKeyType="done"
+                      />
+                      <Text style={styles.weightUnit}>lbs</Text>
+                    </View>
+                    {/* QUESTIONS tab, P1/P2 note: "Include a 'Not sure yet' path." */}
+                    <TouchableOpacity
+                      onPress={() => commitGoalWeight(null)}
+                      activeOpacity={0.85}
+                      style={styles.bubble}
+                    >
+                      <Text style={styles.bubbleText}>{step.skipLabel}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
               {step.kind === "question" && (
                 <>
                   <Text style={styles.question}>{questionText}</Text>
@@ -363,10 +584,34 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
 
       {/* Arrow: only on multi-select questions, once something is picked.
           Single-select questions auto-advance after tap. */}
-      {isQuestion && step.kind === "question" && step.multiSelect && selected.length > 0 && (
+      {/* 🔑 Screen Copy row 7: "Continue appears only on P1 and P2." P1 is the
+          dietary multi-select; P2 is the goal-weight entry. Every scored
+          question is single-select and advances on tap. */}
+      {((step.kind === "question" && step.multiSelect && selected.length > 0) ||
+        (step.kind === "goalWeight" && goalWeightValid)) && (
         <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
           <View style={styles.continueRow}>
-            <TouchableOpacity onPress={commitAnswer} style={styles.arrowBtn} activeOpacity={0.85}>
+            {/* Screen Copy row 7 `Advance control`: the copy is "Continue",
+                and the row's `Figma shows now` is "Continue + arrow (one
+                frame)" — a labelled control, not a bare glyph. The styles for
+                it were already here and unreferenced; this wires them up. The
+                behaviour the row describes ("Continue appears only on P1 and
+                P2"; single-select advances on tap) is what the surrounding
+                guard already does. */}
+            <TouchableOpacity
+              onPress={step.kind === "goalWeight" ? () => commitGoalWeight(goalWeight.trim()) : commitAnswer}
+              style={styles.continuePill}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+            >
+              <Text style={styles.continueText}>Continue</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={step.kind === "goalWeight" ? () => commitGoalWeight(goalWeight.trim()) : commitAnswer}
+              style={styles.arrowBtn}
+              activeOpacity={0.85}
+            >
               <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
                 <Path
                   d="M5 12h14M13 5l7 7-7 7"
@@ -381,10 +626,17 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
         </SafeAreaView>
       )}
 
+      </Animated.View>
+
       <FastingInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </View>
   );
 }
+
+// The step-to-step crossfade. Out is quicker than in: leaving should feel like
+// a response to the tap, arriving should feel like Ester composing.
+const EXIT_MS = 180;
+const ENTER_MS = 240;
 
 const BONE = K.bone;
 const MAROON = K.brown;
@@ -392,6 +644,8 @@ const WHITE = "#FAFDFE";
 const GHOST = "rgba(250,253,254,0.24)";
 
 const styles = StyleSheet.create({
+  // Sits above the page background and carries the crossfade.
+  fadeLayer: { ...StyleSheet.absoluteFillObject },
   container: {
     flex: 1,
     backgroundColor: MAROON,
@@ -526,6 +780,30 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: "flex-end",
   },
+  // P2's numeric entry. Deliberately the same surface treatment as an option
+  // bubble so the step does not read as a different kind of screen.
+  weightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 8,
+  },
+  weightInput: {
+    fontFamily: fonts.catalogue,
+    fontSize: 44,
+    lineHeight: 52,
+    color: K.white,
+    letterSpacing: -0.44,
+    textAlign: "center",
+    minWidth: 120,
+  },
+  weightUnit: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    color: K.white,
+    opacity: 0.7,
+  },
   bubble: {
     backgroundColor: GHOST,
     paddingVertical: 14,
@@ -581,16 +859,31 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingBottom: 24,
   },
+  // Row 7's Figma cell is "Continue + arrow (ONE frame)", so the label and the
+  // round arrow butt together into a single continuous bar: no gap, and the
+  // pill carries the left half of the arrow's 28 radius. Centred rather than
+  // bottom-aligned, or the 56 circle and the shorter label sit on different
+  // baselines and the seam shows.
   continueRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    alignItems: "flex-end",
-    gap: 4,
+    alignItems: "center",
+    gap: 0,
   },
+  // 🔑 The pill runs 28 UNDER the arrow (negative margin + matching padding)
+  // instead of butting against it. Abutting leaves a crescent of background
+  // above and below the single point where a square edge touches a circle;
+  // overlapping fuses the two whites into one capsule, which is what "one
+  // frame" means here.
   continuePill: {
     backgroundColor: WHITE,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    height: 56,
+    justifyContent: "center",
+    paddingLeft: 24,
+    paddingRight: 44,
+    marginRight: -28,
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
   },
   continueText: {
     fontFamily: fonts.dmSans,
