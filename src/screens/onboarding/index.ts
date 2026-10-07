@@ -17,3 +17,4 @@ export { CreateAccountScreen } from "./CreateAccountScreen";
 export { AiConsentScreen } from "./AiConsentScreen";
 export { PaywallScreen } from "./PaywallScreen";
 export { WelcomeBackScreen } from "./WelcomeBackScreen";
+export { AdaptiveSurveyScreen } from "./AdaptiveSurveyScreen";
