@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiClient } from "./apiClient";
 
 /**
@@ -91,4 +92,61 @@ export async function answerTypingTree(input: {
 /** The most recent completed session's outcome, if there is one. */
 export async function getTypingTreeResult(): Promise<TypingTreeStep | null> {
   return apiClient("/api/typing-tree/result", { method: "GET" });
+}
+
+/**
+ * 🔑 THE SESSION ID IS THE CAPABILITY, so it has to outlive the screen.
+ *
+ * The tree starts before the member has an account, and the id is the only
+ * thing that can bind those answers to them afterwards. It must survive leaving
+ * the survey screen and backgrounding the app, so it is persisted rather than
+ * held in component state. Losing it costs a restart, never a wrong Type.
+ */
+const PENDING_SESSION_KEY = "@reset_typing_tree_session";
+
+export async function rememberTypingTreeSession(sessionId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PENDING_SESSION_KEY, sessionId);
+  } catch {
+    // Non-fatal. The member can still finish the tree in this session; only the
+    // claim would be lost, and that degrades to being typed by the fixed engine.
+  }
+}
+
+/** Bind an anonymously-completed session to the member who just signed up. */
+export async function claimTypingTree(sessionId: string): Promise<unknown> {
+  return apiClient("/api/typing-tree/claim", {
+    method: "POST",
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+/**
+ * Claim whatever anonymous session this device is holding, if any.
+ *
+ * 🔑 Called from `setAuth`, which is the ONE place every signup and login path
+ * passes through. Six `setAuth` call sites already exist across three screens
+ * (email, Google, Apple); claiming at each of them is how the seventh one
+ * forgets. This is deliberately safe to call on every auth, including logins
+ * that have no pending session.
+ *
+ * 🔴 Never throws and never blocks. A failed claim must not break signing in —
+ * the member simply keeps the Type the fixed engine already gave them.
+ */
+export async function claimPendingTypingTreeSession(): Promise<void> {
+  let sessionId: string | null = null;
+  try {
+    sessionId = await AsyncStorage.getItem(PENDING_SESSION_KEY);
+  } catch {
+    return;
+  }
+  if (!sessionId) return;
+  try {
+    await claimTypingTree(sessionId);
+    // Cleared only on success. A transient failure leaves it to be retried on
+    // the next auth rather than silently dropping the member's answers.
+    await AsyncStorage.removeItem(PENDING_SESSION_KEY);
+  } catch {
+    // Swallowed on purpose — see above.
+  }
 }

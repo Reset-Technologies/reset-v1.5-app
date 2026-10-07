@@ -8,6 +8,7 @@ import { getProfile } from "../services/profile";
 import { getAiConsent } from "../services/aiConsent";
 import * as BrazeService from "../services/braze";
 import * as AdAttribution from "../services/adAttribution";
+import { claimPendingTypingTreeSession } from "../services/typingTree";
 import {
   configureRevenueCat,
   linkAdAttribution,
@@ -690,6 +691,21 @@ export function AppProvider({ children }: AppProviderProps) {
     // it's now primed once from the home screen after the first meal card.
     BrazeService.changeUser(user.id);
     loginRevenueCat(user.id);
+    // 🔑 Bind any anonymous adaptive-typing session to the member who just
+    // authenticated. The typing tree runs BEFORE the account exists (survey is
+    // step 10 of onboarding, account creation step 12), so its session is
+    // anonymous and the session id is the only thing that can attach those
+    // answers to a person.
+    //
+    // 🔴 Here, and not in the signup screens, because `setAuth` is the ONE
+    // place every signup and login path passes through — there are already six
+    // call sites across three screens (email, Google, Apple), and claiming at
+    // each is how the seventh one silently forgets.
+    //
+    // No-ops when nothing is pending, never throws, never blocks: a failed
+    // claim must not break signing in. The member just keeps the Type the fixed
+    // engine gave them.
+    void claimPendingTypingTreeSession();
     // Pull metabolicType + subscriptionTier from backend so type-derived UI
     // and Ester's account-status gating both match the user we just signed in
     // as (rather than the previous user's local state).

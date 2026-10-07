@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import {
   answerTypingTree,
+  rememberTypingTreeSession,
   startTypingTree,
   type TypingTreeStep,
 } from "../services/typingTree";
@@ -98,8 +99,18 @@ export function useTypingTree() {
    * is a 0-10 index and the server owns the thresholds.
    */
   const start = useCallback(
-    (input: { hasScan: boolean; stressIndex?: number | null; wellnessScore?: number | null }) =>
-      run(() => startTypingTree(input)),
+    async (input: {
+      hasScan: boolean;
+      stressIndex?: number | null;
+      wellnessScore?: number | null;
+    }) => {
+      const next = await run(() => startTypingTree(input));
+      // 🔴 Persist IMMEDIATELY. The member has no account yet, so this id is the
+      // only thing that can bind these answers to them at signup — and signup
+      // happens two screens later, after this component is gone.
+      if (next?.sessionId) await rememberTypingTreeSession(next.sessionId);
+      return next;
+    },
     [run],
   );
 
