@@ -22,6 +22,7 @@ import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
 import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
 import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
 import { K } from "../constants/colors";
+import { ADAPTIVE_SURVEY_ENABLED } from "../constants/flags";
 
 // New onboarding sequence (RES-119): education → pre-scan → scan →
 // chat-style survey questions → account → type reveal → share.
@@ -146,9 +147,14 @@ export function OnboardingNavigator() {
           gestureEnabled: false,
         }}
       />
+      {/* 🔑 ONE route, two implementations. Every navigate("Survey") call site —
+          PreScan, Scan, CameraPerm — is untouched, so switching back is this
+          flag rather than four reverts. See constants/flags.ts. */}
       <Stack.Screen
         name="Survey"
-        component={OnboardingSurveyScreen}
+        component={
+          ADAPTIVE_SURVEY_ENABLED ? AdaptiveSurveyScreen : OnboardingSurveyScreen
+        }
         options={{
           contentStyle: { backgroundColor: K.brown },
           // 🔑 "none" ON PURPOSE — the crossfade is done IN THE SCREEN with

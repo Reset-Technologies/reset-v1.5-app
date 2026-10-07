@@ -14,8 +14,9 @@ import { K } from "../../constants/colors";
 import { DIETARY_RESTRICTIONS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
 import { nextSetupDue, useTypingTree } from "../../hooks/useTypingTree";
+import { logEvent } from "../../services/braze";
 
-type Props = NativeStackScreenProps<any, "AdaptiveSurvey">;
+type Props = NativeStackScreenProps<any>;
 
 const MAROON = K.brown;
 const WHITE = "#FAFDFE";
@@ -109,6 +110,22 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [beat?.id]);
 
+  // 🔑 The same handoff the fixed survey makes: Survey -> AccountGate. Held
+  // briefly so the closing line is readable rather than a flash.
+  //
+  // 🔴 `replace`, not `push`. The member must not be able to swipe back into a
+  // completed typing session — the server would reject the answer and they
+  // would be stuck on a dead screen.
+  useEffect(() => {
+    if (!step?.complete) return;
+    logEvent("onboarding_survey_complete", {
+      engine: "adaptive",
+      diagnostic_count: step.diagnosticCount,
+    });
+    const t = setTimeout(() => navigation.replace("AccountGate"), 1400);
+    return () => clearTimeout(t);
+  }, [step?.complete]);
+
   const question = step?.question;
   const showQuestion = !!question && beatDone && !pendingSetup;
 
@@ -119,7 +136,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={14} style={styles.iconBtn}>
             <Text style={styles.closeGlyph}>×</Text>
           </TouchableOpacity>
-          <Text style={styles.devTag}>adaptive · dev</Text>
+          <View style={styles.iconBtn} />
           <View style={styles.iconBtn} />
         </View>
         <View style={styles.progressTrack}>
@@ -140,12 +157,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
         {beat ? <Text style={styles.beat}>{beat.text}</Text> : null}
 
         {step?.complete ? (
-          <View>
-            <Text style={styles.prompt}>That's everything I need.</Text>
-            <Text style={styles.outcome}>
-              {JSON.stringify(step.outcome, null, 2)}
-            </Text>
-          </View>
+          <Text style={styles.prompt}>Got it. That's everything I need for now.</Text>
         ) : null}
 
         {/* 🔴 SETUP QUESTIONS — rendered here, never sent to /answer. They do
@@ -228,7 +240,15 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
                     // guards this with a ref, because a second tap can land
                     // before `loading` has re-rendered the button.
                     disabled={loading}
-                    onPress={() => void answer(question.id, a.id)}
+                    onPress={() => {
+                      // Mirrors the fixed survey's `onboarding_survey_<id>`
+                      // events so the funnel stays comparable across engines.
+                      logEvent(`onboarding_survey_${question.id.toLowerCase()}`, {
+                        value: a.id,
+                        engine: "adaptive",
+                      });
+                      void answer(question.id, a.id);
+                    }}
                     activeOpacity={0.85}
                     style={[styles.bubble, loading && styles.bubbleDisabled]}
                   >
