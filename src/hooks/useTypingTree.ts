@@ -132,3 +132,37 @@ export function useTypingTree() {
     answer,
   };
 }
+
+/**
+ * Which setup question is due, if any.
+ *
+ * 🔑 SPECIFIED, not invented — adaptive ROUTING section A:
+ *   step 1  "Ask U1, U2, U3. P1 is inserted after U2."
+ *   step 3  "Ask P2." (it follows the reflection shown after U3)
+ *   step 14 "Setup questions, reflections, and bridges never count toward the 6-10."
+ *
+ * 🔴 A PURE FUNCTION ON PURPOSE. This ordering is the only part of the adaptive
+ * flow the client decides, so it is the only part the server's fixtures cannot
+ * catch. Buried in an effect it would be unverifiable; here it can be driven
+ * over a real server sequence and asserted.
+ *
+ * 🔑 Keyed off what the SERVER reports — `diagnosticCount` and the question it
+ * is currently asking — never off a local tally. A resumed session must not
+ * re-show a setup question or skip one.
+ */
+export function nextSetupDue(
+  step: { question?: { id: string }; reflection?: unknown; complete: boolean; diagnosticCount: number } | null,
+  done: { P1: boolean; P2: boolean },
+  beatDone: boolean,
+): "P1" | "P2" | null {
+  if (!step || step.complete) return null;
+  const asked = step.question?.id;
+  // P1 lands once U2 is answered — i.e. two diagnostics are in and the router
+  // has moved past U1/U2.
+  if (!done.P1 && step.diagnosticCount >= 2 && asked !== "U1" && asked !== "U2") {
+    return "P1";
+  }
+  // P2 follows the reflection, so it waits for that beat to finish playing.
+  if (!done.P2 && done.P1 && step.reflection && beatDone) return "P2";
+  return null;
+}

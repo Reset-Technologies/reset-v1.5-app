@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  TextInput,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +11,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { K } from "../../constants/colors";
-import { useTypingTree } from "../../hooks/useTypingTree";
+import { DIETARY_RESTRICTIONS } from "../../constants/types";
+import { useApp } from "../../context/AppContext";
+import { nextSetupDue, useTypingTree } from "../../hooks/useTypingTree";
 
 type Props = NativeStackScreenProps<any, "AdaptiveSurvey">;
 
@@ -35,18 +38,36 @@ const BEAT_MS = 3200;
  * of sequencing it owns is holding a reflection on screen before revealing the
  * question that came back with it.
  *
- * 🔴 STILL TO RESOLVE BEFORE THIS CAN GO LIVE: the non-scoring setup questions.
- * The router deliberately does NOT emit P1 (dietary restrictions) or P2 (goal
- * weight) — they never score, so letting them into the reducer would perturb
- * the diagnostic count the confidence gate keys on, which makes their placement
- * a presentation concern this screen has to own. The fixed flow puts P1 after
- * the second question and P2 after the reflection. Mirroring that is the
- * obvious default, but it is a product decision and it is not made here.
+ * 🔑 THE SETUP WEAVE IS SPECIFIED, not invented. Adaptive ROUTING section A:
+ *   step 1 — "Ask U1, U2, U3. P1 is inserted after U2. It does not count
+ *             toward diagnostic length or scores."
+ *   step 3 — "Ask P2. Use the existing goal-weight control. It does not count
+ *             toward diagnostic length or scores."
+ *   step 14 — "Setup questions, reflections, and bridges never count toward
+ *              the 6-10."
+ * The router deliberately never EMITS them, because letting them into the
+ * reducer would perturb the diagnostic count the confidence gate keys on. That
+ * makes the placement this screen's job, and the spec says where.
+ *
+ * 🔴 A SETUP ANSWER MUST NEVER REACH /answer. It would land in the server's
+ * replayed answer log and move the scores the gate reads. They go to app state,
+ * exactly as the fixed flow does, and the tree never hears about them.
  */
 export function AdaptiveSurveyScreen({ navigation }: Props) {
   const { step, loading, error, progress, start, answer } = useTypingTree();
+  const { setDietaryRestrictions, setQuizAnswer } = useApp();
   const [beatDone, setBeatDone] = useState(true);
   const started = useRef(false);
+
+  // Which setup questions have been shown. Each appears exactly once.
+  const [setupDone, setSetupDone] = useState<Record<"P1" | "P2", boolean>>({
+    P1: false,
+    P2: false,
+  });
+  const [pendingSetup, setPendingSetup] = useState<"P1" | "P2" | null>(null);
+  const [dietary, setDietary] = useState<string[]>([]);
+  const [goalWeight, setGoalWeight] = useState("");
+  const goalWeightValid = /^\d{2,3}$/.test(goalWeight.trim());
 
   // Open the session once. 🔴 A ref, not a dependency array: this screen can
   // re-render before the first response lands, and starting twice would orphan
@@ -63,6 +84,21 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   // next question. Hold it alone for a beat, the way the fixed flow does, so it
   // reads as Ester responding rather than as a label above a question.
   const beat = step?.reflection ?? step?.bridge ?? null;
+
+  // 🔑 P1 after U2, P2 after the reflection — ROUTING section A, steps 1 and 3.
+  // Keyed off what the SERVER says has been asked, not off a local counter, so
+  // a resumed session cannot re-show a setup question or skip one.
+  useEffect(() => {
+    const due = nextSetupDue(step, setupDone, beatDone);
+    if (due) setPendingSetup(due);
+  }, [step, setupDone.P1, setupDone.P2, beatDone]);
+
+  const finishSetup = (which: "P1" | "P2") => {
+    if (which === "P1") setDietaryRestrictions(dietary);
+    else if (goalWeightValid) setQuizAnswer("goalWeight", goalWeight.trim());
+    setSetupDone((d) => ({ ...d, [which]: true }));
+    setPendingSetup(null);
+  };
   useEffect(() => {
     if (!beat) {
       setBeatDone(true);
@@ -74,7 +110,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   }, [beat?.id]);
 
   const question = step?.question;
-  const showQuestion = !!question && beatDone;
+  const showQuestion = !!question && beatDone && !pendingSetup;
 
   return (
     <View style={styles.container}>
@@ -110,6 +146,73 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
               {JSON.stringify(step.outcome, null, 2)}
             </Text>
           </View>
+        ) : null}
+
+        {/* 🔴 SETUP QUESTIONS — rendered here, never sent to /answer. They do
+            not score and do not count toward the 6-10, so the tree must never
+            hear about them; they go to app state like the fixed flow. */}
+        {pendingSetup === "P1" ? (
+          <>
+            <Text style={styles.prompt}>Anything I should keep out of your meals?</Text>
+            <View style={styles.answers}>
+              {DIETARY_RESTRICTIONS.map((o) => {
+                const sel = dietary.includes(o.id);
+                return (
+                  <TouchableOpacity
+                    key={o.id}
+                    onPress={() =>
+                      setDietary((d) =>
+                        // "None" is exclusive — it is the absence of the others.
+                        o.id === "none"
+                          ? sel ? [] : ["none"]
+                          : sel
+                            ? d.filter((x) => x !== o.id)
+                            : [...d.filter((x) => x !== "none"), o.id],
+                      )
+                    }
+                    activeOpacity={0.85}
+                    style={[styles.bubble, sel && styles.bubbleSelected]}
+                  >
+                    <Text style={styles.bubbleText}>{o.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              onPress={() => finishSetup("P1")}
+              disabled={dietary.length === 0}
+              style={[styles.cta, dietary.length === 0 && styles.bubbleDisabled]}
+            >
+              <Text style={styles.ctaText}>Continue</Text>
+            </TouchableOpacity>
+            <Text style={styles.meta}>P1 · setup · does not count</Text>
+          </>
+        ) : null}
+
+        {pendingSetup === "P2" ? (
+          <>
+            <Text style={styles.prompt}>Where do you want your weight to land?</Text>
+            <TextInput
+              value={goalWeight}
+              onChangeText={setGoalWeight}
+              keyboardType="number-pad"
+              placeholder="lbs"
+              placeholderTextColor="rgba(250,253,254,0.4)"
+              style={styles.input}
+            />
+            <TouchableOpacity
+              onPress={() => finishSetup("P2")}
+              disabled={!goalWeightValid}
+              style={[styles.cta, !goalWeightValid && styles.bubbleDisabled]}
+            >
+              <Text style={styles.ctaText}>Continue</Text>
+            </TouchableOpacity>
+            {/* "Include a 'Not sure yet' path" is explicit in the QUESTIONS tab. */}
+            <TouchableOpacity onPress={() => finishSetup("P2")} style={styles.skip}>
+              <Text style={styles.skipText}>Not sure yet</Text>
+            </TouchableOpacity>
+            <Text style={styles.meta}>P2 · setup · does not count</Text>
+          </>
         ) : null}
 
         {showQuestion ? (
@@ -175,7 +278,27 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
     maxWidth: "88%",
   },
-  bubbleDisabled: { opacity: 0.5 },
+  bubbleDisabled: { opacity: 0.4 },
+  bubbleSelected: { backgroundColor: "rgba(250,253,254,0.3)" },
+  cta: {
+    marginTop: 28,
+    alignSelf: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 999,
+    backgroundColor: WHITE,
+  },
+  ctaText: { color: MAROON, fontSize: 16 },
+  skip: { marginTop: 16, alignSelf: "center" },
+  skipText: { color: "rgba(250,253,254,0.6)", fontSize: 14 },
+  input: {
+    color: WHITE,
+    fontSize: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(250,253,254,0.3)",
+    paddingVertical: 8,
+    textAlign: "center",
+  },
   bubbleText: { color: WHITE, fontSize: 16, lineHeight: 22 },
   meta: { color: "rgba(250,253,254,0.4)", fontSize: 12, marginTop: 24 },
   outcome: { color: "rgba(250,253,254,0.7)", fontSize: 12, fontFamily: "Menlo" },
