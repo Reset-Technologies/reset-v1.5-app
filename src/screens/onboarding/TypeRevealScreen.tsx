@@ -36,7 +36,7 @@ import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
 import { playRevealHaptics } from "../../utils/revealHaptics";
 import { shareWithLink } from "../../constants/links";
 import { WindowRecCard } from "./WindowRecCard";
-import { TYPE_PRIMARY } from "../../constants/metabolicProfile";
+import { TYPE_PRIMARY, TYPE_DISPLAY } from "../../constants/metabolicProfile";
 
 type Props = NativeStackScreenProps<any, "TypeReveal">;
 
@@ -68,13 +68,15 @@ const TYPE_LOGO: Record<MetabolicType, any> = {
 
 const MEAL_TEASER_BG = require("../../../assets/images/onboarding/meal-teaser-bg.png");
 
-const TYPE_DISPLAY: Record<MetabolicType, string> = {
-  Chameleon: "Chameleon",
-  Burner: "Burner",
-  Ember: "Restorer",
-  Explorer: "Explorer",
-  Rebounder: "Rebounder",
-};
+// 🔑 TYPE_DISPLAY is imported from constants/metabolicProfile, not redeclared.
+// A local copy lived here and said the same thing, which is exactly why it was
+// dangerous: it agreed until someone edited one of them. The internal key is
+// `Ember` and the member-facing name is **Restorer**, so any screen that
+// renders the raw archetype key — or `TYPE_CONFIGS[...].name` / `.title` —
+// silently shows a member a type name that does not exist in the product.
+//
+// 🔴 The adaptive question-tree flow adds screens that render the archetype.
+// Import this map; never re-derive it. There is no chokepoint enforcing it.
 
 // 🔒 LOCKED copy — "Reset V1 onboarding handoff w/ copy", Screen Copy rows 16.
 // Bryan restored these this pass (Open Checks #2, Closed 2026-09-29) after a
