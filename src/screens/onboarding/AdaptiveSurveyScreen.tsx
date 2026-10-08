@@ -197,7 +197,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
             >
               <Text style={styles.ctaText}>Continue</Text>
             </TouchableOpacity>
-            <Text style={styles.meta}>P1 · setup · does not count</Text>
+            {__DEV__ ? <Text style={styles.meta}>P1 · setup · does not count</Text> : null}
           </>
         ) : null}
 
@@ -223,7 +223,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
             <TouchableOpacity onPress={() => finishSetup("P2")} style={styles.skip}>
               <Text style={styles.skipText}>Not sure yet</Text>
             </TouchableOpacity>
-            <Text style={styles.meta}>P2 · setup · does not count</Text>
+            {__DEV__ ? <Text style={styles.meta}>P2 · setup · does not count</Text> : null}
           </>
         ) : null}
 
@@ -256,9 +256,14 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 ))}
             </View>
-            <Text style={styles.meta}>
-              {question.id} · {step?.diagnosticCount ?? 0} answered
-            </Text>
+            {/* 🔴 DEV ONLY. These labels are how the tree is walked on a
+                device — which question the server chose and how many of the
+                6-10 diagnostics are banked. A member must never see them. */}
+            {__DEV__ ? (
+              <Text style={styles.meta}>
+                {question.id} · {step?.diagnosticCount ?? 0} answered
+              </Text>
+            ) : null}
           </>
         ) : null}
 
