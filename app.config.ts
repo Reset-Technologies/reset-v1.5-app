@@ -73,7 +73,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // scanning members Elevated across Scan Results, Scan Insights, Scan History
   // and Profile. This takes that to 8%.
   // ▶ CUT RELEASES FROM MAIN. Both faults here trace to not doing that.
-  version: "3.7.2",
+  // 3.7.3: two fixes that each needed a release and neither justified one.
+  // (a) RevenueCat identity is confirmed BEFORE a purchase — a production
+  //     renewal on 2026-10-05 carried `$RCAnonymousID:…` in app_user_id,
+  //     original_app_user_id AND every alias, so a paying member is attached
+  //     to no account (1 of 11 production events). The sale still completes;
+  //     logIn re-runs afterwards so RevenueCat aliases the id and subsequent
+  //     events resolve.
+  // (b) Braze is disabled in __DEV__ builds. The SDK keys are hardcoded to
+  //     prod and were not gated by build type, so debug builds created real
+  //     profiles in the production workspace. Release builds — TestFlight and
+  //     internal track included — are unaffected and still test push.
+  version: "3.7.3",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
