@@ -738,7 +738,15 @@ export function PaywallScreen({ navigation }: Props) {
       return;
     }
     setPurchasing(true);
-    const outcome = await purchasePackage(pkg);
+    // 🔑 Pass the member id so RevenueCat transacts as THEM, not as
+    // `$RCAnonymousID:…`. An anonymous purchase still completes (blocking a
+    // sale to protect our bookkeeping is the wrong trade), but it is reported
+    // here because nothing downstream can see it: the webhook skips
+    // reconciliation for anonymous ids and the member never resolves.
+    const outcome = await purchasePackage(pkg, state.auth.authUser?.id);
+    if (outcome.identified === false) {
+      logEvent("onboarding_paywall_anonymous_identity", packageProps(pkg));
+    }
     if (outcome.userCancelled) {
       logEvent("onboarding_paywall_cancelled", packageProps(pkg));
       setPurchasing(false);

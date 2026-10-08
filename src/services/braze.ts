@@ -10,6 +10,39 @@ try {
 }
 
 /**
+ * 🔴 DEBUG BUILDS MUST NOT REACH BRAZE.
+ *
+ * The SDK keys in `app.config.ts` are hardcoded to production and are not
+ * gated by build type, so a debug build signed into a test account creates a
+ * REAL profile in the production workspace — indistinguishable from a member,
+ * and eligible for real lifecycle sends once Braze owns them.
+ *
+ * The tell is a LOCAL database UUID sitting in production Braze. On
+ * 2026-10-08 a single device-test session created one, and a sweep had to
+ * submit 196 external_ids to clean up after device testing generally.
+ *
+ * 🔑 Nulling the module here is deliberate rather than guarding each call: all
+ * five Braze call sites in this file already short-circuit on `if (!Braze)`,
+ * because that is the path Expo Go has always taken. So this reuses an
+ * exercised code path instead of adding an untested one, and no future call
+ * site can forget the check.
+ *
+ * ⚠️ Release builds are UNAFFECTED, TestFlight and internal-track included —
+ * those are close enough to production that push and campaign testing still
+ * needs to work. This closes the debug/Metro hole, which is where the strays
+ * actually came from. Set EXPO_PUBLIC_BRAZE_IN_DEV=1 to opt a dev build back
+ * in deliberately.
+ *
+ * 📌 Amplitude and ad-attribution are intentionally left alone — they do not
+ * send anyone an email. Worth revisiting separately for analytics hygiene.
+ */
+const BRAZE_ENABLED =
+  !__DEV__ || process.env.EXPO_PUBLIC_BRAZE_IN_DEV === "1";
+if (!BRAZE_ENABLED) {
+  Braze = null;
+}
+
+/**
  * BrazeService — wrapper for all Braze SDK interactions.
  * Never call Braze SDK directly from screens/components — go through this service.
  * Gracefully no-ops when native module is unavailable.
