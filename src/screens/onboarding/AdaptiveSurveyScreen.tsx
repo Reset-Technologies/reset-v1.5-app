@@ -29,10 +29,12 @@ const BEAT_MS = 3200;
  * The adaptive onboarding survey — the server-driven counterpart to
  * `OnboardingSurveyScreen`.
  *
- * ⚠️ NOT in the live flow. `SURVEY_STEPS` is still what members walk. This is
- * reachable only through the __DEV__ route so the loop can be exercised on a
- * device against a real backend, which is the only way to test anything in this
- * repo — there is no test runner.
+ * ⚠️ Which survey members walk is decided by `ADAPTIVE_SURVEY_ENABLED` in
+ * `constants/flags.ts`, which points the single `Survey` route at this screen
+ * or at `OnboardingSurveyScreen`. The flag is currently OFF: `SURVEY_STEPS` is
+ * what members walk, and this screen is reached only by flipping it locally.
+ * 🔑 Exercising it on a device against a real backend is the only way to test
+ * anything in this repo — there is no test runner.
  *
  * 🔑 This screen RENDERS; it does not decide. Question order, scoring, the
  * confidence gate and when the flow ends all live on the server. The one piece
@@ -56,7 +58,7 @@ const BEAT_MS = 3200;
  */
 export function AdaptiveSurveyScreen({ navigation }: Props) {
   const { step, loading, error, progress, start, answer } = useTypingTree();
-  const { setDietaryRestrictions, setQuizAnswer } = useApp();
+  const { state, setDietaryRestrictions, setQuizAnswer } = useApp();
   const [beatDone, setBeatDone] = useState(true);
   const started = useRef(false);
 
@@ -76,9 +78,29 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    // hasScan false for the dev walk — the skipped-scan route is the one worth
-    // exercising, since it is the path the fixed flow historically got wrong.
-    void start({ hasScan: false });
+    // 🔴 The scan state must come from what actually happened, not a constant.
+    // Three of the four routes into `Survey` arrive from a scan —
+    // ScanScreen's two `replace("Survey")` calls and CameraPerm — and only
+    // PreScan's "Continue without scanning" does not. This screen briefly
+    // hardcoded `hasScan: false`, which was right while it lived on a
+    // __DEV__-only route reachable solely from the skip, and wrong the moment
+    // it became the real Survey route: every scanning member was typed as a
+    // non-scanner and `deriveScanState` collapsed to NO_SCAN, leaving the
+    // tree's whole scan branch unreachable.
+    //
+    // 🔑 `state.biometrics` is the signal, for the reason AiConsentScreen
+    // documents: it is local, is populated only by a scan that actually ran,
+    // and cannot be lost to a network failure the way a synced profile flag
+    // can. A scan that RAN but produced no usable signal is a different state
+    // (NO_TYPING_SCAN_SIGNAL) from a scan that never happened (NO_SCAN), so
+    // `hasScan` says whether it ran and the biomarkers go through untouched —
+    // the server owns every threshold.
+    const scan = state.biometrics;
+    void start({
+      hasScan: scan !== null,
+      stressIndex: scan?.stressIndex ?? null,
+      wellnessScore: scan?.wellness ?? null,
+    });
   }, [start]);
 
   // A reflection or bridge is "proof of listening" and arrives attached to the

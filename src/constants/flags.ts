@@ -20,5 +20,20 @@
  * Requires reset-api `6ff216a` or later, which writes the Type from the
  * adaptive session and lets the Day 1 Deep Read quote adaptive answers. Against
  * an older backend a member would finish the flow untyped.
+ *
+ * 🔴 OFF deliberately. Turning it on is a product decision, not a cleanup:
+ *   1. The fixed V1 engine reached members on 2026-10-07. `typingDiagnostics`
+ *      exists to compare the two on real signups and has barely any data yet;
+ *      flipping this now replaces a days-old engine on no evidence and destroys
+ *      the comparison that column was added for.
+ *   2. There is NO OTA channel and no remote config, so turning it back off is
+ *      another full release on both stores. There is no percentage rollout —
+ *      this is 0% or 100%.
+ *   3. Still unwalked on a device: the scan-present branch, the 9-question
+ *      ambiguity-bridge path (reachable by a perfectly consistent member — only
+ *      the 6-question path has ever been walked), and iOS entirely.
+ *   4. Styling parity with `OnboardingSurveyScreen` is not done, and Lang's
+ *      layout is canonical.
+ * ▶ Revisit once real V1 signups have accrued diagnostics and 3 is closed.
  */
-export const ADAPTIVE_SURVEY_ENABLED = true;
+export const ADAPTIVE_SURVEY_ENABLED = false;
