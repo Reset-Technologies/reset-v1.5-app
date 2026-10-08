@@ -98,14 +98,60 @@ export async function linkAdAttribution(appsflyerId: string): Promise<void> {
   }
 }
 
-/** Associate the current RevenueCat identity with the backend user id. */
-export async function loginRevenueCat(appUserID: string): Promise<void> {
-  if (!configured || !appUserID) return;
+/**
+ * Associate the current RevenueCat identity with the backend user id.
+ *
+ * Returns whether the identity actually took. It used to return void and
+ * swallow the failure with "purchases still work under the anonymous id" —
+ * true, and precisely the problem: a purchase made under
+ * `$RCAnonymousID:…` is never attributable to a member, our webhook skips
+ * reconciliation for it, and nothing anywhere reports that it happened.
+ */
+export async function loginRevenueCat(appUserID: string): Promise<boolean> {
+  if (!configured || !appUserID) return false;
   try {
     await Purchases.logIn(appUserID);
+    return true;
   } catch {
-    // Best-effort; purchases still work under the anonymous id.
+    return false;
   }
+}
+
+/** The id RevenueCat currently transacts under, or null if unavailable. */
+export async function currentAppUserId(): Promise<string | null> {
+  if (!configured) return null;
+  try {
+    return (await Purchases.getAppUserID()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when RevenueCat has no real identity and would transact anonymously. */
+export function isAnonymousId(id: string | null | undefined): boolean {
+  return !!id && id.startsWith("$RCAnonymousID:");
+}
+
+/**
+ * Make sure RevenueCat is transacting as the backend user BEFORE a purchase.
+ *
+ * 🔴 Why this exists, from a real production event (2026-10-05): a RENEWAL
+ * arrived with `app_user_id`, `original_app_user_id` and the whole `aliases`
+ * array all set to the SAME `$RCAnonymousID:…`. There was nothing to resolve
+ * it against, so a paying App Store member on the 3-month plan is attached to
+ * no account at all. 1 of 11 production events.
+ *
+ * 🔑 The cause is not one bug but three that compound: `loginRevenueCat()` was
+ * fire-and-forget at both call sites, its failures were swallowed, and
+ * `purchasePackage()` never checked who it was transacting as. Any one of them
+ * is enough. This closes the last one, which is the only place it matters.
+ */
+export async function ensureIdentified(appUserID: string): Promise<boolean> {
+  if (!configured || !appUserID) return false;
+  const current = await currentAppUserId();
+  if (current === appUserID) return true;
+  if (!(await loginRevenueCat(appUserID))) return false;
+  return (await currentAppUserId()) === appUserID;
 }
 
 /** Reset to a fresh anonymous identity (e.g. on sign-out). */
@@ -170,27 +216,55 @@ export interface PurchaseOutcome {
   customerInfo: CustomerInfo | null;
   /** Set when the purchase failed for a reason other than cancellation. */
   error?: unknown;
+  /**
+   * False when the purchase had to go through under an anonymous RevenueCat
+   * id. The sale still completes — blocking it would cost real revenue to
+   * protect our own bookkeeping — but the caller MUST report it, because the
+   * member is otherwise invisible to reconciliation and to lifecycle.
+   */
+  identified?: boolean;
 }
 
-/** Buy a package from the current offering. */
+/**
+ * Buy a package from the current offering.
+ *
+ * Pass `appUserID` whenever the member is authenticated — the paywall always
+ * is, since the account is created two screens earlier. It is optional only so
+ * that callers without a user (there are none today) still compile.
+ */
 export async function purchasePackage(
   pkg: PurchasesPackage,
+  appUserID?: string,
 ): Promise<PurchaseOutcome> {
   if (!configured) {
     return { isPro: false, userCancelled: false, customerInfo: null };
   }
+  // 🔑 Identify BEFORE transacting. See ensureIdentified() for the production
+  // event that motivated this.
+  let identified = true;
+  if (appUserID) {
+    identified = await ensureIdentified(appUserID);
+  }
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);
+    // 🔑 If it had to go through anonymously, try once more AFTER the fact.
+    // RevenueCat aliases the anonymous id to the real one on logIn, which
+    // makes every SUBSEQUENT event for this subscription resolvable — the
+    // renewal we lost on 2026-10-05 would have been caught by this.
+    if (!identified && appUserID) {
+      await loginRevenueCat(appUserID);
+    }
     return {
       isPro: hasProEntitlement(customerInfo),
       userCancelled: false,
       customerInfo,
+      identified,
     };
   } catch (e: any) {
     if (e?.userCancelled) {
-      return { isPro: false, userCancelled: true, customerInfo: null };
+      return { isPro: false, userCancelled: true, customerInfo: null, identified };
     }
-    return { isPro: false, userCancelled: false, customerInfo: null, error: e };
+    return { isPro: false, userCancelled: false, customerInfo: null, error: e, identified };
   }
 }
 
