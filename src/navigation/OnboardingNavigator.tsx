@@ -1,6 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
+  AdaptiveSurveyScreen,
   PreScanScreen,
   NoScanEmptyStateScreen,
   CalibrationScreen,
@@ -21,6 +22,7 @@ import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
 import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
 import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
 import { K } from "../constants/colors";
+import { ADAPTIVE_SURVEY_ENABLED } from "../constants/flags";
 
 // New onboarding sequence (RES-119): education → pre-scan → scan →
 // chat-style survey questions → account → type reveal → share.
@@ -41,6 +43,12 @@ export type OnboardingStackParamList = {
   Calibration: undefined;
   Scan: undefined;
   Survey: { step?: number } | undefined;
+  /**
+   * 🔴 __DEV__ ONLY — the server-driven adaptive typing tree, which ships dark.
+   * Declared here so the route is type-safe, but only REGISTERED under __DEV__
+   * below, so it cannot be reached in a production build.
+   */
+  AdaptiveSurvey: undefined;
   AccountGate: undefined;
   CreateAccount: undefined;
   /** Connect a second sign-in method to an account the member already owns. */
@@ -139,9 +147,14 @@ export function OnboardingNavigator() {
           gestureEnabled: false,
         }}
       />
+      {/* 🔑 ONE route, two implementations. Every navigate("Survey") call site —
+          PreScan, Scan, CameraPerm — is untouched, so switching back is this
+          flag rather than four reverts. See constants/flags.ts. */}
       <Stack.Screen
         name="Survey"
-        component={OnboardingSurveyScreen}
+        component={
+          ADAPTIVE_SURVEY_ENABLED ? AdaptiveSurveyScreen : OnboardingSurveyScreen
+        }
         options={{
           contentStyle: { backgroundColor: K.brown },
           // 🔑 "none" ON PURPOSE — the crossfade is done IN THE SCREEN with
@@ -223,6 +236,15 @@ export function OnboardingNavigator() {
         }}
       />
       <Stack.Screen name="Account" component={AccountScreen} />
+      {/* 🔴 __DEV__ ONLY, and compiled out of production builds. The adaptive
+          typing tree is server-driven and ships dark; this route exists so the
+          loop can be walked on a device against a real backend, which is the
+          only way to test anything in this repo — there is no test runner.
+          Registering it unconditionally would put an unfinished flow one
+          mis-typed navigate() away from a member. */}
+      {__DEV__ ? (
+        <Stack.Screen name="AdaptiveSurvey" component={AdaptiveSurveyScreen} />
+      ) : null}
     </Stack.Navigator>
   );
 }
