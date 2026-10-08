@@ -63,7 +63,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 🔴 Deliberately a release of its own — this is the paywall, and a
   // RevenueCat bump has produced a billing-period bug here before, so a
   // regression must have exactly one candidate cause.
-  version: "3.7.1",
+  // 3.7.2: ships `70d2ab8`, the Stress Balance recalibration — the app half of
+  // a fix whose backend half (`fcf53bc`) went live 2026-10-07 WITHOUT it.
+  // 🔴 Why it was stranded: 3.7.1 was cut from the `revenuecat-sdk-bump` BRANCH
+  // (`63fed01`), not from main, so the version bump and the SDK bump both
+  // reached members while never landing on main — and `70d2ab8`, merged to main
+  // a day later, was therefore in no build at all. In production the backend cut
+  // "high" at >5 while the app still cut "Elevated" at >=3, labelling ~67% of
+  // scanning members Elevated across Scan Results, Scan Insights, Scan History
+  // and Profile. This takes that to 8%.
+  // ▶ CUT RELEASES FROM MAIN. Both faults here trace to not doing that.
+  version: "3.7.2",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
