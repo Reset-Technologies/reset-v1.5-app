@@ -6,6 +6,7 @@ import {
   Image,
   ScrollView,
   Dimensions,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -115,11 +116,19 @@ const FEATURES: { Icon: () => React.JSX.Element; label: string }[] = [
 export function PreScanView({
   onScan,
   onSkip,
+  onLogin,
   onBack,
   interactive = true,
 }: {
   onScan: () => void;
   onSkip: () => void;
+  /**
+   * 🔑 REQUIRED on purpose. This screen shipped with no way to sign in because
+   * the button lived on a screen that got deleted and nothing failed — not a
+   * test, not the build. Making it required means a future caller that forgets
+   * it is a type error rather than another silent disappearance.
+   */
+  onLogin: () => void;
   /** Omitted when there is nowhere to go back to — see PreScanScreen. */
   onBack?: () => void;
   interactive?: boolean;
@@ -281,6 +290,30 @@ export function PreScanView({
               onPress={onSkip}
             />
 
+            {/* 🔴 Sign-in had NO entry point on the first screen between
+                2026-10-06 and today. The button lived on Opening
+                (Screen Copy 1.0, "Log in stays here for existing members"),
+                and removing Opening for the iOS funnel test took it with it —
+                the commit accounted for the skip CTA and the back control but
+                not this. A returning member who reinstalled had to answer the
+                whole survey before reaching the gate's sign-in link.
+                🔑 Deliberately the gate's quiet text link, NOT a third
+                OnboardingCta — Screen Copy 2.0 says this screen is "the
+                natural next step, not a Scan / Skip / Log in fork", and a text
+                link keeps that true. Same treatment as
+                AccountGateScreen's "Already have a Reset account? Sign in."
+                📌 Interim. It belongs back on Opening once the funnel test
+                reads (~Nov 2026) — see project_ios_carousel_dropoff. */}
+            <TouchableOpacity
+              onPress={onLogin}
+              activeOpacity={0.85}
+              hitSlop={8}
+              style={styles.signInBtn}
+            >
+              <Text style={styles.signInText}>
+                Already have a Reset account? Sign in.
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -332,10 +365,16 @@ export function PreScanScreen({ navigation }: Props) {
   // reachable as a push, and the control is correct in that case.
   const canGoBack = navigation.canGoBack();
 
+  const handleLogin = () => {
+    logEvent("onboarding_pre_scan_loginCTA");
+    navigation.navigate("Login");
+  };
+
   return (
     <PreScanView
       onScan={handleScan}
       onSkip={handleSkip}
+      onLogin={handleLogin}
       onBack={canGoBack ? handleBack : undefined}
     />
   );
@@ -419,9 +458,23 @@ const styles = StyleSheet.create({
 
   // "Start scan" + "Continue without scanning", grouped so the gap between them
   // is independent of the content container's gap.
-  // 🔑 "I already have an account" used to sit here as a third button. It moved
-  // to Opening, where Flow row 1 puts it. Its fill — rgba(250,253,254,0.24),
-  // radius 4 — is now the `ghostFilled` variant on OnboardingCta.
+  // 🔑 "I already have an account" was a third button here, then moved to
+  // Opening (Flow row 1). Its fill — rgba(250,253,254,0.24), radius 4 — became
+  // the `ghostFilled` variant on OnboardingCta, which Opening used for "Log in"
+  // and which nothing uses now that Opening is gone.
+  // ⚠️ Sign-in is back on this screen as a text link (see the button group),
+  // NOT as that third button: the Sheet calls this screen "the natural next
+  // step, not a Scan / Skip / Log in fork".
   btnGroup: { gap: 12 },
+  // Same treatment as AccountGateScreen's sign-in link, so the two places a
+  // member can reach Login look like the same affordance.
+  signInBtn: { alignItems: "center", paddingVertical: 12 },
+  signInText: {
+    fontFamily: fonts.dmSans,
+    color: WHITE,
+    opacity: 0.7,
+    fontSize: 16,
+    letterSpacing: -0.16,
+  },
   closeGlyph: { fontSize: 28, color: "rgba(250,253,254,0.7)", fontWeight: "300" },
 });
