@@ -317,7 +317,7 @@ export function ProfileScreen() {
   const latestStressIdx = stressSeries.length ? stressSeries[stressSeries.length - 1] : null;
 
   // Scan-derived stress presented as a wellness band (Calm/Balanced/Elevated),
-  // anchored to the real ~0.5–4+ Baevsky range (see utils/stress). We never
+  // anchored to the real 0–10 ShenAI range (see utils/stress). We never
   // surface the raw index. Falls back to the type's default copy when there's
   // no scan yet.
   const stressWord =
@@ -328,7 +328,14 @@ export function ProfileScreen() {
   // span for each metric (stress/recovery indices, energy rank 1–4).
   const norm01 = (v: number | null, lo: number, hi: number) =>
     v == null ? 0.5 : Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
-  const stressLevel = norm01(latestStressIdx, 0.5, 4);
+  // 🔴 Was (0.5, 4) — the old, wrong Baevsky range. `stressIndex` is 0–10, so
+  // that clamped every value >= 4 to a maxed-out line: a member reading
+  // "Balanced" (3–5) could see the graph pinned to the top beside it. The band
+  // word was rescaled when the 0–10 range was settled from production; this
+  // normalisation sat two lines below it and was missed.
+  // 🔑 Keep these bounds equal to the real range utils/stress.ts documents —
+  // if the scale moves again, both move together.
+  const stressLevel = norm01(latestStressIdx, 0, 10);
   const recoveryLevel = norm01(recoveryCurrent, 20, 60);
   const energyLevel = norm01(energyRank(energyLogSorted[0]?.energy ?? null), 1, 4);
 
