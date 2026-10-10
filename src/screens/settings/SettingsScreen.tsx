@@ -523,6 +523,17 @@ export function SettingsScreen() {
                 thumbColor={K.white}
               />
             </View>
+            {/* A row, not a toggle: there is nothing to switch between yet.
+                The legacy daily-plan screens remain the live meals experience
+                and are untouched; this opens the new weekly surface alongside
+                them so it can be walked on a device before any cutover. */}
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() => navigation.navigate("MyPlan" as never)}
+            >
+              <Text style={styles.toggleLabel}>My Plan (weekly, preview)</Text>
+              <Text style={styles.linkArrow}>›</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.toggleRow}
               onPress={async () => {
