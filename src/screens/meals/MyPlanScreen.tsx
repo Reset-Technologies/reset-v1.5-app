@@ -10,17 +10,30 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { MainStackParamList } from "../../navigation/MainNavigator";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import {
   getMyPlan,
+  buildTags,
   MyPlanResponse,
+  MyPlanRecipe,
   MyPlanSlot,
   MealSlotType,
 } from "../../services/myPlan";
 
-type Props = NativeStackScreenProps<any, "MyPlan">;
+/**
+ * 🔑 Typed against the real param list, NOT `any`.
+ *
+ * The first version of this screen used `NativeStackScreenProps<any, "MyPlan">`
+ * and navigated to RecipeDetail with `{ recipeId, versionId }`. That route
+ * takes `{ meal: Meal }` and destructures it on arrival, so the tap would have
+ * pushed a screen with `undefined` params. `any` meant tsc said nothing, and
+ * the device walk never tapped a row. Typing it makes the compiler catch the
+ * next one.
+ */
+type Props = NativeStackScreenProps<MainStackParamList, "MyPlan">;
 
 /**
  * My Plan — the weekly plan surface. Lang's frame 5039:29721 (page 🟢 Meals).
@@ -187,15 +200,14 @@ export function MyPlanScreen({ navigation }: Props) {
                 slot={slot}
                 first={idx === 0}
                 emptyCopy={emptyCopy(slot.slotType)}
-                onPress={
-                  slot.recipe
-                    ? () =>
-                        navigation.navigate("RecipeDetail", {
-                          recipeId: slot.recipe!.id,
-                          versionId: slot.recipe!.versionId,
-                        })
-                    : undefined
-                }
+                /* 🔴 NOT navigable yet, on purpose. RecipeDetail takes a full
+                   legacy `Meal` and destructures it on arrival; My Plan's DTO
+                   is deliberately narrow (id, versionId, title, image, time,
+                   classification) and cannot produce one. Wiring this needs
+                   either a fetch-by-id or a recipe surface for the new model —
+                   that is the next slice. A tap that pushed a broken screen
+                   would be worse than a row that does not respond. */
+                onPress={undefined}
               />
             ))}
           {!day?.slots.length && (
@@ -244,15 +256,35 @@ function SlotRow({
         ) : (
           <Text style={styles.slotEmpty}>{emptyCopy ?? "Nothing planned"}</Text>
         )}
-        {/* 📌 The design shows tags here (Organic · Vegan · Fast).
-            `MyPlanRecipeDto` does not carry them yet — the data exists
-            server-side in `search_metadata` / the diet + cuisine tables, but is
-            not exposed. Deliberately omitted rather than faked; add once the
-            DTO returns them. */}
+        {/* Tag pills, worded by `buildTags` so this row and the legacy daily
+            card label the same meal identically. A meal can legitimately have
+            none — render nothing rather than an empty strip. */}
+        {recipe ? <TagRow recipe={recipe} /> : null}
       </View>
 
-      {recipe ? <Text style={styles.chevron}>{"›"}</Text> : null}
+      {/* 🔑 The chevron follows the ACTION, not the data. While a row cannot
+          navigate there must be nothing suggesting it can — the same mistake
+          as the back arrow left behind when Opening was deleted: it rendered,
+          it was tappable, and it did nothing. It comes back on its own once
+          `onPress` is wired. */}
+      {onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
     </Pressable>
+  );
+}
+
+function TagRow({ recipe }: { recipe: MyPlanRecipe }) {
+  const tags = buildTags(recipe);
+  if (!tags.length) return null;
+  return (
+    <View style={styles.tagRow}>
+      {tags.map((t) => (
+        <View key={t} style={styles.tag}>
+          <Text style={styles.tagText} numberOfLines={1}>
+            {t}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -351,6 +383,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chevron: { fontSize: 26, color: K.bone, opacity: 0.5 },
+  // Pills wrap rather than truncate: on the S24's narrow screen three tags do
+  // not fit on one line beside a 64pt thumbnail, and clipping a cuisine name
+  // reads as a rendering fault.
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: "rgba(250,253,254,0.12)",
+  },
+  tagText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    color: K.bone,
+    opacity: 0.8,
+  },
   emptyDay: {
     fontFamily: fonts.dmSans,
     fontSize: 15,
