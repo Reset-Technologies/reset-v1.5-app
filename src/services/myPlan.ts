@@ -41,6 +41,43 @@ export interface MyPlanRecipe {
   imageUrl: string | null;
   readyInMinutes: number | null;
   difficultyLevel: string | null;
+  /**
+   * Raw CLASSIFICATION values for the tag pills — not finished pill text. The
+   * server deliberately sends enums so the editorial call (which values are
+   * worth showing, how they are worded, how many fit) stays here with the
+   * design. See `buildTags` below.
+   */
+  inflammatoryIndex: "pro" | "neutral" | "anti" | null;
+  foodQuality: "whole" | "minimally_processed" | "ultra_processed" | null;
+  cuisineCluster: string | null;
+}
+
+/**
+ * Tag pills for a meal row.
+ *
+ * 🔑 Mirrors `NextMealScreen.buildTags` deliberately, so the new weekly surface
+ * and the legacy daily card label the same meal identically. Two rules come
+ * from there and are not arbitrary:
+ *   - only positively-framed values are surfaced. "neutral" and
+ *     "ultra_processed" are real classifications but do not read as helpful on
+ *     a recommendation card, so they are omitted rather than shown.
+ *   - capped at 3, which is also what Lang's frame has room for.
+ *
+ * 📌 If these rules change, change them in BOTH places or the two surfaces will
+ * disagree about the same meal — exactly the kind of drift that produced three
+ * different stress scales.
+ */
+export function buildTags(recipe: MyPlanRecipe): string[] {
+  const tags: string[] = [];
+  if (recipe.inflammatoryIndex === "anti") tags.push("Anti-inflammatory");
+  if (recipe.foodQuality === "whole") tags.push("Whole foods");
+  if (recipe.cuisineCluster) {
+    tags.push(
+      recipe.cuisineCluster.charAt(0).toUpperCase() +
+        recipe.cuisineCluster.slice(1),
+    );
+  }
+  return tags.slice(0, 3);
 }
 
 export interface MyPlanSlot {
