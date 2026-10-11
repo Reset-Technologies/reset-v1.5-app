@@ -13,13 +13,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Line, Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { logEvent } from "../../services/braze";
 import { SampleMealSheet } from "./SampleMealSheet";
 
-type Props = NativeStackScreenProps<any, "NoScanEmptyState">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "NoScanEmptyState">;
 
 const SCREEN_W = Dimensions.get("window").width;
 

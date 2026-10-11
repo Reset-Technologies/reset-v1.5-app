@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import * as AppleAuthentication from "expo-apple-authentication";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, MetabolicType } from "../../constants/colors";
@@ -28,7 +29,7 @@ import {
   isGoogleSignInAvailable,
 } from "../../services/googleSignin";
 
-type Props = NativeStackScreenProps<any, "AccountGate">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "AccountGate">;
 
 const MAROON = "#361416";
 const BONE = "#F3EFE3";

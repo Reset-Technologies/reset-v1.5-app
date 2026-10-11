@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { OnboardingCta, ConsentCheckbox } from "../../components";
@@ -18,7 +19,7 @@ import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
 import { AI_DISCLOSURE_URL, PRIVACY_POLICY_URL } from "../../constants/legal";
 import { logEvent } from "../../services/braze";
 
-type Props = NativeStackScreenProps<any, "AiConsent">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "AiConsent">;
 
 // RES-188 — third-party-AI data-sharing consent (Apple 5.1.1(i)/5.1.2(i)).
 // Shown once after account creation, before the type reveal (the first call

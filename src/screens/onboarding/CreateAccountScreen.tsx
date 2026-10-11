@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
@@ -27,7 +28,7 @@ import { OnboardingBackButton, ConsentCheckbox } from "../../components";
 import { OnboardingCta } from "../../components";
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from "../../constants/legal";
 
-type Props = NativeStackScreenProps<any, "CreateAccount">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "CreateAccount">;
 
 const MAROON = "#361416";
 const BONE = "#F3EFE3";

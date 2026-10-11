@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import type { PurchasesPackage } from "react-native-purchases";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { fonts } from "../../constants/typography";
@@ -42,7 +43,7 @@ import { OnboardingBackButton } from "../../components";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markAppOpenFlowShown } from "../../utils/appOpenFlowGate";
 
-type Props = NativeStackScreenProps<any, "Paywall">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "Paywall">;
 
 const SCREEN_W = Dimensions.get("window").width;
 const SCREEN_H = Dimensions.get("window").height;

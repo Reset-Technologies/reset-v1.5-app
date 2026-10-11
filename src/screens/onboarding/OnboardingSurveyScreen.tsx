@@ -15,6 +15,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { useVideoPlayer } from "expo-video";
 import { PersonaIntroMedia } from "./PersonaIntroMedia";
@@ -35,7 +36,7 @@ import {
   resolveOptions,
 } from "./onboardingSurvey";
 
-type Props = NativeStackScreenProps<any, "Survey">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "Survey">;
 
 const ESTER_BADGE = require("../../../assets/images/ester-avatar-silver.png");
 // Plays on the post-scan splash (Figma 1553-17494) and again on the
