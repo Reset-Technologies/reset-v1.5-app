@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
@@ -18,7 +19,7 @@ import { PreScanIllustration } from "../../components/PreScanIllustration";
 import { OnboardingBackButton } from "../../components";
 import { OnboardingCta } from "../../components";
 
-type Props = NativeStackScreenProps<any, "PreScan">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "PreScan">;
 
 // The exported PNG is 1206×1002. Render it at full screen width so the fanned
 // cards reach (and bleed past) the screen edges; explicit numeric dimensions

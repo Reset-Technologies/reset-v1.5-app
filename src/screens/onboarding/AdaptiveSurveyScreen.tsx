@@ -10,13 +10,24 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { K } from "../../constants/colors";
 import { DIETARY_RESTRICTIONS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
 import { nextSetupDue, useTypingTree } from "../../hooks/useTypingTree";
 import { logEvent } from "../../services/braze";
 
-type Props = NativeStackScreenProps<any>;
+/**
+ * 🔑 A UNION of both route names, because this component is registered TWICE:
+ * on `Survey` when ADAPTIVE_SURVEY_ENABLED is on, and on `AdaptiveSurvey`
+ * under __DEV__. Typing it to either one alone makes the other registration a
+ * compile error — which is exactly what happened, and is how the double
+ * registration surfaced.
+ */
+type Props = NativeStackScreenProps<
+  OnboardingStackParamList,
+  "Survey" | "AdaptiveSurvey"
+>;
 
 const MAROON = K.brown;
 const WHITE = "#FAFDFE";

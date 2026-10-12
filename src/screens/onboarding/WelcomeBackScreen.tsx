@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { Button } from "../../components";
@@ -22,7 +23,7 @@ const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
 const MARK_BOX = 92;
 const MARK_SIZE = MARK_BOX * 0.825;
 
-type Props = NativeStackScreenProps<any, "WelcomeBack">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "WelcomeBack">;
 
 /**
  * RES-207 — the one screen a returning BetterWell member sees that nobody else

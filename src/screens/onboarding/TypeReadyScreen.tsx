@@ -3,11 +3,12 @@ import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { fonts } from "../../constants/typography";
 import { K } from "../../constants/colors";
 import { logEvent } from "../../services/braze";
 
-type Props = NativeStackScreenProps<any, "TypeReady">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "TypeReady">;
 
 const BRAND_LOGO = require("../../../assets/images/brand-logo-silver.png");
 

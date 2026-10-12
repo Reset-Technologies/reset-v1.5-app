@@ -64,6 +64,18 @@ type ScanEntry =
   | "app_open_encourage"
   | "app_open_data_gate";
 
+/**
+ * 🔴 `any` DELIBERATELY, and this is the one case where it is right.
+ *
+ * This screen is registered in BOTH OnboardingNavigator and MainNavigator,
+ * whose param lists are different types. Typing it against either one makes
+ * the other registration a compile error, and React Navigation's answer
+ * (CompositeScreenProps) needs both lists to agree about this route first.
+ *
+ * 📌 Typing it also surfaced that the Onboarding list UNDER-DECLARES what
+ * this screen actually reads from `route.params`. Worth fixing, but it is a
+ * navigation refactor, not an annotation — see feedback_verify_before_done.
+ */
 type Props = NativeStackScreenProps<any, "Scan"> & {
   route: {
     params?: {

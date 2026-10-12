@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { K } from "../../constants/colors";
 import { typography } from "../../constants/typography";
@@ -42,7 +43,7 @@ if (GoogleSignin) {
   });
 }
 
-type Props = NativeStackScreenProps<any, "Account">;
+type Props = NativeStackScreenProps<OnboardingStackParamList, "Account">;
 
 export function AccountScreen({ navigation }: Props) {
   const { state, setUserAccount, setAuth, completeOnboarding } = useApp();
