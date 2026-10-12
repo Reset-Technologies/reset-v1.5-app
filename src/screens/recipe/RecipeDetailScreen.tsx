@@ -301,6 +301,21 @@ function capitalizeSlot(time: Meal["time"]): string {
   return time.charAt(0).toUpperCase() + time.slice(1);
 }
 
+/**
+ * The only three serving options the product has — and the only three the
+ * backend accepts (`SERVING_MULTIPLIERS` = {0.5, 1, 2}; `setServings` throws
+ * on anything else).
+ */
+export type ServingMultiplier = 0.5 | 1 | 2;
+
+const SERVING_OPTIONS: ServingMultiplier[] = [0.5, 1, 2];
+
+const SERVING_LABEL: Record<ServingMultiplier, string> = {
+  0.5: "Half",
+  1: "Standard",
+  2: "Double",
+};
+
 export function RecipeDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
@@ -319,7 +334,22 @@ export function RecipeDetailScreen() {
   const [siblings, setSiblings] = useState<Meal[]>(
     route.params.siblings ?? [],
   );
-  const [servings, setServings] = useState<number>(1);
+  /**
+   * 🔴 A MULTIPLIER (0.5 / 1 / 2), not a serving count.
+   *
+   * The sheet is explicit in two places: MY PLAN r20 — *"Member-facing half /
+   * standard / double maps to multiplier … 0.5 / 1 / 2 … Simple segmented
+   * control"* — and RECIPE MODEL's `servings_base`: *"UI uses half/standard/
+   * double multiplier."* SERVINGS + ING then defines what each does: Standard
+   * is **base quantities**, Half scales ×0.5, Double ×2.
+   *
+   * This screen shipped a +/− stepper holding a COUNT, which is a different
+   * model: it let a member ask for 7 servings, a value the backend rejects
+   * outright (`SERVING_MULTIPLIERS` is {0.5, 1, 2} and `setServings` throws on
+   * anything else). Lang's frame shows a "4 servings" dropdown, which is the
+   * same mismatch.
+   */
+  const [multiplier, setMultiplier] = useState<ServingMultiplier>(1);
   const [esterText, setEsterText] = useState<string | null>(null);
   const [esterLoading, setEsterLoading] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -339,7 +369,9 @@ export function RecipeDetailScreen() {
         if (cancelled) return;
         setDetail(mealDetail);
         setIngredients(mealIngredients);
-        setServings(mealDetail.servingsMin ?? 1);
+        // Standard by default — the recipe as written. Nothing to derive from
+        // the recipe's own serving count any more.
+        setMultiplier(1);
       } catch {
         // Keep meal card data as fallback
       } finally {
@@ -609,6 +641,12 @@ export function RecipeDetailScreen() {
           {/* Ingredients */}
           {ingredients.length > 0 ? (
             <View style={styles.section}>
+              {/* 🔑 The control sits on its OWN row, not beside the title.
+                  Three word labels are much wider than the +/− stepper they
+                  replaced, and sharing the row squeezed the heading until
+                  "Ingredients" wrapped to "Ingredie / nts" on an S24. The
+                  selected segment is also the only label needed — the separate
+                  meta line under the title printed "Standard" a second time. */}
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <View style={styles.sectionTitleRow}>
@@ -619,35 +657,45 @@ export function RecipeDetailScreen() {
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.sectionMeta}>
-                    {servings} {servings === 1 ? "Serving" : "Servings"}
-                  </Text>
                 </View>
-                <View style={styles.servingsStepper}>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() =>
-                      setServings((s) => Math.max(1, s - 1))
-                    }
-                    hitSlop={8}
-                  >
-                    <Text style={styles.stepperGlyph}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.stepperValue}>{servings}</Text>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => setServings((s) => s + 1)}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.stepperGlyph}>+</Text>
-                  </TouchableOpacity>
+              </View>
+              <View style={styles.servingsRow}>
+                <View style={styles.servingsSegmented}>
+                  {SERVING_OPTIONS.map((m) => {
+                    const active = m === multiplier;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.segment,
+                          active && styles.segmentActive,
+                        ]}
+                        onPress={() => setMultiplier(m)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`${SERVING_LABEL[m]} servings`}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentText,
+                            active && styles.segmentTextActive,
+                          ]}
+                        >
+                          {SERVING_LABEL[m]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
               <View style={styles.ingredientsList}>
                 {ingredients.map((ing, idx) => {
-                  const scale = servingsBase > 0 ? servings / servingsBase : 1;
-                  const qty = ing.quantity * scale;
+                  // SERVINGS + ING: Standard is "Base quantities", so the
+                  // multiplier applies directly. The old `servings /
+                  // servingsBase` ratio existed only because the stepper held a
+                  // count; there is nothing to divide by now.
+                  const qty = ing.quantity * multiplier;
                   const qtyDisplay = formatQty(qty, ing.measurement);
                   return (
                     <View
@@ -948,43 +996,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.14,
     color: K.brown,
   },
-  sectionMeta: {
-    fontFamily: fonts.dmSans,
-    fontSize: 14,
-    letterSpacing: -0.14,
-    color: K.brown,
-  },
-  servingsStepper: {
+  servingsRow: { marginTop: 12, alignItems: "flex-start" },
+  servingsSegmented: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: K.white,
-    borderColor: K.border,
-    borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    overflow: "hidden",
+    backgroundColor: "rgba(54,20,22,0.08)",
   },
-  stepperBtn: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepperGlyph: {
-    fontSize: 22,
-    fontFamily: fonts.dmSans,
-    color: K.brown,
-    lineHeight: 24,
-  },
-  stepperValue: {
-    minWidth: 30,
-    textAlign: "center",
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    letterSpacing: -0.2,
-    color: K.brown,
-  },
+  segment: { paddingHorizontal: 14, paddingVertical: 8 },
+  segmentActive: { backgroundColor: K.brown, borderRadius: 999 },
+  segmentText: { fontFamily: fonts.catalogue, fontSize: 13, color: K.brown },
+  segmentTextActive: { color: K.cream },
   // Ingredients list
   ingredientsList: {
     gap: 0,
