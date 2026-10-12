@@ -22,6 +22,10 @@ import {
   MyPlanSlot,
   MealSlotType,
 } from "../../services/myPlan";
+import { getFavorites, addFavorite, removeFavorite } from "../../services/meals";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from "react-native-svg";
+import { BookmarkIcon } from "../../components/BookmarkIcon";
+import { logEvent } from "../../services/amplitude";
 
 /**
  * 🔑 Typed against the real param list, NOT `any`.
@@ -135,6 +139,76 @@ export function MyPlanScreen({ navigation }: Props) {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * Which recipes the member has saved.
+   *
+   * 🔑 Saved state is NOT on `MyPlanRecipeDto` and deliberately does not need
+   * to be. `/api/meals/favorites` already returns the saved meals by id, so the
+   * client intersects locally. Unlike `diets`, this cost no DTO change and no
+   * deploy — which also means no "new client, old server" window, the failure
+   * that bit the tag work. [[project_meals_tab]]
+   *
+   * 📌 The design calls this "Saved" and our API calls it "favorites". They are
+   * the same thing: the handoff sheet specifies **ONE Save action**, so this
+   * surfaces the existing save rather than introducing a second concept.
+   */
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Re-read saved state on every focus, not just on mount.
+   *
+   * Recipe Details carries its own bookmark, so a member can open a row, save
+   * the recipe there and come straight back — the row behind must not still
+   * show it unsaved. This is safe to repeat because it hits the favorites
+   * endpoint ONLY; `getMyPlan()` stays a once-on-open call, since that request
+   * can generate the week (MY PLAN r6: "Never regenerate just because screen
+   * opened").
+   */
+  useEffect(() => {
+    const load = () => {
+      getFavorites()
+        .then((favs) => setSavedIds(new Set(favs.map((f) => f.id))))
+        // Saved state is decoration on a row that works without it; a failure
+        // here must never blank the plan.
+        .catch(() => {});
+    };
+    load();
+    return navigation.addListener("focus", load);
+  }, [navigation]);
+
+  const toggleSaved = useCallback(
+    async (recipe: MyPlanRecipe) => {
+      const next = !savedIds.has(recipe.id);
+      // Named for THIS entry point rather than reusing Home's or Recipe
+      // Details' event, so the three bookmarks stay countable apart — the same
+      // reason `home_recipe_detail_favoriteCTA` exists separately.
+      logEvent("myplan_meal_favoriteCTA", {
+        mealId: recipe.id,
+        mealName: recipe.title,
+        action: next ? "favorite" : "unfavorite",
+      });
+      setSavedIds((prev) => {
+        const copy = new Set(prev);
+        if (next) copy.add(recipe.id);
+        else copy.delete(recipe.id);
+        return copy;
+      });
+      try {
+        if (next) await addFavorite(recipe.id);
+        else await removeFavorite(recipe.id);
+      } catch {
+        // Put the pill back the way it was; the member's tap did not land.
+        setSavedIds((prev) => {
+          const copy = new Set(prev);
+          if (next) copy.delete(recipe.id);
+          else copy.add(recipe.id);
+          return copy;
+        });
+      }
+    },
+    [savedIds],
+  );
 
   const day = plan?.days[selected] ?? null;
 
@@ -252,6 +326,10 @@ export function MyPlanScreen({ navigation }: Props) {
                 onPress={
                   slot.recipe ? () => openRecipe(slot.recipe!, slot.slotType) : undefined
                 }
+                saved={slot.recipe ? savedIds.has(slot.recipe.id) : false}
+                onToggleSave={
+                  slot.recipe ? () => toggleSaved(slot.recipe!) : undefined
+                }
               />
             ))}
           {!day?.slots.length && (
@@ -268,11 +346,15 @@ function SlotRow({
   first,
   emptyCopy,
   onPress,
+  saved,
+  onToggleSave,
 }: {
   slot: MyPlanSlot;
   first: boolean;
   emptyCopy: string | null;
   onPress?: () => void;
+  saved: boolean;
+  onToggleSave?: () => void;
 }) {
   const label = SLOT_LABEL[slot.slotType];
   const recipe = slot.recipe;
@@ -285,11 +367,50 @@ function SlotRow({
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={recipe ? `${label}: ${recipe.title}` : `${label}: empty`}
     >
-      {recipe?.imageUrl ? (
-        <Image source={{ uri: recipe.imageUrl }} style={styles.thumb} />
-      ) : (
-        <View style={[styles.thumb, styles.thumbEmpty]} />
-      )}
+      {/* 🔑 The saved badge sits INSIDE the thumbnail, bottom-right, per Lang's
+          frame (the "Saved" layer on Recipe Image 1:1). Its own Pressable
+          handles the touch, so tapping the bookmark saves rather than opening
+          the recipe — RN does not bubble a press to the parent Pressable.
+          `hitSlop` brings a 21pt badge up to a comfortable target without
+          growing the visual chip. */}
+      <View style={styles.thumbWrap}>
+        {recipe?.imageUrl ? (
+          <Image source={{ uri: recipe.imageUrl }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.thumb, styles.thumbEmpty]} />
+        )}
+        {/* Legibility scrim. The frame darkens the bottom of every recipe
+            thumbnail (a page-surface gradient from 22% to 69% of its height),
+            and that is the ONLY reason a translucent light chip with a white
+            glyph reads at all. Without it the chip and the bookmark dissolve
+            into a bright photo — which is exactly what happened on the first
+            device pass. Drawn with react-native-svg to match NextMealScreen's
+            `heroScrim` rather than adding a native gradient dependency. */}
+        {recipe?.imageUrl ? (
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <SvgLinearGradient id="thumbScrim" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0.31" stopColor={K.brown} stopOpacity={0} />
+                <Stop offset="1" stopColor={K.brown} stopOpacity={0.78} />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" rx="8" fill="url(#thumbScrim)" />
+          </Svg>
+        ) : null}
+        {recipe && onToggleSave ? (
+          <Pressable
+            onPress={onToggleSave}
+            hitSlop={8}
+            style={styles.savedBadge}
+            accessibilityRole="button"
+            accessibilityLabel={
+              saved ? `Remove ${recipe.title} from saved` : `Save ${recipe.title}`
+            }
+          >
+            <BookmarkIcon filled={saved} color={K.cream} width={13} height={16} />
+          </Pressable>
+        ) : null}
+      </View>
 
       <View style={styles.slotText}>
         <Text style={styles.slotLabel}>{label}</Text>
@@ -399,6 +520,17 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(243,239,227,0.14)",
   },
   thumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: "rgba(243,239,227,0.08)" },
+  thumbWrap: { width: 64, height: 64 },
+  // Frame: translucent light chip, fully rounded, 4pt inset from the image
+  // corner. Light-on-translucent keeps it legible over any photo.
+  savedBadge: {
+    position: "absolute",
+    right: 4,
+    bottom: 4,
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(250,253,254,0.24)",
+  },
   thumbEmpty: {
     borderWidth: 1,
     borderColor: "rgba(243,239,227,0.25)",
