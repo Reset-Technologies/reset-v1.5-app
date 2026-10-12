@@ -53,41 +53,6 @@ type RecipeRouteParams = {
 const HERO_HEIGHT = 360;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
-// Spoonacular nutrient names that are *macros* (and thus excluded from the
-// vitamins-and-minerals %DV rollup).
-const MACRO_NAMES = new Set([
-  "Calories",
-  "Fat",
-  "Saturated Fat",
-  "Trans Fat",
-  "Mono Unsaturated Fat",
-  "Poly Unsaturated Fat",
-  "Carbohydrates",
-  "Net Carbohydrates",
-  "Sugar",
-  "Cholesterol",
-  "Protein",
-  "Fiber",
-  "Alcohol",
-  "Caffeine",
-]);
-
-function computeMicrosPctRollup(nutrients: MealNutrient[] | null): number | null {
-  if (!nutrients || nutrients.length === 0) return null;
-  const micros = nutrients.filter(
-    (n) =>
-      !MACRO_NAMES.has(n.name) &&
-      typeof n.percentOfDailyNeeds === "number" &&
-      n.percentOfDailyNeeds > 0,
-  );
-  if (micros.length === 0) return null;
-  const sum = micros.reduce(
-    (acc, n) => acc + Math.min(100, n.percentOfDailyNeeds!),
-    0,
-  );
-  return Math.round(sum / micros.length);
-}
-
 function parseInstructions(instructions: string | null): string[] {
   if (!instructions) return [];
 
@@ -493,11 +458,6 @@ export function RecipeDetailScreen() {
   };
 
   const steps = parseInstructions(detail?.instructions ?? null);
-  const calories = detail?.calories ?? meal.calories;
-  const protein = detail?.proteinGrams ?? meal.protein;
-  const carbs = detail?.carbsGrams ?? 0;
-  const fat = detail?.fatGrams ?? 0;
-  const fiber = detail?.fiberGrams ?? 0;
   const prepTime = detail?.prepTime ?? meal.prepTime;
   const esterMessage = esterText ?? (esterLoading ? null : meal.whyLine);
   const servingsBase = detail?.servingsMin ?? 1;
@@ -505,11 +465,6 @@ export function RecipeDetailScreen() {
     .map((d) => d.name)
     .filter(Boolean)
     .slice(0, 3);
-
-  const microsPct = useMemo(
-    () => computeMicrosPctRollup(detail?.nutrientsJson ?? null),
-    [detail?.nutrientsJson],
-  );
 
   const heroSource = meal.imageUrl
     ? { uri: meal.imageUrl }
@@ -588,41 +543,23 @@ export function RecipeDetailScreen() {
             </View>
           </View>
 
-          {/* Nutrition: calories pill + 4 macro chips */}
-          <View style={styles.nutritionRow}>
-            <View style={styles.caloriesPill}>
-              <Text style={styles.caloriesLabel}>Calories</Text>
-              <Text style={styles.caloriesValue}>
-                {Math.round(Number(calories ?? 0))}
-              </Text>
-            </View>
-            <View style={styles.macrosPill}>
-              <MacroChip
-                label="Protein"
-                value={Math.round(Number(protein ?? 0))}
-              />
-              <MacroChip
-                label="Carbs"
-                value={Math.round(Number(carbs ?? 0))}
-              />
-              <MacroChip label="Fat" value={Math.round(Number(fat ?? 0))} />
-              <MacroChip
-                label="Fiber"
-                value={Math.round(Number(fiber ?? 0))}
-              />
-            </View>
-          </View>
-
-          {/* %DV rollup (vitamins + minerals) */}
-          {microsPct !== null ? (
-            <View style={styles.dvRow}>
-              <DvMeter pct={microsPct} />
-              <Text style={styles.dvValue}>{microsPct}%</Text>
-              <Text style={styles.dvCaption}>
-                of daily vitamins + minerals
-              </Text>
-            </View>
-          ) : null}
+          {/* 🔴 NO NUTRITION HERE, DELIBERATELY — this screen used to render a
+              Calories pill, Protein/Carbs/Fat/Fiber chips and a
+              "% of daily vitamins + minerals" rollup. The spec says it must
+              not, in three places:
+                · START HERE r34 (RULE) — "User-facing calories/macros: Do not
+                  build. Energy is internal only."
+                · FOOD STANDARD r2 — "The member never sees calories, macros,
+                  nutrient scores, or a weekly nutrition scorecard."
+                · RECIPE MODEL r17 — `internal_nutrition` ("verified kcal,
+                  protein, fiber, sugar"), **Member-facing? NO**, CURRENT.
+              Lang's frame (5046:43237) has no nutrition on it either.
+              🔑 The %DV rollup went too: a "% of daily vitamins and minerals"
+              IS a nutrient score, and micronutrients are part of
+              internal_nutrition. That one is an inference from the rule rather
+              than a row naming it — the sheet never mentions vitamins at all.
+              📌 The data still arrives on the detail payload and still drives
+              Reset Food eligibility server-side. Internal, not hidden. */}
 
           {/* Message from Ester */}
           {!aiConsentGranted ? (
@@ -819,52 +756,6 @@ export function RecipeDetailScreen() {
   );
 }
 
-function MacroChip({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.macroChip}>
-      <Text style={styles.macroLabel}>{label}</Text>
-      <Text style={styles.macroValue}>
-        {value}
-        <Text style={styles.macroUnit}>g</Text>
-      </Text>
-    </View>
-  );
-}
-
-function DvMeter({ pct }: { pct: number }) {
-  const size = 20;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size / 2 - 2;
-  const circumference = 2 * Math.PI * r;
-  const filled = Math.max(0, Math.min(100, pct));
-  const dashOffset = circumference * (1 - filled / 100);
-  return (
-    <Svg width={size} height={size}>
-      <Circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        stroke={K.border}
-        strokeWidth={3}
-        fill="none"
-      />
-      <Circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        stroke={K.brown}
-        strokeWidth={3}
-        fill="none"
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={dashOffset}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${cx} ${cy})`}
-      />
-    </Svg>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -938,50 +829,6 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   // Nutrition row
-  nutritionRow: {
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "stretch",
-  },
-  caloriesPill: {
-    width: 77,
-    height: 80,
-    backgroundColor: K.blue,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    gap: 8,
-  },
-  caloriesLabel: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    letterSpacing: -0.12,
-    color: K.brown,
-  },
-  caloriesValue: {
-    fontFamily: fonts.dmSansBold,
-    fontSize: 20,
-    letterSpacing: -0.2,
-    color: K.brown,
-  },
-  macrosPill: {
-    flex: 1,
-    flexDirection: "row",
-    backgroundColor: K.bone,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 24,
-    borderBottomLeftRadius: 8,
-    paddingVertical: 4,
-  },
-  macroChip: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-  },
   macroLabel: {
     fontFamily: fonts.dmSans,
     fontSize: 12,
@@ -999,24 +846,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   // %DV row
-  dvRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  dvValue: {
-    fontFamily: fonts.dmSansBold,
-    fontSize: 16,
-    letterSpacing: -0.16,
-    color: K.brown,
-    marginLeft: 5,
-  },
-  dvCaption: {
-    fontFamily: fonts.dmSans,
-    fontSize: 12,
-    letterSpacing: -0.12,
-    color: K.sub,
-  },
   // Ester message
   esterBlock: {
     gap: 6,
