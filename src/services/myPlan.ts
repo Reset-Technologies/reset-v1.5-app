@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { dietLabel } from "../utils/dietLabel";
 
 /**
  * Client for the NEW weekly plan surface (`/api/meals/my-plan`).
@@ -50,32 +51,54 @@ export interface MyPlanRecipe {
   inflammatoryIndex: "pro" | "neutral" | "anti" | null;
   foodQuality: "whole" | "minimally_processed" | "ultra_processed" | null;
   cuisineCluster: string | null;
+  /**
+   * Diet names, lower-case as stored: "gluten free", "vegetarian", …
+   *
+   * 🔴 OPTIONAL on purpose, even though the DTO always sends it. This app has
+   * NO OTA channel, so a build can run for weeks against a backend that
+   * predates a field — and it did: tapping a row against the then-deployed
+   * server crashed on `recipe.diets.map` because `diets` had not shipped yet.
+   * Treat every newly added response field as absent-until-proven here.
+   */
+  diets?: string[];
 }
+
+
+/** Lang's frames call a short recipe "Fast"; Recipe Details says "30 min". */
+const FAST_MINUTES = 30;
 
 /**
  * Tag pills for a meal row.
  *
- * 🔑 Mirrors `NextMealScreen.buildTags` deliberately, so the new weekly surface
- * and the legacy daily card label the same meal identically. Two rules come
- * from there and are not arbitrary:
- *   - only positively-framed values are surfaced. "neutral" and
- *     "ultra_processed" are real classifications but do not read as helpful on
- *     a recommendation card, so they are omitted rather than shown.
- *   - capped at 3, which is also what Lang's frame has room for.
+ * 🔴 THIS NO LONGER MIRRORS `NextMealScreen.buildTags`, deliberately. The first
+ * version copied that legacy function — inflammatory index, food quality,
+ * cuisine — because it was the existing pattern. It is the wrong SOURCE:
+ * Lang's frames tag meals by DIET and TIME ("Gluten-free · Dairy-free · 30
+ * min", "Organic · Vegan · Fast"), and the classification fields are nearly
+ * constant across the catalogue — `cuisineCluster` is "comfort" for 88% of
+ * meals, so 52% of rows rendered the identical three pills.
  *
- * 📌 If these rules change, change them in BOTH places or the two surfaces will
- * disagree about the same meal — exactly the kind of drift that produced three
- * different stress scales.
+ * 📌 Measured before switching: 90% of meals carry at least one diet, and the
+ * most common pill row falls 52% -> 36% across 22 distinct rows. An
+ * improvement, not a cure — the catalogue itself is skewed (gluten free 67%,
+ * dairy free 57%) and 8% of meals will show only a time tag or nothing.
+ *
+ * ⚠️ "Organic" appears in Lang's My Plan frame and has NO source in our data.
+ * Omitted rather than faked.
+ *
+ * 🔑 The lesson worth keeping: the live app's behaviour is not the spec. I
+ * copied a pattern from the legacy card without checking the FRAME for what
+ * the tags should say.
+ *
+ * Capped at 3 — what the frame has room for.
  */
 export function buildTags(recipe: MyPlanRecipe): string[] {
-  const tags: string[] = [];
-  if (recipe.inflammatoryIndex === "anti") tags.push("Anti-inflammatory");
-  if (recipe.foodQuality === "whole") tags.push("Whole foods");
-  if (recipe.cuisineCluster) {
-    tags.push(
-      recipe.cuisineCluster.charAt(0).toUpperCase() +
-        recipe.cuisineCluster.slice(1),
-    );
+  const tags = (recipe.diets ?? []).map(dietLabel);
+  if (
+    recipe.readyInMinutes != null &&
+    recipe.readyInMinutes <= FAST_MINUTES
+  ) {
+    tags.push("Fast");
   }
   return tags.slice(0, 3);
 }
