@@ -302,8 +302,19 @@ export function PreScanView({
                 natural next step, not a Scan / Skip / Log in fork", and a text
                 link keeps that true. Same treatment as
                 AccountGateScreen's "Already have a Reset account? Sign in."
-                📌 Interim. It belongs back on Opening once the funnel test
-                reads (~Nov 2026) — see project_ios_carousel_dropoff. */}
+                ✅ PERMANENT, not interim. This shipped in 3.7.3 ahead of an
+                answer; Bryan confirmed it after the fact (2026-10-11): "Let's
+                put Log in back on Pre-scan now that it's the opening screen.
+                Keep it secondary." So Screen Copy 1.0/2.0 — which assume an
+                Opening screen that no longer exists — are superseded HERE by a
+                dated decision. Do not "restore" this to Opening later on the
+                strength of those rows; see project_ios_carousel_dropoff for
+                why Opening is gone.
+                📌 Bryan's suggested wording was "Already have an account? Log
+                in". He said "something like", and this copy matches the
+                account gate verbatim so the two routes to Login read as one
+                affordance. Worth settling whether the app says "Log in" or
+                "Sign in" — it currently says both. */}
             <TouchableOpacity
               onPress={onLogin}
               activeOpacity={0.85}

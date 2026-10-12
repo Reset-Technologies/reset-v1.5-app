@@ -18,6 +18,12 @@ import { TypeRevealScreen } from "../screens/onboarding/TypeRevealScreen";
 // else navigates to this route, and the row that does is gated behind
 // shouldShowExperiments(), so the shipping build can't reach it.
 import { WelcomeBackScreen } from "../screens/onboarding";
+// Preview-only, same arrangement as WelcomeBack above. The weekly plan surface
+// (`/api/meals/my-plan`) ships dark: the legacy `daily-plan` screens stay the
+// live experience until a cutover is agreed, and Lang's design puts My Plan in
+// a four-tab bar this app does not have. Reachable ONLY from
+// Settings ▸ EXPERIMENTAL, which is gated by shouldShowExperiments().
+import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
@@ -61,6 +67,8 @@ export type MainStackParamList = {
     siblings?: Meal[];
   };
   SavedMeals: undefined;
+  /** 🔴 Preview-only — see the import comment. Not reachable in a store build. */
+  MyPlan: undefined;
   WeeklyReview: undefined;
   WindowProgress: undefined;
   Settings: undefined;
@@ -177,6 +185,13 @@ export function MainNavigator() {
       <Stack.Screen
         name="SavedMeals"
         component={SavedMealsScreen}
+        options={{
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="MyPlan"
+        component={MyPlanScreen}
         options={{
           animation: "slide_from_right",
         }}
