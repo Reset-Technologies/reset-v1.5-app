@@ -24,6 +24,7 @@ import { WelcomeBackScreen } from "../screens/onboarding";
 // a four-tab bar this app does not have. Reachable ONLY from
 // Settings ▸ EXPERIMENTAL, which is gated by shouldShowExperiments().
 import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
+import { GroceryListScreen } from "../screens/meals/GroceryListScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
@@ -69,6 +70,7 @@ export type MainStackParamList = {
   SavedMeals: undefined;
   /** 🔴 Preview-only — see the import comment. Not reachable in a store build. */
   MyPlan: undefined;
+  GroceryList: undefined;
   WeeklyReview: undefined;
   WindowProgress: undefined;
   Settings: undefined;
@@ -188,6 +190,10 @@ export function MainNavigator() {
         options={{
           animation: "slide_from_right",
         }}
+      />
+      <Stack.Screen
+        name="GroceryList"
+        component={GroceryListScreen}
       />
       <Stack.Screen
         name="MyPlan"
