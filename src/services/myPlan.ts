@@ -50,32 +50,71 @@ export interface MyPlanRecipe {
   inflammatoryIndex: "pro" | "neutral" | "anti" | null;
   foodQuality: "whole" | "minimally_processed" | "ultra_processed" | null;
   cuisineCluster: string | null;
+  /** Diet names, lower-case as stored: "gluten free", "vegetarian", … */
+  diets: string[];
 }
+
+/**
+ * Display wording for a diet name.
+ *
+ * 🔑 The DB stores "gluten free"; Lang's frame reads "Gluten-free". Neither
+ * title-case nor a blind hyphenation gets every case right ("Whole 30",
+ * "Low FODMAP", "Keto"), so the exceptions are listed and anything unknown
+ * falls back to simple capitalisation rather than being dropped — a new diet
+ * appearing in the catalogue should still show, just less prettily.
+ */
+const DIET_LABEL: Record<string, string> = {
+  "gluten free": "Gluten-free",
+  "dairy free": "Dairy-free",
+  "low fodmap": "Low FODMAP",
+  "whole 30": "Whole30",
+  ketogenic: "Keto",
+  vegetarian: "Vegetarian",
+  vegan: "Vegan",
+  primal: "Primal",
+  paleo: "Paleo",
+  pescetarian: "Pescetarian",
+};
+
+const dietLabel = (name: string): string =>
+  DIET_LABEL[name.toLowerCase()] ??
+  name.charAt(0).toUpperCase() + name.slice(1);
+
+/** Lang's frames call a short recipe "Fast"; Recipe Details says "30 min". */
+const FAST_MINUTES = 30;
 
 /**
  * Tag pills for a meal row.
  *
- * 🔑 Mirrors `NextMealScreen.buildTags` deliberately, so the new weekly surface
- * and the legacy daily card label the same meal identically. Two rules come
- * from there and are not arbitrary:
- *   - only positively-framed values are surfaced. "neutral" and
- *     "ultra_processed" are real classifications but do not read as helpful on
- *     a recommendation card, so they are omitted rather than shown.
- *   - capped at 3, which is also what Lang's frame has room for.
+ * 🔴 THIS NO LONGER MIRRORS `NextMealScreen.buildTags`, deliberately. The first
+ * version copied that legacy function — inflammatory index, food quality,
+ * cuisine — because it was the existing pattern. It is the wrong SOURCE:
+ * Lang's frames tag meals by DIET and TIME ("Gluten-free · Dairy-free · 30
+ * min", "Organic · Vegan · Fast"), and the classification fields are nearly
+ * constant across the catalogue — `cuisineCluster` is "comfort" for 88% of
+ * meals, so 52% of rows rendered the identical three pills.
  *
- * 📌 If these rules change, change them in BOTH places or the two surfaces will
- * disagree about the same meal — exactly the kind of drift that produced three
- * different stress scales.
+ * 📌 Measured before switching: 90% of meals carry at least one diet, and the
+ * most common pill row falls 52% -> 36% across 22 distinct rows. An
+ * improvement, not a cure — the catalogue itself is skewed (gluten free 67%,
+ * dairy free 57%) and 8% of meals will show only a time tag or nothing.
+ *
+ * ⚠️ "Organic" appears in Lang's My Plan frame and has NO source in our data.
+ * Omitted rather than faked.
+ *
+ * 🔑 The lesson worth keeping: the live app's behaviour is not the spec. I
+ * copied a pattern from the legacy card without checking the FRAME for what
+ * the tags should say.
+ *
+ * Capped at 3 — what the frame has room for.
  */
 export function buildTags(recipe: MyPlanRecipe): string[] {
-  const tags: string[] = [];
-  if (recipe.inflammatoryIndex === "anti") tags.push("Anti-inflammatory");
-  if (recipe.foodQuality === "whole") tags.push("Whole foods");
-  if (recipe.cuisineCluster) {
-    tags.push(
-      recipe.cuisineCluster.charAt(0).toUpperCase() +
-        recipe.cuisineCluster.slice(1),
-    );
+  const tags = recipe.diets.map(dietLabel);
+  if (
+    recipe.readyInMinutes != null &&
+    recipe.readyInMinutes <= FAST_MINUTES
+  ) {
+    tags.push("Fast");
   }
   return tags.slice(0, 3);
 }
