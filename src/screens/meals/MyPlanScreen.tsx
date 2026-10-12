@@ -69,6 +69,22 @@ const SLOT_LABEL: Record<MealSlotType, string> = {
 
 const DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
 
+/**
+ * Semantic slot -> the legacy `Meal["time"]` vocabulary.
+ *
+ * 🔴 This mapping exists ONLY to hand a value to `RecipeDetail`, whose route
+ * param is the legacy `Meal`. It is a boundary adapter, not a model: the plan
+ * stays semantic (MY PLAN r16 forbids assuming three meals a day) and nothing
+ * reads this back. `snack` has no legacy equivalent and falls back to lunch,
+ * which only affects a label the detail screen re-fetches anyway.
+ */
+const SLOT_TO_LEGACY_TIME: Record<MealSlotType, "breakfast" | "lunch" | "dinner" | "snack"> = {
+  first_meal: "breakfast",
+  midday: "lunch",
+  evening: "dinner",
+  snack: "snack",
+};
+
 /** `2026-08-16` -> `16`, without constructing a Date (no timezone shifting). */
 function dayOfMonth(isoDate: string): string {
   const d = isoDate.slice(8, 10);
@@ -137,6 +153,39 @@ export function MyPlanScreen({ navigation }: Props) {
     [windowState],
   );
 
+  /**
+   * Open the recipe behind a slot.
+   *
+   * 🔑 Navigates IMMEDIATELY with what the plan already holds and lets
+   * RecipeDetailScreen fetch the full record itself, which it does regardless.
+   * Fetching here first would add a round-trip before the screen appears and
+   * buy nothing. Same shape as `SavedMealsScreen.handleMealPress`.
+   *
+   * 📌 `calories`/`protein` are required by the legacy `Meal` type and are
+   * passed as 0. They are NOT real values and nothing renders them — the
+   * nutrition UI was removed from Recipe Details because the spec says
+   * `internal_nutrition` is not member-facing. They are only here because the
+   * type still demands them, which it does because three OTHER screens still
+   * show calories and protein. See project_meals_tab.
+   */
+  const openRecipe = useCallback(
+    (recipe: MyPlanRecipe, slotType: MealSlotType) => {
+      navigation.navigate("RecipeDetail", {
+        meal: {
+          id: recipe.id,
+          name: recipe.title,
+          whyLine: "",
+          calories: 0,
+          protein: 0,
+          prepTime: recipe.readyInMinutes ?? 0,
+          time: SLOT_TO_LEGACY_TIME[slotType],
+          imageUrl: recipe.imageUrl ?? undefined,
+        },
+      });
+    },
+    [navigation],
+  );
+
   const range = useMemo(() => {
     if (!plan?.days.length) return "";
     const first = plan.days[0].date;
@@ -200,14 +249,9 @@ export function MyPlanScreen({ navigation }: Props) {
                 slot={slot}
                 first={idx === 0}
                 emptyCopy={emptyCopy(slot.slotType)}
-                /* 🔴 NOT navigable yet, on purpose. RecipeDetail takes a full
-                   legacy `Meal` and destructures it on arrival; My Plan's DTO
-                   is deliberately narrow (id, versionId, title, image, time,
-                   classification) and cannot produce one. Wiring this needs
-                   either a fetch-by-id or a recipe surface for the new model —
-                   that is the next slice. A tap that pushed a broken screen
-                   would be worse than a row that does not respond. */
-                onPress={undefined}
+                onPress={
+                  slot.recipe ? () => openRecipe(slot.recipe!, slot.slotType) : undefined
+                }
               />
             ))}
           {!day?.slots.length && (

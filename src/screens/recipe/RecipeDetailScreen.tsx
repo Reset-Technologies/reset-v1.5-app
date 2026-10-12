@@ -40,6 +40,7 @@ import {
   DailyPlanMeal,
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
+import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
 
@@ -461,9 +462,13 @@ export function RecipeDetailScreen() {
   const prepTime = detail?.prepTime ?? meal.prepTime;
   const esterMessage = esterText ?? (esterLoading ? null : meal.whyLine);
   const servingsBase = detail?.servingsMin ?? 1;
+  // 🔑 Through the shared `dietLabel` so this screen and the My Plan rows
+  // word the same diet identically. This used to render the raw lower-case
+  // name ("gluten free") while My Plan rendered "Gluten-free".
   const dietTags = (detail?.diets ?? [])
     .map((d) => d.name)
     .filter(Boolean)
+    .map(dietLabel)
     .slice(0, 3);
 
   const heroSource = meal.imageUrl

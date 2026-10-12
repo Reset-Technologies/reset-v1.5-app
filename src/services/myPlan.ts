@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { dietLabel } from "../utils/dietLabel";
 
 /**
  * Client for the NEW weekly plan surface (`/api/meals/my-plan`).
@@ -50,35 +51,18 @@ export interface MyPlanRecipe {
   inflammatoryIndex: "pro" | "neutral" | "anti" | null;
   foodQuality: "whole" | "minimally_processed" | "ultra_processed" | null;
   cuisineCluster: string | null;
-  /** Diet names, lower-case as stored: "gluten free", "vegetarian", … */
-  diets: string[];
+  /**
+   * Diet names, lower-case as stored: "gluten free", "vegetarian", …
+   *
+   * 🔴 OPTIONAL on purpose, even though the DTO always sends it. This app has
+   * NO OTA channel, so a build can run for weeks against a backend that
+   * predates a field — and it did: tapping a row against the then-deployed
+   * server crashed on `recipe.diets.map` because `diets` had not shipped yet.
+   * Treat every newly added response field as absent-until-proven here.
+   */
+  diets?: string[];
 }
 
-/**
- * Display wording for a diet name.
- *
- * 🔑 The DB stores "gluten free"; Lang's frame reads "Gluten-free". Neither
- * title-case nor a blind hyphenation gets every case right ("Whole 30",
- * "Low FODMAP", "Keto"), so the exceptions are listed and anything unknown
- * falls back to simple capitalisation rather than being dropped — a new diet
- * appearing in the catalogue should still show, just less prettily.
- */
-const DIET_LABEL: Record<string, string> = {
-  "gluten free": "Gluten-free",
-  "dairy free": "Dairy-free",
-  "low fodmap": "Low FODMAP",
-  "whole 30": "Whole30",
-  ketogenic: "Keto",
-  vegetarian: "Vegetarian",
-  vegan: "Vegan",
-  primal: "Primal",
-  paleo: "Paleo",
-  pescetarian: "Pescetarian",
-};
-
-const dietLabel = (name: string): string =>
-  DIET_LABEL[name.toLowerCase()] ??
-  name.charAt(0).toUpperCase() + name.slice(1);
 
 /** Lang's frames call a short recipe "Fast"; Recipe Details says "30 min". */
 const FAST_MINUTES = 30;
@@ -109,7 +93,7 @@ const FAST_MINUTES = 30;
  * Capped at 3 — what the frame has room for.
  */
 export function buildTags(recipe: MyPlanRecipe): string[] {
-  const tags = recipe.diets.map(dietLabel);
+  const tags = (recipe.diets ?? []).map(dietLabel);
   if (
     recipe.readyInMinutes != null &&
     recipe.readyInMinutes <= FAST_MINUTES
