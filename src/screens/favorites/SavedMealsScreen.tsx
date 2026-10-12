@@ -9,6 +9,10 @@ import {
   RefreshControl,
   Image,
   Dimensions,
+  TextInput,
+  ActionSheetIOS,
+  Alert,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -25,6 +29,25 @@ import type { MealFavorite } from "../../services/meals";
 
 type MealTypeFilter = "all" | "breakfast" | "lunch" | "dinner";
 
+/**
+ * Sort options, worded exactly as Lang annotated them on the frame
+ * ("Default iOS picker. Options: 1. Most Recent 2. Alphabetical (A-Z)
+ * 3. Quickest").
+ *
+ * 🔑 "Most Recent" is the ORDER THE SERVER RETURNS, which is only meaningful
+ * because `getFavorites` now has an explicit `ORDER BY favorite.createdAt DESC`
+ * (api #167). Before that the query had no ordering at all, so this label would
+ * have been a promise with nothing behind it.
+ */
+type SortKey = "recent" | "az" | "quickest";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  recent: "Most Recent",
+  az: "Alphabetical (A-Z)",
+  quickest: "Quickest",
+};
+const SORT_ORDER: SortKey[] = ["recent", "az", "quickest"];
+
 // The four filter labels are a fixed-width cost that can't shrink, so on
 // narrow screens (e.g. Galaxy S24 ~360dp) the pill row overflows. Tighten the
 // pill padding / gap / row inset only on small screens; larger screens
@@ -35,17 +58,53 @@ const PILL_PAD_H = COMPACT ? 12 : spacing.md;
 const PILL_GAP = COMPACT ? 8 : 12;
 const ROW_PAD_H = COMPACT ? spacing.md : spacing.lg;
 
+/**
+ * Small inline icons.
+ *
+ * 🔴 These were text glyphs ("⌕", "✕", "⇅") first. They rendered acceptably on
+ * the S24 I tested on, but a glyph depends on the font actually carrying it —
+ * and this app has already been bitten by assuming Android and iOS render the
+ * same thing. Everything else in the codebase draws icons as SVG paths
+ * (BookmarkIcon, TrendIcon, this screen's own back arrow), so these do too and
+ * the platform question disappears. Material 24x24 outlines, scaled.
+ */
+const ICON_PATHS = {
+  search:
+    "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
+  close:
+    "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  sort: "M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z",
+} as const;
+
+function Icon({
+  name,
+  color,
+  size = 20,
+}: {
+  name: keyof typeof ICON_PATHS;
+  color: string;
+  size?: number;
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d={ICON_PATHS[name]} fill={color} />
+    </Svg>
+  );
+}
+
 export function SavedMealsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { evening, outerBg, textColor, subtleText } = useAppPalette();
   // Meal-name color is themed via textColor (#361416 day / bone night). The
-  // cal/protein meta is a muted secondary: #7E6869 in light, a dimmed bone at
-  // night so it reads as secondary against the bone name on the maroon bg.
+  // meta line under it (prep time) is a muted secondary: #7E6869 in light, a
+  // dimmed bone at night so it reads as secondary against the bone name.
   const metaColor = evening ? "rgba(243, 239, 227, 0.6)" : "#7E6869";
   const [meals, setMeals] = useState<MealFavorite[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<MealTypeFilter>("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("recent");
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -110,7 +169,7 @@ export function SavedMealsScreen() {
   // breakfast as the primary category: a breakfast meal shows only under
   // Breakfast, and the Lunch/Dinner tabs exclude breakfast meals (otherwise a
   // breakfast item tagged lunch+dinner would leak into all three tabs).
-  const visibleMeals = meals.filter((m) => {
+  const typeFiltered = meals.filter((m) => {
     switch (filter) {
       case "breakfast":
         return m.isBreakfast;
@@ -122,6 +181,60 @@ export function SavedMealsScreen() {
         return true;
     }
   });
+
+  /**
+   * Search runs CLIENT-SIDE, deliberately.
+   *
+   * `GET /api/meals/favorites` does accept `?q=`, but this screen already holds
+   * the member's entire saved list in memory — it is their own saves, not a
+   * catalogue — so filtering locally is instant and costs no request per
+   * keystroke. The server parameter stays the right answer if this ever has to
+   * paginate.
+   *
+   * 🔴 This is NOT the Explore case. The EXPLORE tab's "Scale" rule is explicit
+   * that the low-thousands catalogue must paginate and must not be loaded
+   * client-side; that rule is about the library, not about a member's saves.
+   */
+  const q = query.trim().toLowerCase();
+  const searched = q
+    ? typeFiltered.filter((m) => m.name.toLowerCase().includes(q))
+    : typeFiltered;
+
+  /**
+   * 📌 "Most Recent" deliberately does NOT sort: it is the server's order, which
+   * is newest-save-first. Re-sorting here would just be a second, weaker guess
+   * at the same thing — `MealFavorite` carries no `savedAt` to sort on.
+   * Meals with no prep time sort last under "Quickest" rather than reading as
+   * instant.
+   */
+  const visibleMeals =
+    sort === "recent"
+      ? searched
+      : [...searched].sort((a, b) => {
+          if (sort === "az") return a.name.localeCompare(b.name);
+          const at = a.prepTime ?? Number.POSITIVE_INFINITY;
+          const bt = b.prepTime ?? Number.POSITIVE_INFINITY;
+          return at - bt;
+        });
+
+  /** Lang's frame shows a native picker; Android has no equivalent, so it
+   *  falls back to the Alert the rest of this app already uses. */
+  const openSortPicker = () => {
+    const labels = SORT_ORDER.map((k) => SORT_LABEL[k]);
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: [...labels, "Cancel"], cancelButtonIndex: labels.length },
+        (i) => {
+          if (i < labels.length) setSort(SORT_ORDER[i]);
+        },
+      );
+      return;
+    }
+    Alert.alert("Sort by", undefined, [
+      ...SORT_ORDER.map((k) => ({ text: SORT_LABEL[k], onPress: () => setSort(k) })),
+      { text: "Cancel", style: "cancel" as const },
+    ]);
+  };
 
   // Split the visible meals into rows of two for the grid.
   const rows: MealFavorite[][] = [];
@@ -166,6 +279,55 @@ export function SavedMealsScreen() {
         ))}
       </View>
 
+      {/* Search. The clear button only appears with text in the field, as the
+          frame shows. */}
+      <View style={styles.searchRow}>
+        <View style={[styles.searchBox, { borderColor: subtleText }]}>
+          <Icon name="search" color={subtleText} size={18} />
+          <TextInput
+            style={[styles.searchInput, { color: textColor }]}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search"
+            placeholderTextColor={subtleText}
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel="Search saved meals"
+          />
+          {query.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setQuery("")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Icon name="close" color={subtleText} size={18} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Result count + sort. Hidden while loading so the count never flashes
+          a momentary "0 results" before the first response lands. */}
+      {!loading ? (
+        <View style={styles.resultsRow}>
+          <Text style={[styles.resultsText, { color: textColor }]}>
+            {visibleMeals.length} {visibleMeals.length === 1 ? "result" : "results"}
+          </Text>
+          <TouchableOpacity
+            style={styles.sortButton}
+            onPress={openSortPicker}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by ${SORT_LABEL[sort]}`}
+          >
+            <Icon name="sort" color={textColor} size={18} />
+            <Text style={[styles.sortText, { color: textColor }]}>
+              {SORT_LABEL[sort]}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Content */}
       {loading ? (
         <View style={styles.centered}>
@@ -173,9 +335,13 @@ export function SavedMealsScreen() {
         </View>
       ) : visibleMeals.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={[styles.emptyTitle, { color: textColor }]}>No saved meals yet</Text>
+          <Text style={[styles.emptyTitle, { color: textColor }]}>
+            {q || filter !== "all" ? "No matches" : "No saved meals yet"}
+          </Text>
           <Text style={[styles.emptyText, { color: subtleText }]}>
-            Tap the bookmark on any meal card to save it here.
+            {q || filter !== "all"
+              ? "Try a different search or filter."
+              : "Tap the bookmark on any meal card to save it here."}
           </Text>
         </View>
       ) : (
@@ -202,11 +368,6 @@ export function SavedMealsScreen() {
                         <Text style={styles.gridPlaceholderIcon}>🍽️</Text>
                       </View>
                     )}
-                    {meal.prepTime != null ? (
-                      <View style={styles.gridTime}>
-                        <Text style={styles.gridTimeText}>{meal.prepTime} min</Text>
-                      </View>
-                    ) : null}
                     <TouchableOpacity
                       style={styles.gridBookmark}
                       onPress={() => handleRemove(meal.id)}
@@ -221,14 +382,16 @@ export function SavedMealsScreen() {
                   >
                     {meal.name}
                   </Text>
-                  {meal.calories != null ? (
+                  {/* 🔴 This tile used to print "N cal" and "Ng protein" under
+                      every saved meal. The RECIPE MODEL tab marks
+                      `internal_nutrition` as NOT member-facing, the FOOD
+                      STANDARD forbids surfacing calories and macros, and Lang's
+                      frame shows prep time in this exact slot instead. Same
+                      removal as Recipe Details, which Bryan approved on
+                      2026-10-12. */}
+                  {meal.prepTime != null ? (
                     <Text style={[styles.gridMeta, { color: metaColor }]}>
-                      {Math.round(meal.calories)} cal
-                    </Text>
-                  ) : null}
-                  {meal.protein != null ? (
-                    <Text style={[styles.gridMeta, { color: metaColor }]}>
-                      {Math.round(meal.protein)}g protein
+                      {meal.prepTime} min
                     </Text>
                   ) : null}
                 </View>
@@ -246,6 +409,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  searchRow: { paddingHorizontal: ROW_PAD_H, paddingBottom: spacing.sm },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 100,
+    paddingHorizontal: 12,
+    height: 40,
+    gap: 8,
+  },
+  // 🔑 No explicit height: a fixed height clips descenders on Android, which is
+  // the same `includeFontPadding` family of bug the onboarding work hit.
+  searchInput: { flex: 1, fontFamily: fonts.catalogue, fontSize: 16, padding: 0 },
+  resultsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: ROW_PAD_H,
+    paddingBottom: spacing.sm,
+  },
+  resultsText: { fontFamily: fonts.quadrant, fontSize: 14 },
+  sortButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 32,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: "rgba(250,253,254,0.12)",
+  },
+  sortText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
