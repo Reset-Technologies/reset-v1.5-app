@@ -86,7 +86,14 @@ const BEAT_MS = 3200;
 export function AdaptiveSurveyScreen({ navigation }: Props) {
   const { step, loading, error, progress, start, answer } = useTypingTree();
   const { state, setDietaryRestrictions, setQuizAnswer } = useApp();
-  const [beatDone, setBeatDone] = useState(true);
+  // 🔴 The id of the beat whose moment has already been spent — NOT a
+  // "beatDone" boolean. A boolean set by an effect is one render stale on the
+  // render where a new beat arrives, and that is long enough: `nextSetupDue`
+  // ran with the PREVIOUS step's `beatDone === true`, scheduled P2, and the
+  // reflection then rendered alongside it. Caught on the S24. Deriving
+  // `beatPlaying` from this id during render cannot race, because the new
+  // beat's id is already different on the very first render that shows it.
+  const [playedBeatId, setPlayedBeatId] = useState<string | null>(null);
   const started = useRef(false);
 
   // Which setup questions have been shown. Each appears exactly once.
@@ -134,14 +141,16 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   // next question. Hold it alone for a beat, the way the fixed flow does, so it
   // reads as Ester responding rather than as a label above a question.
   const beat = step?.reflection ?? step?.bridge ?? null;
+  /** True while this beat still owns the screen. Derived, never stale. */
+  const beatPlaying = !!beat && playedBeatId !== beat.id;
 
   // 🔑 P1 after U2, P2 after the reflection — ROUTING section A, steps 1 and 3.
   // Keyed off what the SERVER says has been asked, not off a local counter, so
   // a resumed session cannot re-show a setup question or skip one.
   useEffect(() => {
-    const due = nextSetupDue(step, setupDone, beatDone);
+    const due = nextSetupDue(step, setupDone, !beatPlaying);
     if (due) setPendingSetup(due);
-  }, [step, setupDone.P1, setupDone.P2, beatDone]);
+  }, [step, setupDone.P1, setupDone.P2, beatPlaying]);
 
   const finishSetup = (which: "P1" | "P2") => {
     if (which === "P1") setDietaryRestrictions(dietary);
@@ -150,14 +159,10 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
     setPendingSetup(null);
   };
   useEffect(() => {
-    if (!beat) {
-      setBeatDone(true);
-      return;
-    }
-    setBeatDone(false);
-    const t = setTimeout(() => setBeatDone(true), BEAT_MS);
+    if (!beat || playedBeatId === beat.id) return;
+    const t = setTimeout(() => setPlayedBeatId(beat.id), BEAT_MS);
     return () => clearTimeout(t);
-  }, [beat?.id]);
+  }, [beat?.id, playedBeatId]);
 
   // 🔑 The same handoff the fixed survey makes: Survey -> AccountGate. Held
   // briefly so the closing line is readable rather than a flash.
@@ -176,7 +181,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   }, [step?.complete]);
 
   const question = step?.question;
-  const showQuestion = !!question && beatDone && !pendingSetup;
+  const showQuestion = !!question && !beatPlaying && !pendingSetup;
 
   return (
     <View style={styles.container}>
@@ -224,9 +229,9 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
             leaving it stacked above the next question. Rendering it whenever
             `beat` was non-null kept it on screen alongside P2 and the next
             question, which is the one way a member could tell the two engines
-            apart. `beatDone` is what ends the moment; `nextSetupDue` already
-            waits on the same flag, so the hand-off is atomic. */}
-        {beat && !beatDone ? <Text style={styles.beat}>{beat.text}</Text> : null}
+            apart. `beatPlaying` is what ends the moment, and `nextSetupDue`
+            is handed the same derived value, so the hand-off is atomic. */}
+        {beatPlaying ? <Text style={styles.beat}>{beat!.text}</Text> : null}
 
         {step?.complete ? (
           <Text style={styles.prompt}>Got it. That's everything I need for now.</Text>
