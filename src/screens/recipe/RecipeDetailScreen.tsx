@@ -40,6 +40,7 @@ import {
   DailyPlanMeal,
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
+import { COUNTABLE_UNITS } from "../../utils/countableUnits";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
@@ -174,42 +175,6 @@ function abbreviateMeasurement(measurement: string): string {
   return UNIT_ABBREVIATIONS[lower] ?? measurement;
 }
 
-const WHOLE_PIECE_UNITS = new Set([
-  "",
-  "egg",
-  "eggs",
-  "piece",
-  "pieces",
-  "slice",
-  "slices",
-  "clove",
-  "cloves",
-  "head",
-  "heads",
-  "leaf",
-  "leaves",
-  "stalk",
-  "stalks",
-  "stick",
-  "sticks",
-  "sprig",
-  "sprigs",
-  "can",
-  "cans",
-  "bottle",
-  "bottles",
-  "jar",
-  "jars",
-  "package",
-  "packages",
-  "packet",
-  "packets",
-  "small",
-  "medium",
-  "large",
-  "serving",
-  "servings",
-]);
 
 const FRACTION_STOPS: Array<{ value: number; glyph: string }> = [
   { value: 0, glyph: "" },
@@ -228,7 +193,7 @@ const FRACTION_STOPS: Array<{ value: number; glyph: string }> = [
 function formatQty(qty: number, measurement: string): string {
   if (!isFinite(qty) || qty <= 0) return "0";
   const unit = (measurement || "").trim().toLowerCase();
-  if (WHOLE_PIECE_UNITS.has(unit)) {
+  if (COUNTABLE_UNITS.has(unit)) {
     return Math.max(1, Math.round(qty)).toString();
   }
   if (qty >= 10) return Math.round(qty).toString();
