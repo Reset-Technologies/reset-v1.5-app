@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { isCountableUnit } from "../utils/countableUnits";
 
 /**
  * Client for the grocery list (`/api/meals/my-plan/grocery`).
@@ -157,12 +158,22 @@ export function amountLabel(item: GroceryItem): string | null {
   if (item.manual) return item.quantityText?.trim() || null;
   if (!item.components?.length) return null;
   return item.components
-    .map((c) => `${formatQuantity(c.quantity)}${c.unit ? ` ${c.unit}` : ""}`)
+    .map((c) => `${formatQuantity(c.quantity, c.unit)}${c.unit ? ` ${c.unit}` : ""}`)
     .join(" + ");
 }
 
-/** 1.25 -> "1.25", 2.0 -> "2". Trailing zeros read as false precision. */
-function formatQuantity(q: number): string {
+/**
+ * 1.25 -> "1.25", 2.0 -> "2". Trailing zeros read as false precision.
+ *
+ * 🔴 A COUNTABLE unit rounds UP. Since Standard became one serving, dividing a
+ * recipe's amount routinely lands on a fraction — the list showed "0.5 small"
+ * avocado, which is correct arithmetic and not a thing anyone can buy. Rounding
+ * up is the only safe direction: a little spare is a worse outcome than getting
+ * home without enough to cook. Grams and millilitres stay fractional, because
+ * 150.75 g is perfectly shoppable.
+ */
+function formatQuantity(q: number, unit?: string): string {
   if (!Number.isFinite(q)) return "";
-  return Number.isInteger(q) ? String(q) : String(Number(q.toFixed(2)));
+  const n = isCountableUnit(unit) ? Math.max(1, Math.ceil(q)) : q;
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
