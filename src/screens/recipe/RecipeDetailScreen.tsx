@@ -41,16 +41,16 @@ import {
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
 import { COUNTABLE_UNITS } from "../../utils/countableUnits";
+import { setPlannedMealServings } from "../../services/myPlan";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
 
-type RecipeRouteParams = {
-  RecipeDetail: {
-    meal: Meal;
-    siblings?: Meal[];
-  };
-};
+// 🔴 The local `RecipeRouteParams` that used to live here is gone. It was a
+// second, hand-maintained copy of this route's params, and it had already
+// drifted: `MainStackParamList` gained `plannedMeal` and this screen could not
+// see it, so `route.params.plannedMeal` failed to compile against a type that
+// claimed to describe the same route. One definition, in the navigator.
 
 const HERO_HEIGHT = 360;
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -292,7 +292,7 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
 export function RecipeDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const route = useRoute<RouteProp<RecipeRouteParams, "RecipeDetail">>();
+  const route = useRoute<RouteProp<MainStackParamList, "RecipeDetail">>();
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
@@ -326,7 +326,13 @@ export function RecipeDetailScreen() {
    * SERVINGS + ING r2: *"I'd make Standard one serving. Half is 0.5 and Double
    * is 2."* So Standard shows ONE serving of the recipe, not all of it.
    */
-  const [multiplier, setMultiplier] = useState<ServingMultiplier>(1);
+  const plannedMeal = route.params.plannedMeal;
+
+  // Opens where the member left it when there is a planned meal behind this
+  // recipe; Standard otherwise, since there is nothing saved to restore.
+  const [multiplier, setMultiplier] = useState<ServingMultiplier>(
+    (plannedMeal?.servings as ServingMultiplier) ?? 1,
+  );
   const [esterText, setEsterText] = useState<string | null>(null);
   const [esterLoading, setEsterLoading] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -346,9 +352,9 @@ export function RecipeDetailScreen() {
         if (cancelled) return;
         setDetail(mealDetail);
         setIngredients(mealIngredients);
-        // Standard by default — the recipe as written. Nothing to derive from
-        // the recipe's own serving count any more.
-        setMultiplier(1);
+        // 🔴 Do NOT reset to Standard here. This fires when the recipe detail
+        // finishes loading, and clobbering the member's saved multiplier at
+        // that point would make a planned Double silently snap back.
       } catch {
         // Keep meal card data as fallback
       } finally {
@@ -424,6 +430,36 @@ export function RecipeDetailScreen() {
       cancelled = true;
     };
   }, [meal.id]);
+
+  /**
+   * Pick a serving size, and save it when there is a planned meal behind it.
+   *
+   * 🔑 Optimistic: the ingredient amounts redraw immediately, because waiting
+   * on a round-trip to move a segment feels broken. On failure it goes back,
+   * rather than showing a size the plan does not actually hold.
+   *
+   * 🔴 Only persists with plan context. Servings belongs to a PLANNED MEAL, so
+   * opening this recipe from Home or Saved Meals has nothing to write to — the
+   * control still scales the display, it just does not pretend to save.
+   *
+   * ⚠️ The server makes a new `meal_plan_revision` and the grocery list
+   * rescales on its next read, which is why the list has pull-to-refresh.
+   */
+  const chooseMultiplier = async (next: ServingMultiplier) => {
+    const previous = multiplier;
+    if (next === previous) return;
+    setMultiplier(next);
+    if (!plannedMeal) return;
+    try {
+      await setPlannedMealServings({
+        plannedMealId: plannedMeal.id,
+        mealPlanId: plannedMeal.mealPlanId,
+        servings: next,
+      });
+    } catch {
+      setMultiplier(previous);
+    }
+  };
 
   const handleClose = () => {
     navigation.dispatch(CommonActions.goBack());
@@ -647,7 +683,7 @@ export function RecipeDetailScreen() {
                           styles.segment,
                           active && styles.segmentActive,
                         ]}
-                        onPress={() => setMultiplier(m)}
+                        onPress={() => chooseMultiplier(m)}
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}
                         accessibilityLabel={`${SERVING_LABEL[m]} servings`}
