@@ -157,15 +157,16 @@ export function MealCard({ meal, metabolicType, isFavorited = false, isEaten = f
       <View style={styles.content}>
         <Text style={styles.name}>{meal.name}</Text>
 
-        {/* Nutrition badge */}
-        <View style={styles.nutritionRow}>
-          <View style={styles.nutritionBadge}>
-            <Text style={styles.nutritionText}>{Math.ceil(meal.calories)} cal</Text>
-          </View>
-          <View style={styles.nutritionBadge}>
-            <Text style={styles.nutritionText}>{Math.ceil(meal.protein)}g protein</Text>
-          </View>
-        </View>
+        {/* 🔴 No calorie or protein badges. RECIPE MODEL marks
+            `internal_nutrition` as NOT member-facing, FOOD STANDARD reasons in
+            grams but says "No grams shown", and START HERE keeps energy
+            internal. Bryan approved the same removal on Recipe Details on
+            2026-10-12.
+
+            This card is the one that mattered: it is used by HomeScreenV2,
+            RecipesCarousel and MealTabsSection, so the badges were on the
+            screen members open first. Prep time is already shown above the
+            title and stays — it is the thing a member actually chooses on. */}
 
         {/* Personalized Why Section */}
         {metabolicType && meal.whyLine ? (
@@ -454,22 +455,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: K.brown,
     marginBottom: 4,
-  },
-  nutritionRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  nutritionBadge: {
-    backgroundColor: K.bone,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-  },
-  nutritionText: {
-    ...typography.caption,
-    color: K.brown,
-    fontWeight: "500",
   },
   feedbackRow: {
     flexDirection: "row",
