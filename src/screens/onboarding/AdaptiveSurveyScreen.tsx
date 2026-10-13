@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
+  Image,
   TextInput,
   ScrollView,
   StyleSheet,
@@ -9,13 +9,26 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { K } from "../../constants/colors";
+import { fonts } from "../../constants/typography";
 import { DIETARY_RESTRICTIONS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
 import { nextSetupDue, useTypingTree } from "../../hooks/useTypingTree";
 import { logEvent } from "../../services/braze";
+import { EsterTypingDots } from "../../components/EsterTypingDots";
+
+/**
+ * 🔑 LANG'S LAYOUT IS CANONICAL, and this screen must be indistinguishable
+ * from `OnboardingSurveyScreen` to a member — the two engines differ in how
+ * questions are CHOSEN, never in how they look. Every value below is taken
+ * from that screen rather than re-invented: the maroon surface with its
+ * dark-bottom gradient, the Ester badge, the 160pt progress rail, the
+ * right-tailed answer bubbles, and the Continue pill + arrow.
+ */
+const ESTER_BADGE = require("../../../assets/images/ester-avatar-silver.png");
 
 /**
  * 🔑 A UNION of both route names, because this component is registered TWICE:
@@ -30,8 +43,11 @@ type Props = NativeStackScreenProps<
 >;
 
 const MAROON = K.brown;
+const BONE = K.bone;
 const WHITE = "#FAFDFE";
-const GHOST = "rgba(250,253,254,0.12)";
+// 🔴 0.24, matching the fixed survey. This screen shipped 0.12, which read as a
+// visibly fainter answer bubble side by side with the engine it replaces.
+const GHOST = "rgba(250,253,254,0.24)";
 
 /** How long a reflection or bridge holds the screen before the question. */
 const BEAT_MS = 3200;
@@ -164,12 +180,28 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView edges={["top"]} style={styles.topBar}>
+      {/* Dark-bottom gradient over the maroon page surface — the same Defs the
+          fixed survey draws, so the two engines share one background. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Svg width="100%" height="100%" preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="adaptiveSurveyBg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0.4358" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="0.815" stopColor="#000000" stopOpacity="0.6" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#adaptiveSurveyBg)" />
+        </Svg>
+      </View>
+
+      <SafeAreaView edges={["top"]} style={styles.topBar} pointerEvents="box-none">
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={14} style={styles.iconBtn}>
             <Text style={styles.closeGlyph}>×</Text>
           </TouchableOpacity>
-          <View style={styles.iconBtn} />
+          {/* Ester's mark centres the bar; the fixed survey's third slot is a
+              spacer, so this keeps the badge optically centred. */}
+          <Image source={ESTER_BADGE} style={styles.badge} resizeMode="contain" />
           <View style={styles.iconBtn} />
         </View>
         <View style={styles.progressTrack}>
@@ -187,7 +219,14 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
           </Text>
         ) : null}
 
-        {beat ? <Text style={styles.beat}>{beat.text}</Text> : null}
+        {/* 🔑 ONLY while the beat is playing. The reflection is a solo moment —
+            Ester responding — and the fixed flow moves on from it rather than
+            leaving it stacked above the next question. Rendering it whenever
+            `beat` was non-null kept it on screen alongside P2 and the next
+            question, which is the one way a member could tell the two engines
+            apart. `beatDone` is what ends the moment; `nextSetupDue` already
+            waits on the same flag, so the hand-off is atomic. */}
+        {beat && !beatDone ? <Text style={styles.beat}>{beat.text}</Text> : null}
 
         {step?.complete ? (
           <Text style={styles.prompt}>Got it. That's everything I need for now.</Text>
@@ -218,18 +257,13 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
                     activeOpacity={0.85}
                     style={[styles.bubble, sel && styles.bubbleSelected]}
                   >
-                    <Text style={styles.bubbleText}>{o.label}</Text>
+                    <Text style={[styles.bubbleText, sel && styles.bubbleTextSelected]}>
+                      {o.label}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
-            <TouchableOpacity
-              onPress={() => finishSetup("P1")}
-              disabled={dietary.length === 0}
-              style={[styles.cta, dietary.length === 0 && styles.bubbleDisabled]}
-            >
-              <Text style={styles.ctaText}>Continue</Text>
-            </TouchableOpacity>
             {__DEV__ ? <Text style={styles.meta}>P1 · setup · does not count</Text> : null}
           </>
         ) : null}
@@ -237,22 +271,29 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
         {pendingSetup === "P2" ? (
           <>
             <Text style={styles.prompt}>Where do you want your weight to land?</Text>
-            <TextInput
-              value={goalWeight}
-              onChangeText={setGoalWeight}
-              keyboardType="number-pad"
-              placeholder="lbs"
-              placeholderTextColor="rgba(250,253,254,0.4)"
-              style={styles.input}
-            />
-            <TouchableOpacity
-              onPress={() => finishSetup("P2")}
-              disabled={!goalWeightValid}
-              style={[styles.cta, !goalWeightValid && styles.bubbleDisabled]}
-            >
-              <Text style={styles.ctaText}>Continue</Text>
-            </TouchableOpacity>
-            {/* "Include a 'Not sure yet' path" is explicit in the QUESTIONS tab. */}
+            {/* 🔴 maxLength + the digit strip are NOT cosmetic. Without them a
+                member can type six digits; `goalWeightValid` (2-3 digits) then
+                stays false and the Continue bar simply never appears, with
+                nothing on screen explaining why. Walked into exactly that on
+                the sim. Both guards are copied from the fixed survey, which has
+                always had them. */}
+            <View style={styles.weightRow}>
+              <TextInput
+                value={goalWeight}
+                onChangeText={(t) => setGoalWeight(t.replace(/[^0-9]/g, ""))}
+                keyboardType="number-pad"
+                maxLength={3}
+                placeholder="—"
+                placeholderTextColor="rgba(250,253,254,0.4)"
+                accessibilityLabel="Goal weight in pounds"
+                returnKeyType="done"
+                style={styles.weightInput}
+              />
+              <Text style={styles.weightUnit}>lbs</Text>
+            </View>
+            {/* "Include a 'Not sure yet' path" is explicit in the QUESTIONS tab.
+                It stays a bubble rather than joining the Continue bar, because
+                skipping is an answer, not the same affordance as advancing. */}
             <TouchableOpacity onPress={() => finishSetup("P2")} style={styles.skip}>
               <Text style={styles.skipText}>Not sure yet</Text>
             </TouchableOpacity>
@@ -300,19 +341,70 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
           </>
         ) : null}
 
-        {loading && !question ? <ActivityIndicator color={WHITE} style={styles.spinner} /> : null}
+        {/* 🔑 Ester "composing", not a spinner. The fixed survey never shows a
+            loading indicator — it shows the typing bubble — and a member must
+            not be able to tell which engine they are on. */}
+        {loading && !question ? (
+          <View style={styles.typingBubble}>
+            <EsterTypingDots />
+          </View>
+        ) : null}
       </ScrollView>
+
+      {/* Continue + arrow. 🔑 Screen Copy row 7: "Continue appears only on P1
+          (multi-select) and P2 (goal weight)" — every scored question is
+          single-select and advances on tap, which is why no diagnostic question
+          renders this bar. */}
+      {((pendingSetup === "P1" && dietary.length > 0) ||
+        (pendingSetup === "P2" && goalWeightValid)) && (
+        <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
+          <View style={styles.continueRow}>
+            <TouchableOpacity
+              onPress={() => finishSetup(pendingSetup)}
+              style={styles.continuePill}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+            >
+              <Text style={styles.continueText}>Continue</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => finishSetup(pendingSetup)}
+              style={styles.arrowBtn}
+              activeOpacity={0.85}
+            >
+              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M5 12h14M13 5l7 7-7 7"
+                  stroke={MAROON}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )}
     </View>
   );
 }
 
+// 🔴 Every value here is lifted from `OnboardingSurveyScreen`, deliberately.
+// Where the two disagreed before, the fixed survey won — it is the one Lang
+// signed off and the one members are walking today.
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: MAROON },
-  topBar: { paddingHorizontal: 16 },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  topBar: { position: "absolute", top: 0, left: 0, right: 0, paddingHorizontal: 16, zIndex: 2 },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 40,
+  },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   closeGlyph: { color: WHITE, fontSize: 28, lineHeight: 30 },
-  devTag: { color: "rgba(250,253,254,0.5)", fontSize: 12 },
+  badge: { width: 40, height: 40 },
   progressTrack: {
     alignSelf: "center",
     width: 160,
@@ -322,10 +414,26 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   progressFill: { height: 2, borderRadius: 999, backgroundColor: WHITE },
-  content: { padding: 24, paddingTop: 48 },
-  beat: { color: WHITE, fontSize: 20, lineHeight: 28, marginBottom: 28, opacity: 0.9 },
-  prompt: { color: WHITE, fontSize: 24, lineHeight: 32, marginBottom: 24 },
-  answers: { gap: 12, alignItems: "flex-end" },
+  // 🔑 paddingTop clears the absolutely-positioned top bar; paddingBottom
+  // clears the Continue bar, exactly as the fixed survey's scrollContent does.
+  content: { paddingHorizontal: 24, paddingTop: 140, paddingBottom: 220 },
+  // A reflection or bridge is Ester speaking — the fixed survey's `messageLine`.
+  beat: {
+    fontFamily: fonts.dmSans,
+    fontSize: 16,
+    lineHeight: 22,
+    color: WHITE,
+    letterSpacing: -0.16,
+    marginBottom: 28,
+  },
+  prompt: {
+    fontFamily: fonts.dmSans,
+    fontSize: 24,
+    lineHeight: 30,
+    color: WHITE,
+    letterSpacing: -0.24,
+  },
+  answers: { marginTop: 24, gap: 8, alignItems: "flex-end" },
   bubble: {
     backgroundColor: GHOST,
     paddingVertical: 14,
@@ -337,29 +445,87 @@ const styles = StyleSheet.create({
     maxWidth: "88%",
   },
   bubbleDisabled: { opacity: 0.4 },
-  bubbleSelected: { backgroundColor: "rgba(250,253,254,0.3)" },
-  cta: {
-    marginTop: 28,
-    alignSelf: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 999,
-    backgroundColor: WHITE,
-  },
-  ctaText: { color: MAROON, fontSize: 16 },
-  skip: { marginTop: 16, alignSelf: "center" },
-  skipText: { color: "rgba(250,253,254,0.6)", fontSize: 14 },
-  input: {
+  bubbleSelected: { backgroundColor: BONE },
+  bubbleText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 16,
+    lineHeight: 21,
     color: WHITE,
-    fontSize: 28,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(250,253,254,0.3)",
-    paddingVertical: 8,
-    textAlign: "center",
+    letterSpacing: -0.16,
   },
-  bubbleText: { color: WHITE, fontSize: 16, lineHeight: 22 },
+  bubbleTextSelected: { color: MAROON },
+  // Ester composing — left-tailed outline bubble, content-sized.
+  typingBubble: {
+    alignSelf: "flex-start",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#7E6869",
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  skip: { marginTop: 16, alignSelf: "flex-end" },
+  skipText: {
+    fontFamily: fonts.dmSans,
+    color: "rgba(250,253,254,0.6)",
+    fontSize: 14,
+  },
+  weightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 8,
+    marginTop: 24,
+  },
+  weightInput: {
+    fontFamily: fonts.catalogue,
+    fontSize: 44,
+    lineHeight: 52,
+    color: K.white,
+    letterSpacing: -0.44,
+    textAlign: "center",
+    minWidth: 120,
+  },
+  weightUnit: {
+    fontFamily: fonts.catalogue,
+    fontSize: 20,
+    color: K.white,
+    opacity: 0.7,
+  },
+  bottomBar: { position: "absolute", left: 16, right: 16, bottom: 0, paddingBottom: 24 },
+  continueRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 0,
+  },
+  continuePill: {
+    backgroundColor: WHITE,
+    height: 56,
+    justifyContent: "center",
+    paddingLeft: 24,
+    paddingRight: 44,
+    marginRight: -28,
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
+  },
+  continueText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 20,
+    color: MAROON,
+    letterSpacing: -0.2,
+  },
+  arrowBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: WHITE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   meta: { color: "rgba(250,253,254,0.4)", fontSize: 12, marginTop: 24 },
-  outcome: { color: "rgba(250,253,254,0.7)", fontSize: 12, fontFamily: "Menlo" },
   error: { color: "#FFB4A8", fontSize: 14, marginBottom: 20 },
-  spinner: { marginTop: 40 },
 });
