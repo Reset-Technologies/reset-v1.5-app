@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  RefreshControl,
   TextInput,
   Modal,
   KeyboardAvoidingView,
@@ -44,10 +45,11 @@ export function GroceryListScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<GroceryItem | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (rebuild = false) => {
     try {
-      const r = await getGroceryList();
+      const r = await getGroceryList({ rebuild });
       setList(r.items);
       setError(null);
     } catch (e: any) {
@@ -60,6 +62,22 @@ export function GroceryListScreen({ navigation }: Props) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  /**
+   * Pull to refresh REBUILDS rather than re-reads.
+   *
+   * A plain read returns the stored list, so it would show exactly what is
+   * already on screen and look broken. Rebuilding is the point: it re-derives
+   * from the current plan, which is how a member picks up a corrected quantity
+   * without waiting for the week to roll over. Check state survives it —
+   * `derive()` carries ticks across by ingredient, and manual lines are not
+   * touched at all.
+   */
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load(true);
+    setRefreshing(false);
   }, [load]);
 
   /**
@@ -211,6 +229,13 @@ export function GroceryListScreen({ navigation }: Props) {
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={K.cream}
+            />
+          }
         >
           <Text style={styles.remaining}>
             {remaining} {remaining === 1 ? "item" : "items"} left

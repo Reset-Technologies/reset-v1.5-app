@@ -55,8 +55,18 @@ export interface GroceryListResponse {
  * server — My Plan generates on read, so the grocery tab must not quietly
  * generate a week as a side effect of being opened.
  */
-export async function getGroceryList(): Promise<GroceryListResponse> {
-  return apiClient<GroceryListResponse>("/api/meals/my-plan/grocery");
+export async function getGroceryList(
+  opts: { rebuild?: boolean } = {},
+): Promise<GroceryListResponse> {
+  // 🔑 The list is DERIVED ONCE PER REVISION and then stored, so a plain read
+  // returns whatever was computed the first time the member opened it. That is
+  // deliberate — it is what makes check state survive. But it also means a
+  // backend change to how quantities are derived does NOT reach a list that
+  // already exists: it stays as-is until the plan changes (a swap makes a new
+  // revision) or the week rolls over. `rebuild` is the member's way out of
+  // that, and the only way to see a corrected list on an unchanged plan.
+  const q = opts.rebuild ? "?rebuild=true" : "";
+  return apiClient<GroceryListResponse>(`/api/meals/my-plan/grocery${q}`);
 }
 
 /** Tick or untick one line. The only member-writable part of a derived list. */
