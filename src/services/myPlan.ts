@@ -173,7 +173,41 @@ export async function getMyPlan(): Promise<MyPlanResponse> {
  */
 
 /**
- * 📌 Mutations (swap, move, servings, add, remove, grocery, substitutions) are
+ * Change the serving size of ONE planned meal.
+ *
+ * 🔑 `servings` is a MULTIPLIER, not a count — 0.5 / 1 / 2, matching the
+ * Half/Standard/Double control. The server validates against exactly that set
+ * (`SERVING_MULTIPLIERS`) and rejects anything else, so there is no point
+ * sending a value the UI cannot produce.
+ *
+ * 🔴 `mealPlanId` is REQUIRED by the endpoint and is not decoration: the server
+ * resolves the plan for the caller from it and refuses when the plan is not
+ * theirs. Without it any member could resize another member's meal by guessing
+ * a planned-meal id.
+ *
+ * ⚠️ This creates a new `meal_plan_revision` and the grocery list rescales on
+ * its next read — SERVINGS + ING: a serving change updates nutrition and the
+ * grocery list, but never the shared Score `plan_version_id`.
+ */
+export async function setPlannedMealServings(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  servings: number;
+}): Promise<void> {
+  await apiClient(
+    `/api/meals/my-plan/meals/${params.plannedMealId}/servings`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        mealPlanId: params.mealPlanId,
+        servings: params.servings,
+      }),
+    },
+  );
+}
+
+/**
+ * 📌 Remaining mutations (swap, move, add, remove, grocery, substitutions) are
  * deliberately absent for now. The first slice is the read-only week view; each
  * mutation arrives with the screen that needs it, so the client never carries
  * calls nothing exercises. The endpoints are listed in

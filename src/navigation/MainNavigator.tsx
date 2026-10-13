@@ -66,6 +66,22 @@ export type MainStackParamList = {
   RecipeDetail: {
     meal: Meal;
     siblings?: Meal[];
+    /**
+     * Plan context, present ONLY when the recipe was opened from My Plan.
+     *
+     * 🔑 Servings belongs to a PLANNED MEAL, not to a recipe. Opening the same
+     * recipe from Home, Saved Meals or Ester chat has nothing to save a
+     * serving size to, so the control stays display-only there. This is the
+     * difference, carried explicitly rather than guessed at.
+     */
+    plannedMeal?: {
+      /** `planned_meal.id` — the row whose servings change. */
+      id: string;
+      /** Required by the endpoint; the server proves ownership through it. */
+      mealPlanId: string;
+      /** The multiplier already saved, so the control opens where it left off. */
+      servings: number;
+    };
   };
   SavedMeals: undefined;
   /** 🔴 Preview-only — see the import comment. Not reachable in a store build. */

@@ -243,8 +243,14 @@ export function MyPlanScreen({ navigation }: Props) {
    * show calories and protein. See project_meals_tab.
    */
   const openRecipe = useCallback(
-    (recipe: MyPlanRecipe, slotType: MealSlotType) => {
+    (recipe: MyPlanRecipe, slotType: MealSlotType, slot: MyPlanSlot) => {
       navigation.navigate("RecipeDetail", {
+        // 🔑 The ONLY entry point with plan context, so the only one where the
+        // serving control can save. `slot.id` is the planned_meal row and
+        // `slot.servings` is the multiplier already stored.
+        plannedMeal: plan
+          ? { id: slot.id, mealPlanId: plan.mealPlanId, servings: slot.servings }
+          : undefined,
         meal: {
           id: recipe.id,
           name: recipe.title,
@@ -257,7 +263,7 @@ export function MyPlanScreen({ navigation }: Props) {
         },
       });
     },
-    [navigation],
+    [navigation, plan],
   );
 
   const range = useMemo(() => {
@@ -345,7 +351,9 @@ export function MyPlanScreen({ navigation }: Props) {
                 first={idx === 0}
                 emptyCopy={emptyCopy(slot.slotType)}
                 onPress={
-                  slot.recipe ? () => openRecipe(slot.recipe!, slot.slotType) : undefined
+                  slot.recipe
+                    ? () => openRecipe(slot.recipe!, slot.slotType, slot)
+                    : undefined
                 }
                 saved={slot.recipe ? savedIds.has(slot.recipe.id) : false}
                 onToggleSave={
