@@ -245,7 +245,15 @@ function formatQty(qty: number, measurement: string): string {
     }
   }
   if (best.value === 1) return (intPart + 1).toString();
-  if (best.value === 0) return intPart > 0 ? intPart.toString() : "0";
+  if (best.value === 0) {
+    if (intPart > 0) return intPart.toString();
+    // 🔴 A real amount must never print as "0". This branch was unreachable
+    // until Standard became one serving and quantities started being divided:
+    // 1/4 tsp of cayenne in a 4-serving recipe is 1/16, whose nearest stop is
+    // zero, and the screen told the member to use NONE of it. "< 1/8" is the
+    // honest reading — smaller than the finest fraction we show, but present.
+    return `< ${FRACTION_STOPS[1].glyph}`;
+  }
   if (intPart === 0) return best.glyph;
   return `${intPart} ${best.glyph}`;
 }
@@ -348,6 +356,10 @@ export function RecipeDetailScreen() {
    * outright (`SERVING_MULTIPLIERS` is {0.5, 1, 2} and `setServings` throws on
    * anything else). Lang's frame shows a "4 servings" dropdown, which is the
    * same mismatch.
+   *
+   * 🔑 What each option MEANS is Bryan's 2026-10-12 decision, which supersedes
+   * SERVINGS + ING r2: *"I'd make Standard one serving. Half is 0.5 and Double
+   * is 2."* So Standard shows ONE serving of the recipe, not all of it.
    */
   const [multiplier, setMultiplier] = useState<ServingMultiplier>(1);
   const [esterText, setEsterText] = useState<string | null>(null);
@@ -691,11 +703,18 @@ export function RecipeDetailScreen() {
 
               <View style={styles.ingredientsList}>
                 {ingredients.map((ing, idx) => {
-                  // SERVINGS + ING: Standard is "Base quantities", so the
-                  // multiplier applies directly. The old `servings /
-                  // servingsBase` ratio existed only because the stepper held a
-                  // count; there is nothing to divide by now.
-                  const qty = ing.quantity * multiplier;
+                  // 🔑 Standard is ONE SERVING — Bryan, 2026-10-12: *"I'd make
+                  // Standard one serving. Half is 0.5 and Double is 2."* That
+                  // supersedes SERVINGS + ING r2, which had Standard as the
+                  // recipe's base quantities.
+                  //
+                  // `quantity` is the recipe as written, feeding
+                  // `servingsBase`, so the divisor is what turns the multiplier
+                  // into servings of food. This MUST match the grocery list's
+                  // scaling: if the screen says "2 cans" at Standard while the
+                  // list buys half a can, cooking from the recipe would not
+                  // match what was bought.
+                  const qty = (ing.quantity * multiplier) / (servingsBase || 1);
                   const qtyDisplay = formatQty(qty, ing.measurement);
                   return (
                     <View
