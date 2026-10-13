@@ -1772,15 +1772,14 @@ function InlineMealCard({ data, palette }: InlineMealCardProps) {
       {meal.whyLine ? (
         <Text style={[styles.inlineMealWhy, { color: palette.textMuted }]}>{meal.whyLine}</Text>
       ) : null}
+      {/* 🔴 No calories, no protein. RECIPE MODEL marks `internal_nutrition`
+          as NOT member-facing, FOOD STANDARD reasons in grams but says "No
+          grams shown", and START HERE keeps energy internal. Bryan approved
+          the same removal on Recipe Details on 2026-10-12; this card showed
+          "N cal • Ng protein • N min" and was the last live surface still
+          printing them. Prep time stays — it is the one thing here a member
+          chooses on, and it is what Lang's cards show. */}
       <View style={styles.inlineMealMeta}>
-        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
-          {meal.calories} cal
-        </Text>
-        <Text style={[styles.inlineMealMetaDot, { color: palette.textMuted }]}>•</Text>
-        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
-          {meal.protein}g protein
-        </Text>
-        <Text style={[styles.inlineMealMetaDot, { color: palette.textMuted }]}>•</Text>
         <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
           {meal.prepTime} min
         </Text>
@@ -2507,9 +2506,6 @@ const styles = StyleSheet.create({
   inlineMealMetaText: {
     fontSize: 12,
     fontWeight: "500",
-  },
-  inlineMealMetaDot: {
-    fontSize: 10,
   },
   inlineMealTap: {
     fontSize: 11,
