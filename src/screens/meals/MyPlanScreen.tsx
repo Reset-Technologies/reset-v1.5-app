@@ -23,7 +23,7 @@ import {
   MealSlotType,
 } from "../../services/myPlan";
 import { getFavorites, addFavorite, removeFavorite } from "../../services/meals";
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from "react-native-svg";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { logEvent } from "../../services/amplitude";
 
@@ -287,8 +287,29 @@ export function MyPlanScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>My Plan</Text>
-        <Text style={styles.range}>{range}</Text>
+        {/* The frame puts a cart in the header beside the title — it is the
+            only route to the grocery list, which is derived from this very
+            week, so it belongs here rather than in a tab. */}
+        <View style={styles.titleRow}>
+          <View style={styles.titleText}>
+            <Text style={styles.title}>My Plan</Text>
+            <Text style={styles.range}>{range}</Text>
+          </View>
+          <Pressable
+            onPress={() => navigation.navigate("GroceryList")}
+            hitSlop={8}
+            style={styles.cartButton}
+            accessibilityRole="button"
+            accessibilityLabel="Grocery list"
+          >
+            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"
+                fill={K.cream}
+              />
+            </Svg>
+          </Pressable>
+        </View>
 
         <View style={styles.daysRow}>
           {plan.days.map((d, i) => {
@@ -457,6 +478,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: K.brown },
   centered: { alignItems: "center", justifyContent: "center" },
   scroll: { padding: 20, paddingBottom: 48 },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  titleText: { flex: 1 },
+  cartButton: {
+    width: 40, height: 40, borderRadius: 999, marginTop: 4,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(243,239,227,0.12)",
+  },
   title: {
     fontFamily: fonts.playfair,
     fontSize: 34,
