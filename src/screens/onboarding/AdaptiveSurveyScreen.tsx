@@ -422,13 +422,18 @@ const styles = StyleSheet.create({
   // 🔑 paddingTop clears the absolutely-positioned top bar; paddingBottom
   // clears the Continue bar, exactly as the fixed survey's scrollContent does.
   content: { paddingHorizontal: 24, paddingTop: 140, paddingBottom: 220 },
-  // A reflection or bridge is Ester speaking — the fixed survey's `messageLine`.
+  // A reflection or bridge is Ester speaking. It is set at the QUESTION size,
+  // not the fixed survey's 16pt `messageLine`: a beat holds the screen on its
+  // own here, so at 16pt it read as a caption floating in an empty screen
+  // rather than as Ester's half of the conversation. Cole's call, 2026-10-13,
+  // off the solo-beat screenshot. The fixed survey's reflection step is still
+  // 16pt — that one is in the live funnel, so it is a separate decision.
   beat: {
     fontFamily: fonts.dmSans,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 24,
+    lineHeight: 30,
     color: WHITE,
-    letterSpacing: -0.16,
+    letterSpacing: -0.24,
     marginBottom: 28,
   },
   prompt: {
