@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Animated,
+  Easing,
   Image,
   TextInput,
   ScrollView,
@@ -56,6 +58,26 @@ const GHOST = "rgba(250,253,254,0.24)";
 
 /** How long a reflection or bridge holds the screen before the question. */
 const BEAT_MS = 3200;
+
+/**
+ * The step-to-step crossfade, lifted from `OnboardingSurveyScreen` verbatim —
+ * same durations, same easings, same order.
+ *
+ * 🔴 The native stack cannot do this for us. `animation: "fade"` does NOT
+ * animate on Android (react-native-screens 4.24.0) — it cuts in one frame,
+ * measured at 30fps on an S24 — which is why the "Survey" route is registered
+ * `animation: "none"` and the fixed survey drives its own fade in JS. The
+ * fixed survey gets one for free per question anyway, because it PUSHES A
+ * ROUTE PER QUESTION and the new route mounts at opacity 0. This screen is a
+ * single route that swaps content in place, so it had no transition at all —
+ * Cole, walking it on the S24: "I'm not seeing as much is the fade in and fade
+ * out between quiz screens."
+ */
+const EXIT_MS = 180;
+const ENTER_MS = 240;
+const CONTENT_MS = 320;
+/** Ester "types" before each screen's content appears. */
+const TYPING_MS = 850;
 
 /**
  * The adaptive onboarding survey — the server-driven counterpart to
@@ -166,14 +188,104 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   // null on the very next render and lets the question through.
   const pendingSetup = nextSetupDue(step, setupDone, !beatPlaying);
 
+  // ── The crossfade ────────────────────────────────────────────────────────
+  // `screenOpacity` carries everything but the page background, exactly as the
+  // fixed survey's `fadeLayer` does, so content dissolves over a steady maroon
+  // page instead of punching through to whatever is underneath.
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+  const screenShown = useRef(false);
+
+  const fadeOut = (then?: () => void) => {
+    // Already hidden: run the handoff now rather than waiting out an animation
+    // that will not play. Also the guard against a second tap inside the fade.
+    if (!screenShown.current) {
+      then?.();
+      return;
+    }
+    screenShown.current = false;
+    Animated.timing(screenOpacity, {
+      toValue: 0,
+      duration: EXIT_MS,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) then?.();
+    });
+  };
+  const fadeIn = () => {
+    if (screenShown.current) return;
+    screenShown.current = true;
+    Animated.timing(screenOpacity, {
+      toValue: 1,
+      duration: ENTER_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  /**
+   * One key for "what is on screen". Everything that replaces the body changes
+   * it, and nothing else does.
+   *
+   * 🔴 KEYED, NOT A BOOLEAN — for the third time in this file. `revealed` as a
+   * flag set by an effect would still hold the PREVIOUS screen's `true` on the
+   * render a new one arrives, so the new content would paint for a frame
+   * before the typing dots replaced it: the same one-frame flash as `beatDone`
+   * and `pendingSetup`. Comparing keys cannot be stale, because the new key is
+   * already different on the very first render that shows it.
+   */
+  const displayKey = step?.complete
+    ? "complete"
+    : beatPlaying && beat
+      ? `beat:${beat.id}`
+      : pendingSetup
+        ? `setup:${pendingSetup}`
+        : step?.question
+          ? `q:${step.question.id}`
+          : "thinking";
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  // `loading` belongs here too: a request in flight means Ester is composing,
+  // which is the typing bubble, not the question the member just answered.
+  const revealed = revealedKey === displayKey && !loading;
+  /** False before the first step lands, and while a request is in flight. */
+  const hasContent = displayKey !== "thinking";
+
+  // Each new screen: fade the page back in (it is at 0, because whatever moved
+  // us here faded it out), hold the typing bubble, then fade the content in.
+  useEffect(() => {
+    contentOpacity.setValue(0);
+    setRevealedKey(null);
+    fadeIn();
+    // Nothing to reveal yet — the dots simply stay up, which is what a typing
+    // indicator is for.
+    if (!hasContent) return;
+    const t = setTimeout(() => setRevealedKey(displayKey), TYPING_MS);
+    return () => clearTimeout(t);
+  }, [displayKey]);
+
+  useEffect(() => {
+    if (!revealed) return;
+    Animated.timing(contentOpacity, {
+      toValue: 1,
+      duration: CONTENT_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [revealed]);
+
   const finishSetup = (which: "P1" | "P2") => {
+    // The answer is banked immediately; only the screen change waits for the
+    // fade, so a slow frame can never lose what the member chose.
     if (which === "P1") setDietaryRestrictions(dietary);
     else if (goalWeightValid) setQuizAnswer("goalWeight", goalWeight.trim());
-    setSetupDone((d) => ({ ...d, [which]: true }));
+    fadeOut(() => setSetupDone((d) => ({ ...d, [which]: true })));
   };
   useEffect(() => {
     if (!beat || playedBeatId === beat.id) return;
-    const t = setTimeout(() => setPlayedBeatId(beat.id), BEAT_MS);
+    // Fade the beat out before handing the screen on, so an automatic
+    // transition looks the same as one the member taps.
+    const t = setTimeout(() => fadeOut(() => setPlayedBeatId(beat.id)), BEAT_MS);
     return () => clearTimeout(t);
   }, [beat?.id, playedBeatId]);
 
@@ -222,6 +334,13 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
         </Svg>
       </View>
 
+      {/* Everything but the background crossfades — the top bar and the
+          progress rail included, because in the fixed survey they ride the
+          route transition too. */}
+      <Animated.View
+        style={[styles.fadeLayer, { opacity: screenOpacity }]}
+        pointerEvents="box-none"
+      >
       <SafeAreaView edges={["top"]} style={styles.topBar} pointerEvents="box-none">
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={14} style={styles.iconBtn}>
@@ -246,6 +365,16 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
             {String((error as any)?.message ?? error)}
           </Text>
         ) : null}
+
+        {/* 🔑 Ester "composing", not a spinner. The fixed survey never shows a
+            loading indicator — it shows the typing bubble — and a member must
+            not be able to tell which engine they are on. */}
+        {!revealed ? (
+          <View style={styles.typingBubble}>
+            <EsterTypingDots />
+          </View>
+        ) : (
+        <Animated.View style={{ opacity: contentOpacity }}>
 
         {/* 🔑 ONLY while the beat is playing. The reflection is a solo moment —
             Ester responding — and the fixed flow moves on from it rather than
@@ -349,7 +478,20 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
                         value: a.id,
                         engine: "adaptive",
                       });
-                      void answer(question.id, a.id);
+                      // 🔴 The request waits for the fade to FINISH, and that
+                      // ordering is the whole fix. Firing it in parallel to
+                      // save 180ms works against a slow server and fails
+                      // against a fast one: measured on the sim against the
+                      // local backend, the next step landed inside a single
+                      // 33ms frame, the display key changed mid-animation and
+                      // the question was CUT rather than faded — 40k bright
+                      // pixels to 0 in one frame. The fixed survey pays the
+                      // same 180ms before it pushes; the typing bubble then
+                      // covers the round trip.
+                      fadeOut(() => {
+                        void answer(question.id, a.id);
+                        fadeIn();
+                      });
                     }}
                     activeOpacity={0.85}
                     style={[styles.bubble, loading && styles.bubbleDisabled]}
@@ -369,22 +511,17 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
           </>
         ) : null}
 
-        {/* 🔑 Ester "composing", not a spinner. The fixed survey never shows a
-            loading indicator — it shows the typing bubble — and a member must
-            not be able to tell which engine they are on. */}
-        {loading && !question ? (
-          <View style={styles.typingBubble}>
-            <EsterTypingDots />
-          </View>
-        ) : null}
+        </Animated.View>
+        )}
       </ScrollView>
 
       {/* Continue + arrow. 🔑 Screen Copy row 7: "Continue appears only on P1
           (multi-select) and P2 (goal weight)" — every scored question is
           single-select and advances on tap, which is why no diagnostic question
           renders this bar. */}
-      {((pendingSetup === "P1" && dietary.length > 0) ||
-        (pendingSetup === "P2" && goalWeightValid)) && (
+      {revealed &&
+        ((pendingSetup === "P1" && dietary.length > 0) ||
+          (pendingSetup === "P2" && goalWeightValid)) && (
         <SafeAreaView edges={["bottom"]} style={styles.bottomBar} pointerEvents="box-none">
           <View style={styles.continueRow}>
             <TouchableOpacity
@@ -414,6 +551,7 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
           </View>
         </SafeAreaView>
       )}
+      </Animated.View>
     </View>
   );
 }
@@ -488,6 +626,7 @@ const styles = StyleSheet.create({
   },
   bubbleTextSelected: { color: MAROON },
   // Ester composing — left-tailed outline bubble, content-sized.
+  fadeLayer: { ...StyleSheet.absoluteFillObject },
   typingBubble: {
     alignSelf: "flex-start",
     borderWidth: StyleSheet.hairlineWidth,
