@@ -77,6 +77,56 @@ export function RootNavigator() {
   const userId = state.auth.authUser?.id;
   // Pro gates the whole app: free users get GateNavigator instead of Main.
   const isPro = state.user.subscriptionTier === "pro";
+
+  /**
+   * Bryan's onboarding workbook, States tab, row 1 — status **Decided**:
+   *
+   *   Returning unpaid user · "Opens the app or logs in after finishing
+   *   onboarding without buying." → "Type ready, Type hidden, then Paywall.
+   *   No rescan, no repeat questions, no new Type."
+   *
+   * The Flow tab says it three more times, and marks the `Returning unpaid`
+   * column BLANK for every screen from Opening through Building the Type.
+   *
+   * 🔴 WE WERE DOING THE OPPOSITE. `hasCompletedOnboarding` was the only thing
+   * this branch read, and its single `false` path is OnboardingNavigator, which
+   * starts at PreScan. So anyone who closed the app between creating an account
+   * and finishing the reveal — centrally THE PAYWALL, where people hesitate —
+   * came back to Pre-scan and was marched through the scan and the whole survey
+   * again, to reach a paywall they had already reached.
+   *
+   * 🔑 THE MISMATCH WAS ONE WORD. Bryan's "after finishing onboarding" means
+   * reached **Type ready** (Flow row 13, BEFORE the paywall).
+   * `hasCompletedOnboarding` flips at the end of the **Type reveal** (row 16,
+   * AFTER purchase) — deliberately, because keying session restore on
+   * `primaryBucket` used to let people skip the AI-consent screen (2026-10-03).
+   * That flag change was right; nothing gave the state between row 13 and row
+   * 16 a landing spot. This is that landing spot.
+   *
+   * 🔑 Measured before changing anything (Amplitude, 9 days to 2026-10-14):
+   * of 84 members who reached the paywall, 15 were sent back to Pre-scan —
+   * 12 on Android, 3 on iOS. Android falls in far faster because the consent
+   * screen `reset`s the stack to Type ready alone, so hardware-back from Type
+   * ready EXITS the app: back, back, reopen, Pre-scan, median ~28s. iOS has no
+   * hardware back, so iOS only hit it by genuinely quitting — median 3 days.
+   * Restoring them to the Gate fixes both, because reopening now returns to
+   * Type ready rather than the start.
+   *
+   * 🔴 DELIBERATELY NARROW. This does not skip consent: it requires consent to
+   * have been ANSWERED (`aiConsentNeedsPrompt === false`), and `undefined`
+   * — a fresh install, or a failed consent fetch on restore — does NOT satisfy
+   * it, so the unknown case still walks onboarding. The compliance hole the
+   * 2026-10-03 fix closed stays closed; this only recognises people who are
+   * demonstrably past it.
+   *
+   * ▶ The adjacent States rows — "Leaves during questions" (resume at the next
+   * unanswered question) and "Closes during Building" — are status **Check**,
+   * owner Cole, and are NOT implemented here. They still land on Pre-scan.
+   */
+  const reachedTypeReady =
+    state.auth.isAuthenticated &&
+    !!state.user.metabolicType &&
+    state.user.aiConsentNeedsPrompt === false;
   // Only pro users reach Main, so only they should trigger the daily app-open
   // flow (which navigates into the Main stack).
   const authReady =
@@ -147,7 +197,7 @@ export function RootNavigator() {
       }}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!state.user.hasCompletedOnboarding ? (
+        {!state.user.hasCompletedOnboarding && !reachedTypeReady ? (
           <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
         ) : !state.auth.isAuthenticated ? (
           <Stack.Screen name="Auth" component={AuthNavigator} />
