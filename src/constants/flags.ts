@@ -57,10 +57,20 @@
  *     against 12.5 / 25 / 37.5 / 50 / 62.5 / 75 / 80.6 / 86.3 / 91.9 / 97.5.
  *     That replay also proved the UI renders answers in the API's exact order.
  *
- * 🔴 STILL NOT WALKED, and worth knowing when something looks wrong in the
- * wild: the extended path on ANDROID (every extended walk has been the iOS
- * simulator), and scan-present variety — STRESS_HIGH and LOW_WELLNESS exist
- * only as backend fixtures, so only NO_TYPING_SCAN_SIGNAL has had a real scan.
+ *   - And the same extended path was walked on ANDROID (S24): the identical
+ *     route, nine questions, the A3 bridge rendering, and the rail matching at
+ *     every step. Both platforms are covered.
+ *
+ * ⚠️ The one thing never seen is a REAL scan that clears a threshold —
+ * STRESS_HIGH (stressIndex > 5) or LOW_WELLNESS (wellness <= 40). That is not
+ * a client risk and should not be read as one: this screen does not branch on
+ * the values at all, it sends `hasScan` plus the raw biomarkers and the server
+ * owns every threshold, so the code path is the same whether stress reads 3 or
+ * 7 — and a real scan has already been through it. The value-dependent logic is
+ * server-side and has its own boundary tests ("fires STRESS_HIGH strictly above
+ * 5.0, not at it"; "fires LOW_WELLNESS at 40 inclusive"), plus a case asserting
+ * the +2 does NOT appear without supporting answers. ⇒ watch the scan-state
+ * distribution in the first real signups rather than trying to stage a scan.
  *
  * 🔴 NO OTA, NO REMOTE CONFIG, NO PERCENTAGE ROLLOUT. This is 0% or 100% and
  * turning it back off is another full release on both stores. That has not
