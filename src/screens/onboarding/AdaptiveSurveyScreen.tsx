@@ -343,6 +343,24 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
       >
       <SafeAreaView edges={["top"]} style={styles.topBar} pointerEvents="box-none">
         <View style={styles.topRow}>
+          {/* 🔑 ✕ LEAVES THE SURVEY, and that is a DECISION, not an oversight —
+              Cole, 2026-10-13, after walking it on the S24. It is a deliberate
+              difference from the fixed survey, so do not "fix" it to match.
+
+              The fixed survey steps BACK ONE QUESTION here, because it pushes a
+              route per question (`navigation.push("Survey", { step: next })`)
+              and ✕ is `goBack()`. This screen is one route for the whole
+              survey, so `goBack()` pops out of it — to Calibration after a
+              scan, to Pre-scan after skipping one, depending on which route is
+              underneath.
+
+              Matching the fixed survey is NOT a client change. The server
+              rejects any answer that is not to the question the router is
+              currently asking (`typing-tree.service.ts`: "Expected an answer to
+              X, received Y"), and there is no endpoint that pops one — the tree
+              exposes start / answer / claim / result. True back would need a
+              new backend `undo` that un-applies the last answer and recomputes
+              the session. Not worth it for V1. */}
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={14} style={styles.iconBtn}>
             <Text style={styles.closeGlyph}>×</Text>
           </TouchableOpacity>
