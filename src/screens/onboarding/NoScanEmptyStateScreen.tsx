@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Line, Path } from "react-native-svg";
 import { K } from "../../constants/colors";
-import { fonts } from "../../constants/typography";
+import { fonts, lineBox } from "../../constants/typography";
 import { logEvent } from "../../services/braze";
 import { SampleMealSheet } from "./SampleMealSheet";
 
@@ -464,7 +464,8 @@ const styles = StyleSheet.create({
   bannerTitle: {
     fontFamily: fonts.dmSans,
     fontSize: 32,
-    lineHeight: 36,
+    // "...sounds like your life" / "...for your body" — y, p
+    lineHeight: lineBox(32, 36),
     color: K.brown,
     letterSpacing: -0.32,
   },

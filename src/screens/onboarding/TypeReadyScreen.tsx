@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
-import { fonts } from "../../constants/typography";
+import { fonts, lineBox } from "../../constants/typography";
 import { K } from "../../constants/colors";
 import { logEvent } from "../../services/braze";
 
@@ -102,7 +102,8 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: fonts.catalogue,
     fontSize: 40,
-    lineHeight: 44,
+    // "Your Type is ready." — y, p, y
+    lineHeight: lineBox(40, 44),
     letterSpacing: -0.4,
     color: K.white,
     textAlign: "center",

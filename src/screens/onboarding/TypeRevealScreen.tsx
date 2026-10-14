@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { MetabolicType, TC } from "../../constants/colors";
-import { fonts } from "../../constants/typography";
+import { fonts, lineBox } from "../../constants/typography";
 import { CONTENT_MAX_WIDTH } from "../../constants/layout";
 // RES-121: metabolicType is now sourced from `state.user.metabolicType`
 // (set by CreateAccountScreen after the backend's TypingService runs on
@@ -1194,7 +1194,8 @@ const styles = StyleSheet.create({
   typeName: {
     fontFamily: fonts.dmSans,
     fontSize: 32,
-    lineHeight: 36,
+    // the Type names — no descender today
+    lineHeight: lineBox(32, 36),
     color: MAROON,
     letterSpacing: -0.32,
   },
@@ -1304,7 +1305,8 @@ const styles = StyleSheet.create({
   mealTeaserTitle: {
     fontFamily: fonts.dmSans,
     fontSize: 32,
-    lineHeight: 36,
+    // "Show me" — no descender today
+    lineHeight: lineBox(32, 36),
     color: WHITE,
     letterSpacing: -0.32,
   },

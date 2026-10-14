@@ -12,7 +12,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import { K } from "../../constants/colors";
-import { fonts } from "../../constants/typography";
+import { fonts, lineBox } from "../../constants/typography";
 import { OnboardingCta, ConsentCheckbox } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { setAiConsent as persistAiConsent } from "../../services/aiConsent";
@@ -238,7 +238,8 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: fonts.catalogue,
     fontSize: 32,
-    lineHeight: 36,
+    // "Before we build your type" — y, p, y
+    lineHeight: lineBox(32, 36),
     letterSpacing: -0.32,
     color: K.white,
   },

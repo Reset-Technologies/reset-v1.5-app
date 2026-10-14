@@ -15,7 +15,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K, toMetabolicType } from "../../constants/colors";
 import { TYPE_MASCOT } from "../../constants/mascots";
-import { fonts, radius } from "../../constants/typography";
+import { fonts, radius, lineBox } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { logEvent } from "../../services/braze";
 import { OnboardingBackButton } from "../../components";
@@ -614,7 +614,8 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: fonts.dmSans,
     fontSize: 36,
-    lineHeight: 40,
+    // "A few quick details" / "Update your weight" — q, p, y, g
+    lineHeight: lineBox(36, 40),
     color: BONE,
     letterSpacing: -0.4,
   },

@@ -17,7 +17,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
-import { fonts } from "../../constants/typography";
+import { fonts, lineBox } from "../../constants/typography";
 import { pickV1Answers } from "../../constants/v1Questions";
 import { useApp } from "../../context/AppContext";
 import { registerWithEmail } from "../../services/auth";
@@ -401,7 +401,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.catalogue,
     color: WHITE,
     fontSize: 40,
-    lineHeight: 44,
+    // "Enter account details" — no descender today
+    lineHeight: lineBox(40, 44),
     letterSpacing: -0.4,
   },
 
