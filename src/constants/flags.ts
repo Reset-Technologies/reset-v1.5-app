@@ -21,19 +21,42 @@
  * adaptive session and lets the Day 1 Deep Read quote adaptive answers. Against
  * an older backend a member would finish the flow untyped.
  *
- * 🔴 OFF deliberately. Turning it on is a product decision, not a cleanup:
- *   1. The fixed V1 engine reached members on 2026-10-07. `typingDiagnostics`
- *      exists to compare the two on real signups and has barely any data yet;
- *      flipping this now replaces a days-old engine on no evidence and destroys
- *      the comparison that column was added for.
- *   2. There is NO OTA channel and no remote config, so turning it back off is
- *      another full release on both stores. There is no percentage rollout —
- *      this is 0% or 100%.
- *   3. Still unwalked on a device: the scan-present branch, the 9-question
- *      ambiguity-bridge path (reachable by a perfectly consistent member — only
- *      the 6-question path has ever been walked), and iOS entirely.
- *   4. Styling parity with `OnboardingSurveyScreen` is not done, and Lang's
- *      layout is canonical.
- * ▶ Revisit once real V1 signups have accrued diagnostics and 3 is closed.
+ * ✅ ON. Bryan's call, Slack 2026-10-07, when Cole asked whether to wait for
+ * the fixed engine's confidence data or just ship:
+ *
+ *   "The main reason I wanted it wasn't to get to a confident Type faster. It
+ *    was to make the experience feel responsive to the person. If two people
+ *    answer differently, I want Reset to ask them different follow-ups so it
+ *    feels like we're actually listening. So even if the fixed six questions
+ *    are enough technically, that doesn't really answer whether adaptive is
+ *    worth it from a product experience standpoint. Since it's built, I'd lean
+ *    toward shipping it unless you're seeing a meaningful downside."
+ *
+ * 🔑 THAT SETS THE ACCEPTANCE CRITERION, and it is NOT the confidence gate.
+ * It is whether two members who answer differently get asked different things.
+ * Measured on a device: the server asks M7 where the fixed engine asks
+ * M1/M6/M11, and a member whose answers stay ambiguous gets the bridge —
+ * "I've got most of it. Two patterns are still close, so let me check one
+ * thing." — then extra questions. That is the feature, and it works.
+ *
+ * The downside we owed him was named and then closed on 2026-10-15:
+ *   - 600 scripted walks of the live tree showed the route depends almost
+ *     entirely on ANSWER PATTERN: a perfectly consistent member clears at six
+ *     100% of the time, while middle/last answers reach the extended path 100%
+ *     of the time. The three device walks that "all cleared at six" were the
+ *     one pattern that does.
+ *   - The extended path was then WALKED on a device for the first time:
+ *     U1 U2 P1 U3 reflection P2 M10 M5 D12 BRIDGE D13 M13 S5, nine diagnostic
+ *     questions, and the progress rail's tail (80.7 / 85.7 / 91.7%) matched the
+ *     formula that until then had never been seen on a screen.
+ *
+ * 🔴 STILL NOT WALKED, and worth knowing when something looks wrong in the
+ * wild: the 10-question maximum (the device walk reached nine), the extended
+ * path on ANDROID (that walk was the iOS simulator), and scan-present variety
+ * — STRESS_HIGH and LOW_WELLNESS exist only as backend fixtures.
+ *
+ * 🔴 NO OTA, NO REMOTE CONFIG, NO PERCENTAGE ROLLOUT. This is 0% or 100% and
+ * turning it back off is another full release on both stores. That has not
+ * changed and is the reason this stays one line.
  */
-export const ADAPTIVE_SURVEY_ENABLED = false;
+export const ADAPTIVE_SURVEY_ENABLED = true;
