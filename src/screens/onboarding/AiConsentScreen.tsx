@@ -21,6 +21,16 @@ import { logEvent } from "../../services/braze";
 
 type Props = NativeStackScreenProps<OnboardingStackParamList, "AiConsent">;
 
+/**
+ * Lang's frame values, and the floors they may be squeezed to when the screen
+ * genuinely does not fit. See the reclaim block inside the component.
+ */
+const TOP_BAND = 102;
+const MIN_TOP_BAND = 24;
+const BLOCK_GAP = 40;
+const MIN_BLOCK_GAP = 20;
+
+
 // RES-188 — third-party-AI data-sharing consent (Apple 5.1.1(i)/5.1.2(i)).
 // Shown once after account creation, before the type reveal (the first call
 // that would send data to OpenAI). "Create my type" grants; "Not now" declines
@@ -61,6 +71,56 @@ export function AiConsentScreen({ navigation }: Props) {
     state.biometrics !== null && state.user.startingRead !== true;
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * 🔴 THE CONSENT GATE WAS BELOW THE FOLD. Measured on Cole’s S24,
+   * 2026-10-14: content 751pt in a 581pt viewport, so the last 170pt — the
+   * Privacy Policy / AI Disclosure links AND the whole "I agree" checkbox —
+   * were clipped, with `showsVerticalScrollIndicator={false}` and the page's
+   * bottom-darken gradient both saying "this is the end".
+   *
+   * 🔴 That is not cosmetic. "Create my Type" is disabled until the box is
+   * ticked, and the box is the clipped thing — so a member saw a complete
+   * looking screen, a dead primary button, and exactly one live control:
+   * "Not now", which DECLINES. The layout was pushing people into declining.
+   *
+   * 🔑 Same root cause as three defects in the 2026-10-02 audit: Lang's frames
+   * are 874pt and an S24 is 780pt. And the same fix as PreScanScreen, which
+   * hit this first — MEASURE the real viewport, reclaim only the OVERFLOW, and
+   * take it from whatever costs the design least. `shrink` only ever grows, so
+   * it converges in a frame or two and can never oscillate.
+   *
+   * ⇒ Where the frame's values already fit, `shrink` stays 0 and every value
+   * below is Lang's, unchanged.
+   */
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const [shrink, setShrink] = useState(0);
+
+  // The skip path drops the lead sentence, so it has one block — and one
+  // gap — fewer to give back. Counted, not assumed.
+  const gaps = scanned ? 5 : 4;
+  const maxReclaim =
+    TOP_BAND - MIN_TOP_BAND + gaps * (BLOCK_GAP - MIN_BLOCK_GAP);
+
+  useEffect(() => {
+    if (viewportH > 0 && contentH > viewportH) {
+      setShrink((v) =>
+        Math.min(maxReclaim, v + Math.ceil(contentH - viewportH)),
+      );
+    }
+  }, [viewportH, contentH, maxReclaim]);
+
+  // 🔑 THE TOP BAND GOES FIRST, because it is the one piece of this screen
+  // that is empty on purpose: 102pt holding the place of a back button this
+  // screen deliberately does not have. Giving it back costs no copy, no
+  // spacing rhythm and no control — it just moves the headline up toward the
+  // status bar. Lang's 40pt rhythm is only touched once that runs out.
+  const padCut = Math.min(TOP_BAND - MIN_TOP_BAND, shrink);
+  const gapCut = Math.min(
+    BLOCK_GAP - MIN_BLOCK_GAP,
+    Math.ceil(Math.max(0, shrink - padCut) / gaps),
+  );
 
   useEffect(() => {
     logEvent("onboarding_ai_consent");
@@ -110,8 +170,17 @@ export function AiConsentScreen({ navigation }: Props) {
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: TOP_BAND - padCut, gap: BLOCK_GAP - gapCut },
+        ]}
+        /* Hidden while everything fits, which is Lang's clean frame. Shown
+           once the screen overflows anyway — a smaller device, or a large
+           accessibility font scale — because then something IS hidden and the
+           member has to be told it is there. */
+        showsVerticalScrollIndicator={contentH > viewportH}
+        onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_w, h) => setContentH(h)}
       >
         <Text style={styles.title}>Before we build your type</Text>
 
@@ -229,11 +298,11 @@ const styles = StyleSheet.create({
      * account that already exists. The band is kept so the copy lands where
      * she placed it rather than riding up against the status bar.
      */
-    paddingTop: 102,
+    paddingTop: TOP_BAND,
     paddingBottom: 12,
     // The frame's rhythm is a consistent 40 between every block — headline,
     // body, checkbox, buttons. This was 24.
-    gap: 40,
+    gap: BLOCK_GAP,
   },
   title: {
     fontFamily: fonts.catalogue,
