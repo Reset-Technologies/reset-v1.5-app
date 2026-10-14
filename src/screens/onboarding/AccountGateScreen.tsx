@@ -68,7 +68,29 @@ const SCREEN_W = Dimensions.get("window").width;
 
 export function AccountGateScreen({ navigation }: Props) {
   const { state, setUserAccount, setAuth, setTypingResult, completeOnboarding } = useApp();
-  const [isLoading, setIsLoading] = useState(false);
+  /**
+   * 🔴 SEEDED FROM `isAuthenticated`, NOT `false` — FOURTH time this exact bug
+   * class has bitten this flow (`beatDone`, `pendingSetup`, and `revealed` as
+   * a boolean, all in AdaptiveSurveyScreen).
+   *
+   * An already-signed-in member never sees this screen's job: the effect below
+   * syncs and hands straight off to AiConsent. But it is an EFFECT, so it runs
+   * AFTER the first paint — and `isLoading` was `false` for that paint, so the
+   * whole sign-up screen rendered for a frame: "Create an account to save your
+   * answers." and the Apple / Google / email buttons, to someone who already
+   * has an account. Then the overlay covered it and consent replaced it.
+   *
+   * The comment on that effect claimed "the existing full-screen spinner
+   * covers it". It does not cover the frame before it is switched on.
+   *
+   * Cole saw it on his S24, 2026-10-14: "a flash of some different text after
+   * the last reflection, but then the consent screen popped up."
+   *
+   * 🔑 The initial value of `useState` IS the first render, so seeding it is
+   * the whole fix — the same "derive it, do not write it from an effect" shape
+   * as the other three.
+   */
+  const [isLoading, setIsLoading] = useState(state.auth.isAuthenticated);
   const [error, setError] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(Platform.OS === "ios");
   // Measured height of the graphic area, so the featured card can scale down
