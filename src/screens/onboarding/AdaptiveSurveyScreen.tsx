@@ -106,7 +106,6 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
     P1: false,
     P2: false,
   });
-  const [pendingSetup, setPendingSetup] = useState<"P1" | "P2" | null>(null);
   const [dietary, setDietary] = useState<string[]>([]);
   const [goalWeight, setGoalWeight] = useState("");
   const goalWeightValid = /^\d{2,3}$/.test(goalWeight.trim());
@@ -152,16 +151,25 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
   // 🔑 P1 after U2, P2 after the reflection — ROUTING section A, steps 1 and 3.
   // Keyed off what the SERVER says has been asked, not off a local counter, so
   // a resumed session cannot re-show a setup question or skip one.
-  useEffect(() => {
-    const due = nextSetupDue(step, setupDone, !beatPlaying);
-    if (due) setPendingSetup(due);
-  }, [step, setupDone.P1, setupDone.P2, beatPlaying]);
+  //
+  // 🔴 DERIVED DURING RENDER, NOT STORED BY AN EFFECT — and this is the SECOND
+  // time this screen has been bitten by the same thing. Held in state and set
+  // from a `useEffect`, the render on which a new step arrives still had
+  // `pendingSetup === null`, so it painted the NEXT QUESTION for one frame
+  // before the effect ran and replaced it with P1 or P2. Cole saw it on the
+  // S24: "flashes of other screens in between other quiz screens". The beat's
+  // `beatPlaying` had already been converted for exactly this reason.
+  //
+  // `nextSetupDue` is pure and all three of its inputs are available here, so
+  // there is nothing to store: whatever is due is due on the first render that
+  // can know it. Finishing a setup question flips `setupDone`, which makes this
+  // null on the very next render and lets the question through.
+  const pendingSetup = nextSetupDue(step, setupDone, !beatPlaying);
 
   const finishSetup = (which: "P1" | "P2") => {
     if (which === "P1") setDietaryRestrictions(dietary);
     else if (goalWeightValid) setQuizAnswer("goalWeight", goalWeight.trim());
     setSetupDone((d) => ({ ...d, [which]: true }));
-    setPendingSetup(null);
   };
   useEffect(() => {
     if (!beat || playedBeatId === beat.id) return;
