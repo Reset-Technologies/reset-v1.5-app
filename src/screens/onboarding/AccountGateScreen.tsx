@@ -68,6 +68,32 @@ const SCREEN_W = Dimensions.get("window").width;
 
 export function AccountGateScreen({ navigation }: Props) {
   const { state, setUserAccount, setAuth, setTypingResult, completeOnboarding } = useApp();
+  /**
+   * 🔴 THE SIGN-UP UI MUST NOT RENDER AT ALL FOR SOMEONE ALREADY SIGNED IN.
+   *
+   * A member who arrives here authenticated has no job on this screen: the
+   * RES-207 effect below syncs their answers and hands straight off to
+   * AiConsent. The screen's answer to that was `isLoading` + a full-screen
+   * overlay, and its comment said "the existing full-screen spinner covers
+   * it". It does not:
+   *
+   *   1. `isLoading` started `false` and was switched on by an EFFECT, so the
+   *      first paint showed the sign-up screen regardless, and
+   *   2. the overlay is `rgba(0,0,0,0.4)` — 60% TRANSPARENT — so even once it
+   *      was up, "Create an account to save your answers." and the Apple /
+   *      Google / email buttons stayed legible underneath it for the WHOLE
+   *      sync, which is a network round trip. About a second.
+   *
+   * Cole saw it twice on his S24, 2026-10-14. Seeding `isLoading` fixed (1)
+   * and he still reported it: "some other text or even another screen was
+   * shown for a second". (2) is the one that lasts long enough to read.
+   *
+   * 🔑 Captured ONCE at mount, so this only covers people who were ALREADY
+   * signed in when they got here. Someone who signs in ON this screen keeps
+   * the existing gate-plus-overlay behaviour, which is correct for them —
+   * they were looking at the gate a moment ago.
+   */
+  const [arrivedAuthenticated] = useState(state.auth.isAuthenticated);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(Platform.OS === "ios");
@@ -272,6 +298,22 @@ export function AccountGateScreen({ navigation }: Props) {
     navigation.navigate("CreateAccount");
   };
 
+  // 🔑 AFTER every hook, never before — the effect above still has to run, it
+  // is the thing that syncs and navigates. This only changes what is painted
+  // while it does. Ester's mark and the line the previous screen just showed,
+  // so the wait reads as the same beat continuing rather than a new screen.
+  if (arrivedAuthenticated) {
+    return (
+      <View style={[styles.container, styles.handoff]}>
+        <Image source={ESTER_AVATAR} style={styles.avatar} resizeMode="contain" />
+        <Text style={styles.handoffLine}>
+          Got it. That’s everything I need for now.
+        </Text>
+        <ActivityIndicator size="large" color={WHITE} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Bottom darken gradient — same recipe used across the maroon flow. */}
@@ -387,6 +429,15 @@ export function AccountGateScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: MAROON },
   safe: { flex: 1 },
+  handoff: { alignItems: "center", justifyContent: "center", gap: 32, paddingHorizontal: 24 },
+  handoffLine: {
+    fontFamily: fonts.catalogue,
+    color: WHITE,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.24,
+    textAlign: "center",
+  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.4)",
