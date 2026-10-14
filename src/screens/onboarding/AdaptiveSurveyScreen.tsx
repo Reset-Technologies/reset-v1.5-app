@@ -16,7 +16,12 @@ import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { DIETARY_RESTRICTIONS } from "../../constants/types";
 import { useApp } from "../../context/AppContext";
-import { nextSetupDue, useTypingTree } from "../../hooks/useTypingTree";
+import {
+  nextSetupDue,
+  treeProgress,
+  useTypingTree,
+  type Interstitial,
+} from "../../hooks/useTypingTree";
 import { logEvent } from "../../services/braze";
 import { EsterTypingDots } from "../../components/EsterTypingDots";
 
@@ -84,7 +89,7 @@ const BEAT_MS = 3200;
  * exactly as the fixed flow does, and the tree never hears about them.
  */
 export function AdaptiveSurveyScreen({ navigation }: Props) {
-  const { step, loading, error, progress, start, answer } = useTypingTree();
+  const { step, loading, error, start, answer } = useTypingTree();
   const { state, setDietaryRestrictions, setQuizAnswer } = useApp();
   // 🔴 The id of the beat whose moment has already been spent — NOT a
   // "beatDone" boolean. A boolean set by an effect is one render stale on the
@@ -182,6 +187,16 @@ export function AdaptiveSurveyScreen({ navigation }: Props) {
 
   const question = step?.question;
   const showQuestion = !!question && !beatPlaying && !pendingSetup;
+
+  // 🔑 The bar is driven by what is ON SCREEN, not only by what the server has
+  // scored. A beat and a setup question are screens the member walks through,
+  // and without this the rail froze across three of them in a row.
+  const interstitial: Interstitial = beatPlaying ? "beat" : pendingSetup ? "setup" : "none";
+  const progress = treeProgress(
+    step?.diagnosticCount ?? 0,
+    step?.complete ?? false,
+    interstitial,
+  );
 
   return (
     <View style={styles.container}>
