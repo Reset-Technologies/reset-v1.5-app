@@ -47,13 +47,20 @@
  *     one pattern that does.
  *   - The extended path was then WALKED on a device for the first time:
  *     U1 U2 P1 U3 reflection P2 M10 M5 D12 BRIDGE D13 M13 S5, nine diagnostic
- *     questions, and the progress rail's tail (80.7 / 85.7 / 91.7%) matched the
- *     formula that until then had never been seen on a screen.
+ *     questions, and the progress rail's tail matched a formula that until then
+ *     had never been seen on a screen.
+ *   - The 10-QUESTION MAXIMUM was then walked too, by finding an answer pattern
+ *     against the API and replaying it on the device by answer index: route
+ *     U1 U2 U3 M5 S5 D12 D13 M13 M8 M6, no deviation, session completing at the
+ *     cap rather than running on. The whole rail is now observed and matches —
+ *     12.9 / 24.9 / 37.8 / 49.9 / 62.8 / 74.8 / 80.7 / 85.7 / 91.7 / 97.7
+ *     against 12.5 / 25 / 37.5 / 50 / 62.5 / 75 / 80.6 / 86.3 / 91.9 / 97.5.
+ *     That replay also proved the UI renders answers in the API's exact order.
  *
  * 🔴 STILL NOT WALKED, and worth knowing when something looks wrong in the
- * wild: the 10-question maximum (the device walk reached nine), the extended
- * path on ANDROID (that walk was the iOS simulator), and scan-present variety
- * — STRESS_HIGH and LOW_WELLNESS exist only as backend fixtures.
+ * wild: the extended path on ANDROID (every extended walk has been the iOS
+ * simulator), and scan-present variety — STRESS_HIGH and LOW_WELLNESS exist
+ * only as backend fixtures, so only NO_TYPING_SCAN_SIGNAL has had a real scan.
  *
  * 🔴 NO OTA, NO REMOTE CONFIG, NO PERCENTAGE ROLLOUT. This is 0% or 100% and
  * turning it back off is another full release on both stores. That has not
