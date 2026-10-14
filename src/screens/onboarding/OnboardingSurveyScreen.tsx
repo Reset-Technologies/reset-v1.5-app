@@ -25,6 +25,7 @@ import { useApp } from "../../context/AppContext";
 import { FastingInfoSheet } from "./FastingInfoSheet";
 import { useIsFocused } from "@react-navigation/native";
 import { logEvent } from "../../services/braze";
+import { EsterTypingDots } from "../../components/EsterTypingDots";
 import {
   REFLECTIONS,
   getProvisionalLeader,
@@ -46,48 +47,6 @@ const ESTER_BADGE = require("../../../assets/images/ester-avatar-silver.png");
 // transparent animated WebP (its video stack can't composite HEVC alpha, so it
 // would otherwise show a black box). The WebP is bundled only on Android.
 const POST_SCAN_VIDEO = require("../../../assets/videos/post-scan-intro.mov");
-
-// ── Ester "typing" indicator (three pulsing dots, bare — wrap in a bubble at
-//    the call site). ───────────────────────────────────────────────────
-function TypingDots() {
-  const dots = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
-  useEffect(() => {
-    const anims = dots.map((d, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 150),
-          Animated.timing(d, { toValue: 1, duration: 300, useNativeDriver: true }),
-          Animated.timing(d, { toValue: 0, duration: 300, useNativeDriver: true }),
-          Animated.delay((2 - i) * 150),
-        ])
-      )
-    );
-    anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
-  }, []);
-  return (
-    <View style={styles.dotsRow}>
-      {dots.map((d, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            styles.dot,
-            {
-              opacity: d.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-              transform: [
-                { translateY: d.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) },
-              ],
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
 
 export function OnboardingSurveyScreen({ navigation, route }: Props) {
   const stepIndex: number = ((route.params as any)?.step ?? 0) as number;
@@ -486,7 +445,7 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
             <PersonaIntroMedia player={introPlayer} style={styles.analyzingVideo} />
           </View>
           <View style={styles.analyzingBubble}>
-            <TypingDots />
+            <EsterTypingDots />
             <Text style={styles.analyzingText}>{step.text}</Text>
           </View>
         </View>
@@ -501,7 +460,7 @@ export function OnboardingSurveyScreen({ navigation, route }: Props) {
         >
           {!revealed ? (
             <View style={styles.typingBubble}>
-              <TypingDots />
+              <EsterTypingDots />
             </View>
           ) : (
             <Animated.View style={{ opacity: contentOpacity }}>
@@ -841,17 +800,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  dotsRow: {
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: WHITE,
-  },
+  // (the dots themselves now live in components/EsterTypingDots)
   // bottom continue
   bottomBar: {
     position: "absolute",

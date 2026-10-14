@@ -23,6 +23,28 @@ export const MIN_DIAGNOSTIC = 6;
 export const MAX_DIAGNOSTIC = 10;
 
 /**
+ * What the member is looking at right now, when it is not a question. Setup
+ * questions (P1/P2) and reflection beats are full screens the member walks
+ * through, but they are not scored and the server never counts them, so the
+ * bar has to be told about them separately.
+ */
+export type Interstitial = "none" | "beat" | "setup";
+
+/**
+ * Where an interstitial sits inside the gap between one question and the next.
+ * A beat always precedes the setup question that follows it (ROUTING section A
+ * step 3: the reflection, then P2), so the two offsets are ordered.
+ */
+const INTERSTITIAL_POSITION: Record<Interstitial, number> = {
+  none: 0,
+  beat: 1 / 3,
+  setup: 2 / 3,
+};
+
+/** Of the whole bar, the share spent across the six guaranteed questions. */
+const GUARANTEED_SHARE = 0.75;
+
+/**
  * 🔴 The adaptive flow has NO KNOWN LENGTH. The confidence gate clears
  * somewhere between 6 and 10 questions, and the client cannot know which until
  * the server says `complete`. The existing fixed survey divides by a step count
@@ -37,13 +59,35 @@ export const MAX_DIAGNOSTIC = 10;
  * So: fill most of the bar across the GUARANTEED first six, then creep through
  * the uncertain tail. It never goes backwards, never completes early, and never
  * stalls. `complete` is the only thing that reaches 1.
+ *
+ * 🔑 THE BAR COUNTS THE SCREEN IN FRONT OF THE MEMBER, not the answers behind
+ * them. Measured on the sim when it counted answers instead: the first question
+ * showed a literally empty bar (0 of 480px), and the bar then froze at 37.5%
+ * for three consecutive screens — U3, the reflection, P2 — because only U3 was
+ * scored. A member counts screens, and the adaptive flow puts unscored ones
+ * between the scored ones. So `diagnosticCount` answers place the member ON
+ * question n+1, and an interstitial takes a fraction of the gap to the next
+ * one. The fixed survey has always done the equivalent — `(index + 1) /
+ * (count + 1)` over every screen that shows the bar.
  */
-export function treeProgress(diagnosticCount: number, complete: boolean): number {
+export function treeProgress(
+  diagnosticCount: number,
+  complete: boolean,
+  interstitial: Interstitial = "none",
+): number {
   if (complete) return 1;
-  const n = Math.max(0, Math.min(diagnosticCount, MAX_DIAGNOSTIC));
-  const GUARANTEED_SHARE = 0.75;
-  if (n <= MIN_DIAGNOSTIC) return (n / MIN_DIAGNOSTIC) * GUARANTEED_SHARE;
-  const tail = (n - MIN_DIAGNOSTIC) / (MAX_DIAGNOSTIC - MIN_DIAGNOSTIC);
+  const answered = Math.max(0, Math.min(diagnosticCount, MAX_DIAGNOSTIC));
+  // A question screen is the whole of the next slot; an interstitial is part
+  // way into it. Both are measured from the questions already answered, which
+  // is what keeps a beat (3.33) strictly between its question (3) and the next
+  // one (4) rather than overshooting it.
+  const position =
+    answered + (interstitial === "none" ? 1 : INTERSTITIAL_POSITION[interstitial]);
+  if (position <= MIN_DIAGNOSTIC) return (position / MIN_DIAGNOSTIC) * GUARANTEED_SHARE;
+  const tail = Math.min(
+    (position - MIN_DIAGNOSTIC) / (MAX_DIAGNOSTIC - MIN_DIAGNOSTIC),
+    1,
+  );
   return GUARANTEED_SHARE + tail * (1 - GUARANTEED_SHARE) * 0.9;
 }
 
@@ -52,7 +96,6 @@ export interface TypingTreeState {
   loading: boolean;
   /** Set when a call failed. The caller decides whether to retry or fall back. */
   error: unknown;
-  progress: number;
 }
 
 export function useTypingTree() {
@@ -123,11 +166,14 @@ export function useTypingTree() {
     [run, step?.sessionId],
   );
 
+  // 🔑 No `progress` here on purpose. Only the screen knows whether a beat or a
+  // setup question currently owns the display, and a second, interstitial-blind
+  // value living next to the real one is exactly how two sources of truth start.
+  // The screen calls `treeProgress` itself, once.
   return {
     step,
     loading,
     error,
-    progress: treeProgress(step?.diagnosticCount ?? 0, step?.complete ?? false),
     start,
     answer,
   };
