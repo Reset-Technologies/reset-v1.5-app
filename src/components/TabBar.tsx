@@ -191,6 +191,17 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             <Path d={SUBTRACT_PATH} fill={pillBg} stroke={pillStroke} />
             <Path d={RIGHT_D_STROKE_PATH} fill={pillStroke} />
             <Path d={RIGHT_D_PATH} fill={pillBg} />
+            {/* SUBTRACT_PATH is stroked all the way round, so it carries an
+                inner stroke on BOTH vertical edges. The inserted section covers
+                the left one by drawing over it; nothing covered the right one,
+                because the cap's fill starts at x=170 while that stroke runs
+                169.5..170.5 — the inner half sat on top of the notch's own
+                fill. It is invisible at 3x, where it falls under a pixel
+                boundary, and a full-height hairline at the 2.625x of a 420dpi
+                Android device, which is where I found it. Cover it the same way
+                the left edge is covered. y 1..49 is exactly the caps' own fill
+                band, so the top and bottom rules are untouched. */}
+            <Rect x={169} y={1} width={2} height={PILL_H - 2} fill={pillBg} />
           </G>
           {/* One straight section per tab beyond the two Lang drew. Fill
               y 1..49 between a 1-unit rule above and below is exactly what her
