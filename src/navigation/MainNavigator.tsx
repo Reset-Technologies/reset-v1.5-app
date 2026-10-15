@@ -18,11 +18,16 @@ import { TypeRevealScreen } from "../screens/onboarding/TypeRevealScreen";
 // else navigates to this route, and the row that does is gated behind
 // shouldShowExperiments(), so the shipping build can't reach it.
 import { WelcomeBackScreen } from "../screens/onboarding";
-// Preview-only, same arrangement as WelcomeBack above. The weekly plan surface
-// (`/api/meals/my-plan`) ships dark: the legacy `daily-plan` screens stay the
-// live experience until a cutover is agreed, and Lang's design puts My Plan in
-// a four-tab bar this app does not have. Reachable ONLY from
-// Settings ▸ EXPERIMENTAL, which is gated by shouldShowExperiments().
+// My Plan is the MEALS TAB. Bryan, 2026-10-15, asked where a member is meant to
+// enter Meals (his handoff says "member enters Meals" and never says from
+// where): "Let's add Meals to the current tab bar now. The full nav is still
+// unsettled, especially Ester's role. No reason to hold Meals for that ... we
+// can move to the new nav once Progress, Account, and the Ester decision are
+// ready." So Meals joins Home and Profile here rather than waiting on Lang's
+// four-tab bar, and the Settings ▸ EXPERIMENTAL preview row is gone with it.
+// 🔑 Main is mounted only for `subscriptionTier === "pro"` (RootNavigator), so
+// the tab is paid-only without a gate of its own — MY PLAN r4, "Paid member
+// enters Meals".
 import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
 import { GroceryListScreen } from "../screens/meals/GroceryListScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
@@ -37,6 +42,8 @@ import type { Meal } from "../components";
 // Tab navigator param list
 export type MainTabParamList = {
   Home: undefined;
+  /** My Plan — the weekly plan surface is this tab's root. */
+  Meals: undefined;
   Profile: undefined;
 };
 
@@ -84,8 +91,6 @@ export type MainStackParamList = {
     };
   };
   SavedMeals: undefined;
-  /** 🔴 Preview-only — see the import comment. Not reachable in a store build. */
-  MyPlan: undefined;
   GroceryList: undefined;
   WeeklyReview: undefined;
   WindowProgress: undefined;
@@ -156,6 +161,17 @@ function TabNavigator() {
           tabBarLabel: "Home",
         }}
       />
+      {/* Lang's frame (Figma 5039:29721) draws My Plan with the tab bar visible
+          and "Meals" selected — this is that tab, in the bar we actually ship.
+          Grocery List and Recipe Details are pushed onto the stack ABOVE the
+          tabs from here, so the bar hides while they are open. */}
+      <Tab.Screen
+        name="Meals"
+        component={MyPlanScreen}
+        options={{
+          tabBarLabel: "Meals",
+        }}
+      />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
@@ -214,16 +230,6 @@ export function MainNavigator() {
       <Stack.Screen
         name="GroceryList"
         component={GroceryListScreen}
-      />
-      {/* In Lang's frame (Figma 5039:29721) My Plan is the **Meals tab** — the
-          bottom tab bar is visible with "Meals" selected — so it carries no
-          presentation of its own. It is a plain push until that tab exists. */}
-      <Stack.Screen
-        name="MyPlan"
-        component={MyPlanScreen}
-        options={{
-          animation: "slide_from_right",
-        }}
       />
       <Stack.Screen
         name="WeeklyReview"
