@@ -246,17 +246,20 @@ export function MainNavigator() {
           animation: "slide_from_right",
         }}
       />
-      {/* 🔴🔴 NOT a modal, and this is NOT only about Settings' own looks.
-          On iOS a screen pushed AFTER a modal stays inside that modal's card,
-          so every screen reachable from here inherited the inset and left the
-          page underneath peeking out above it — Settings -> My Plan ->
-          Grocery List / Recipe Details, all of them. Fixing the screens one at
-          a time was whack-a-mole; the presentation here is the cause. */}
+      {/* 🔴🔴 `fullScreenModal`, NEVER plain `modal`. Settings slides up, which
+          is what it has always done and what Cole asked for back — but on iOS a
+          screen pushed AFTER a `modal` stays inside that modal's CARD, so every
+          screen reachable from here inherited the inset and left the page
+          underneath peeking out above it. Fixing those screens one at a time
+          was whack-a-mole; the presentation here was the cause.
+          `fullScreenModal` keeps the upward slide and covers the whole screen,
+          so nothing pushed above it is inset. */}
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
-          animation: "slide_from_right",
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
         }}
       />
       <Stack.Screen
