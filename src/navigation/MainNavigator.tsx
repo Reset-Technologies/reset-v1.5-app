@@ -192,12 +192,16 @@ export function MainNavigator() {
           animation: "slide_from_bottom",
         }}
       />
+      {/* 🔴 NOT a modal. Lang's Recipe Details frame (Figma 5046:43237) draws
+          the status bar at inset top 0 and runs the hero image full-bleed from
+          the very top, with a BACK ARROW in the header — a pushed screen, not a
+          sheet. As `presentation: "modal"` it rendered as an iOS card and left
+          the screen underneath peeking out above it. */}
       <Stack.Screen
         name="RecipeDetail"
         component={RecipeDetailScreen}
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen
@@ -211,6 +215,9 @@ export function MainNavigator() {
         name="GroceryList"
         component={GroceryListScreen}
       />
+      {/* In Lang's frame (Figma 5039:29721) My Plan is the **Meals tab** — the
+          bottom tab bar is visible with "Meals" selected — so it carries no
+          presentation of its own. It is a plain push until that tab exists. */}
       <Stack.Screen
         name="MyPlan"
         component={MyPlanScreen}
@@ -233,12 +240,17 @@ export function MainNavigator() {
           animation: "slide_from_right",
         }}
       />
+      {/* 🔴🔴 NOT a modal, and this is NOT only about Settings' own looks.
+          On iOS a screen pushed AFTER a modal stays inside that modal's card,
+          so every screen reachable from here inherited the inset and left the
+          page underneath peeking out above it — Settings -> My Plan ->
+          Grocery List / Recipe Details, all of them. Fixing the screens one at
+          a time was whack-a-mole; the presentation here is the cause. */}
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

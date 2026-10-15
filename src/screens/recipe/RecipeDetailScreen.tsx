@@ -27,6 +27,7 @@ import type { Meal } from "../../components";
 import { AiConsentNudge } from "../../components";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
+import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
   getMealDetail,
   getMealIngredients,
@@ -789,13 +790,18 @@ export function RecipeDetailScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.floatingHeaderRow}>
+          {/* An arrow, not a ✕: this screen is PUSHED (see MainNavigator), and
+              Lang's frame draws arrow_back here. A ✕ promises a sheet that
+              dismisses downward, which is no longer what happens. Sized 18 to
+              sit with the ↗ and the 16pt bookmark beside it rather than at the
+              frame's 24, which would tower over both. */}
           <TouchableOpacity
             style={styles.headerCloseButton}
             onPress={handleClose}
             hitSlop={8}
-            accessibilityLabel="Close"
+            accessibilityLabel="Back"
           >
-            <Text style={styles.headerCloseGlyph}>✕</Text>
+            <ArrowBackIcon size={18} color={K.brown} />
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
@@ -1156,11 +1162,6 @@ const styles = StyleSheet.create({
     backgroundColor: K.bone,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerCloseGlyph: {
-    fontSize: 18,
-    color: K.brown,
-    fontFamily: fonts.dmSans,
   },
   headerRightActions: {
     flexDirection: "row",

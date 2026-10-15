@@ -35,6 +35,7 @@ import {
 } from "../../services/meals";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
+import { ArrowBackIcon } from "../../components/PaywallIcons";
 import { logEvent } from "../../services/amplitude";
 
 /**
@@ -500,6 +501,25 @@ export function MyPlanScreen({ navigation }: Props) {
             only route to the grocery list, which is derived from this very
             week, so it belongs here rather than in a tab. */}
         <View style={styles.titleRow}>
+          {/* 🔴 Lang's frame has no back control because there My Plan is the
+              MEALS TAB ROOT — a tab needs no way back. Today it is pushed from
+              the experiments list, and without this the screen is a DEAD END on
+              iOS: there is no header control and the edge-swipe does not pop it
+              (checked on the simulator, twice). Android's hardware back would
+              have hidden that, exactly as it did before.
+              🔑 Gated on `canGoBack()` so it DELETES ITSELF the day this becomes
+              the tab root, instead of leaving a stray arrow on a root screen. */}
+          {navigation.canGoBack() ? (
+            <Pressable
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={styles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <ArrowBackIcon size={20} color={K.cream} />
+            </Pressable>
+          ) : null}
           <View style={styles.titleText}>
             <Text style={styles.title}>My Plan</Text>
             <Text style={styles.range}>{range}</Text>
@@ -841,6 +861,11 @@ const styles = StyleSheet.create({
   scroll: { padding: 20, paddingBottom: 48 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   titleText: { flex: 1 },
+  backButton: {
+    width: 40, height: 40, borderRadius: 999, marginTop: 4, marginRight: 8,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(243,239,227,0.12)",
+  },
   cartButton: {
     width: 40, height: 40, borderRadius: 999, marginTop: 4,
     alignItems: "center", justifyContent: "center",
