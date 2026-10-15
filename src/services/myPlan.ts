@@ -207,9 +207,131 @@ export async function setPlannedMealServings(params: {
 }
 
 /**
- * 📌 Remaining mutations (swap, move, add, remove, grocery, substitutions) are
- * deliberately absent for now. The first slice is the read-only week view; each
- * mutation arrives with the screen that needs it, so the client never carries
- * calls nothing exercises. The endpoints are listed in
+ * REARRANGE — move one planned meal to another day and/or slot.
+ *
+ * 🔑 MY PLAN r10: *"Move assignment and refresh grocery timing only if list is
+ * date-aware … Food strategy unchanged."* It creates a new
+ * `meal_plan_revision` and deliberately does NOT touch the shared Score
+ * `plan_version_id` — START HERE r7 lists ordinary edits as staying inside the
+ * same version.
+ *
+ * 🔴 `mealPlanId` is required and is the ownership proof, exactly as for
+ * `setPlannedMealServings`. The server resolves the plan from it and refuses a
+ * plan that is not the caller's, so a guessed `plannedMealId` is not enough to
+ * move someone else's meal.
+ *
+ * 🔴 AT LEAST ONE of `toLocalDate` / `toSlotType` must be set — the server
+ * rejects a move that changes neither ("A move needs a new day, a new slot, or
+ * both").
+ *
+ * ⚠️ The meal lands at the END of the destination day. That is the server's
+ * choice, so a move "never silently reorders the meals already there" — which
+ * is also what makes an undo locatable (see `findMovedSlot`).
+ */
+export async function movePlannedMeal(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  toLocalDate?: string;
+  toSlotType?: MealSlotType;
+}): Promise<void> {
+  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}/move`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      mealPlanId: params.mealPlanId,
+      ...(params.toLocalDate ? { toLocalDate: params.toLocalDate } : {}),
+      ...(params.toSlotType ? { toSlotType: params.toSlotType } : {}),
+    }),
+  });
+}
+
+/**
+ * Find a meal after it has been moved, so the move can be undone.
+ *
+ * 🔴🔴 PLANNED-MEAL IDS DO NOT SURVIVE AN EDIT. `commitRevision` is handed
+ * meals with no ids and writes fresh rows for every revision, so the id the
+ * client used to move a meal is dead the moment the call returns. Undo cannot
+ * simply call move again with the same id — it has to re-read the plan and
+ * find the meal where it landed.
+ *
+ * 🔑 Locating it is reliable precisely BECAUSE the server appends: the moved
+ * meal is the one on the destination day carrying that recipe version with the
+ * highest `sortOrder`. Matching on recipe version alone would be ambiguous
+ * when the same recipe appears twice in a day; "last on the day" disambiguates
+ * it, and only holds because `moveMeal` sets `sortOrder = max + 1`.
+ *
+ * Returns null when the meal cannot be found, which the caller must treat as
+ * "undo is no longer available" rather than retrying blindly — the plan may
+ * have been regenerated underneath it.
+ */
+export function findMovedSlot(
+  plan: MyPlanResponse,
+  toLocalDate: string,
+  recipeVersionId: string,
+): MyPlanSlot | null {
+  const day = plan.days.find((d) => d.date === toLocalDate);
+  if (!day) return null;
+  const candidates = day.slots.filter(
+    (s) => s.recipe?.versionId === recipeVersionId,
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (b.sortOrder > a.sortOrder ? b : a));
+}
+
+/**
+ * SWAP — replace the recipe in one slot, keeping the slot itself.
+ *
+ * 🔑 MY PLAN r9: *"Replace planned meal in same slot; refresh grocery delta."*
+ * Day, slot type, sort order, servings and planned time all survive; only the
+ * content changes. Like a move it writes a new `meal_plan_revision` and leaves
+ * the shared Score `plan_version_id` alone (START HERE r7), which is why an
+ * approved swap "can still count as On plan in Score".
+ *
+ * 🔴 A SWAP IS NOT A REJECTION. The sheet is explicit — *"A passive swap alone
+ * is not a rejection"* — so do NOT pair this with a "why did you swap?" prompt.
+ * Rejection is a separate, explicit signal with its own reasons endpoint, and
+ * conflating them would corrupt the Fit evidence Score reads.
+ *
+ * 🔴 `recipeVersionId` must be a CURRENT version of a live recipe. The server
+ * now refuses anything else (400) rather than committing a revision whose slot
+ * cannot render — but the UI should still only offer saved meals that carry a
+ * `currentVersionId`.
+ */
+export async function swapPlannedMeal(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  recipeVersionId: string;
+}): Promise<void> {
+  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}/swap`, {
+    method: "POST",
+    body: JSON.stringify({
+      mealPlanId: params.mealPlanId,
+      recipeVersionId: params.recipeVersionId,
+    }),
+  });
+}
+
+/**
+ * Find a slot again after a swap, so the swap can be undone.
+ *
+ * 🔑 Cleaner than the move case: a swap PRESERVES the slot, so the meal is
+ * still on the same day at the same `sortOrder` — an exact match rather than
+ * `findMovedSlot`'s "last on the day" reasoning. The id is still new, because
+ * every revision writes fresh planned-meal rows, which is the whole reason
+ * this function has to exist at all.
+ */
+export function findSwappedSlot(
+  plan: MyPlanResponse,
+  localDate: string,
+  sortOrder: number,
+): MyPlanSlot | null {
+  const day = plan.days.find((d) => d.date === localDate);
+  if (!day) return null;
+  return day.slots.find((s) => s.sortOrder === sortOrder) ?? null;
+}
+
+/**
+ * 📌 Remaining mutations (add, remove, grocery, substitutions) are
+ * deliberately absent for now. Each arrives with the screen that needs it, so
+ * the client never carries calls nothing exercises. The endpoints are listed in
  * `my-plan.controller.ts` when that time comes.
  */
