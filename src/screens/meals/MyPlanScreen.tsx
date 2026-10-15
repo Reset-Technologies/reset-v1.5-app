@@ -11,7 +11,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { MainStackParamList } from "../../navigation/MainNavigator";
+import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
+import { CompositeScreenProps } from "@react-navigation/native";
+import {
+  MainStackParamList,
+  MainTabParamList,
+} from "../../navigation/MainNavigator";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useResetWindow } from "../../hooks/useResetWindow";
@@ -35,7 +40,6 @@ import {
 } from "../../services/meals";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
-import { ArrowBackIcon } from "../../components/PaywallIcons";
 import { logEvent } from "../../services/amplitude";
 
 /**
@@ -47,18 +51,25 @@ import { logEvent } from "../../services/amplitude";
  * pushed a screen with `undefined` params. `any` meant tsc said nothing, and
  * the device walk never tapped a row. Typing it makes the compiler catch the
  * next one.
+ *
+ * 🔑 COMPOSITE because this is a TAB whose pushes land on the stack ABOVE the
+ * tabs. `BottomTabScreenProps` alone would type `navigate("RecipeDetail")` as
+ * an error (it is not a tab), and widening to `any` would give back exactly the
+ * silence described above. Composing the two keeps every push checked.
  */
-type Props = NativeStackScreenProps<MainStackParamList, "MyPlan">;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, "Meals">,
+  NativeStackScreenProps<MainStackParamList>
+>;
 
 /**
  * My Plan — the weekly plan surface. Lang's frame 5039:29721 (page 🟢 Meals).
  *
- * 🔴 BEHIND A FLAG AND NOT IN THE TAB BAR. The design puts this in a four-tab
- * bar (Today · Meals · Progress · Ester); the app ships two tabs (Home ·
- * Profile). Restructuring primary navigation is a product decision, so this is
- * registered as an ordinary stack screen until that call is made and the
- * legacy `daily-plan` surface is cut over. Both surfaces run in parallel; this
- * one is dark.
+ * ✅ THE MEALS TAB ROOT since 2026-10-15 — Bryan: "Let's add Meals to the
+ * current tab bar now." Lang's frame draws it inside a four-tab bar (Today ·
+ * Meals · Progress · Ester); we ship it in the three-tab bar we have, and move
+ * to hers once Progress, Account and the Ester decision are settled. The legacy
+ * `daily-plan` surface still runs in parallel and is untouched by this.
  *
  * 🔑 The week is fetched ONCE and paged client-side by the day selector. The
  * response already carries all 7 days, and MY PLAN r6 forbids re-reading on
@@ -501,25 +512,19 @@ export function MyPlanScreen({ navigation }: Props) {
             only route to the grocery list, which is derived from this very
             week, so it belongs here rather than in a tab. */}
         <View style={styles.titleRow}>
-          {/* 🔴 Lang's frame has no back control because there My Plan is the
-              MEALS TAB ROOT — a tab needs no way back. Today it is pushed from
-              the experiments list, and without this the screen is a DEAD END on
-              iOS: there is no header control and the edge-swipe does not pop it
-              (checked on the simulator, twice). Android's hardware back would
-              have hidden that, exactly as it did before.
-              🔑 Gated on `canGoBack()` so it DELETES ITSELF the day this becomes
-              the tab root, instead of leaving a stray arrow on a root screen. */}
-          {navigation.canGoBack() ? (
-            <Pressable
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={styles.backButton}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <ArrowBackIcon size={20} color={K.cream} />
-            </Pressable>
-          ) : null}
+          {/* 🔴 NO back control: this is the MEALS TAB ROOT, and Lang's frame
+              draws none — a tab is not somewhere you came from.
+              The gate that used to stand here was `navigation.canGoBack()`,
+              written while My Plan was pushed from Settings so it would delete
+              itself the day it became a tab. It does NOT: on a bottom tab
+              `canGoBack()` is TRUE whenever a later tab is focused (default
+              backBehavior pops to the first tab), so the arrow rendered on the
+              tab root and "back" meant "jump to Home". Observed on the
+              simulator the first time this ran as a tab.
+              ▶ The dead-end that gate was protecting against is gone with the
+              pushed route: nothing navigates to My Plan any more, it IS a
+              destination. If anything ever pushes it again, give that push its
+              own way out — see the note in [[feedback_back_affordances]]. */}
           <View style={styles.titleText}>
             <Text style={styles.title}>My Plan</Text>
             <Text style={styles.range}>{range}</Text>
@@ -858,14 +863,12 @@ function TagRow({ recipe }: { recipe: MyPlanRecipe }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: K.brown },
   centered: { alignItems: "center", justifyContent: "center" },
-  scroll: { padding: 20, paddingBottom: 48 },
+  // 🔑 paddingBottom clears the floating tab bar (~119pt tall with the safe
+  // area on an iPhone 16), the same reserve HomeScreenV2 keeps. As a pushed
+  // screen 48 was enough; as a tab root the pill would sit on the last card.
+  scroll: { padding: 20, paddingBottom: 120 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   titleText: { flex: 1 },
-  backButton: {
-    width: 40, height: 40, borderRadius: 999, marginTop: 4, marginRight: 8,
-    alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(243,239,227,0.12)",
-  },
   cartButton: {
     width: 40, height: 40, borderRadius: 999, marginTop: 4,
     alignItems: "center", justifyContent: "center",

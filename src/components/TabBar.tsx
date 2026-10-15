@@ -6,7 +6,7 @@ import {
   Image,
   Platform,
 } from "react-native";
-import Svg, { Path, Mask, Rect, Defs } from "react-native-svg";
+import Svg, { Path, Rect, G } from "react-native-svg";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -19,8 +19,24 @@ import { useAiConsentGate } from "../hooks/useAiConsentGate";
 // Figma: Reset v1.5 / Bottom Nav (node 1324:14600)
 // Paths exported directly from Figma — left D, right D, and a center
 // "subtract" rect whose top edge curves down to follow the Ester button.
-const PILL_W = 250;
+// Lang's Bottom Nav (Figma 1324:14600) is a 250x50 pill: a rounded "D" cap at
+// each end holding ONE tab, and a 90-wide middle piece whose top edge dips into
+// the notch the Ester button sits in.
+//
+// 🔑 A THIRD tab does not fit that shape, so the pill GROWS BY ONE SLOT: a
+// straight section is inserted between the left cap and the notch piece, and the
+// notch + right cap shift right by its width. A stadium's straight run can be
+// extended without distorting anything, so Lang's caps and her notch are still
+// drawn from her exported paths — nothing here is stretched, scaled or redrawn.
+// (Her four-tab bar is a different component entirely — labelled tabs, no notch,
+// Ester as a tab. Bryan deferred it 2026-10-15: "add Meals to the current tab
+// bar now ... we can move to the new nav once Progress, Account, and the Ester
+// decision are ready.")
+const SLOT_W = 80; // one tab slot — Lang's frames "1" and "4" are both 80 wide
+const NOTCH_W = 90; // the middle piece, SUBTRACT_PATH, x 79.5..170.5
 const PILL_H = 50;
+/** The pill exactly as Lang drew it: cap + notch + cap. */
+const BASE_PILL_W = SLOT_W * 2 + NOTCH_W;
 const ESTER_SIZE = 40;
 // Ester center sits above the pill. Notch dips to y=28.5 in the 50-tall pill.
 // Top at -15 puts the button's bottom at y=25 — ~3.5px gap above the notch.
@@ -63,6 +79,32 @@ function AccountIcon({ color }: { color: string }) {
   );
 }
 
+// Figma `restaurant` — the SAME glyph Lang puts in the Meals tab of her new nav,
+// and the same path PaywallIcons.MealsIcon draws (that copy is wrapped in a glow
+// filter for the paywall, so the bare path is repeated here next to its two
+// siblings rather than imported through that wrapper).
+// The glyph's own bounds are x 7.1..25.766, y 7.1..33.1 — narrower than it is
+// tall, like Material's. The viewBox pads the width by 0.12 a side so 15.8x22
+// scales it EVENLY and it stands exactly as tall as the Home and Account icons.
+function MealsIcon({ color }: { color: string }) {
+  return (
+    <Svg width={15.8} height={22} viewBox="6.98 7.1 18.909 26" fill="none">
+      <Path
+        d="M10.946 16.254V8.1C10.946 7.81667 11.0419 7.57922 11.2337 7.38767C11.4254 7.19589 11.663 7.1 11.9463 7.1C12.2299 7.1 12.4673 7.19589 12.6587 7.38767C12.8502 7.57922 12.946 7.81667 12.946 8.1V16.254H14.7923V8.1C14.7923 7.81667 14.8881 7.57922 15.0797 7.38767C15.2714 7.19589 15.5091 7.1 15.7927 7.1C16.076 7.1 16.3134 7.19589 16.505 7.38767C16.6963 7.57922 16.792 7.81667 16.792 8.1V16.254C16.792 17.4471 16.4216 18.474 15.6807 19.3347C14.9396 20.1953 14.028 20.7428 12.946 20.977V32.1C12.946 32.3833 12.8501 32.6208 12.6583 32.8123C12.4666 33.0041 12.229 33.1 11.9457 33.1C11.6621 33.1 11.4247 33.0041 11.2333 32.8123C11.0418 32.6208 10.946 32.3833 10.946 32.1V20.977C9.864 20.7428 8.95244 20.1953 8.21133 19.3347C7.47044 18.474 7.1 17.4471 7.1 16.254V8.1C7.1 7.81667 7.19589 7.57922 7.38767 7.38767C7.57922 7.19589 7.81678 7.1 8.10033 7.1C8.38367 7.1 8.62111 7.19589 8.81267 7.38767C9.004 7.57922 9.09967 7.81667 9.09967 8.1V16.254H10.946ZM23.7663 22.4333H21.3323C20.9877 22.4333 20.7003 22.3179 20.4703 22.087C20.2406 21.8559 20.1257 21.5697 20.1257 21.2283V13.4333C20.1257 11.758 20.6102 10.2837 21.5793 9.01033C22.5484 7.73678 23.533 7.1 24.533 7.1C24.9074 7.1 25.2067 7.23422 25.4307 7.50267C25.6544 7.77089 25.7663 8.10767 25.7663 8.513V32.1C25.7663 32.3833 25.6704 32.6208 25.4787 32.8123C25.2871 33.0041 25.0496 33.1 24.766 33.1C24.4827 33.1 24.2452 33.0041 24.0537 32.8123C23.8621 32.6208 23.7663 32.3833 23.7663 32.1V22.4333Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+/** Route name -> glyph. A tab with no entry here renders no icon, which is a
+ *  loud enough failure to catch in a walk. */
+const TAB_ICONS: Record<string, (props: { color: string }) => React.ReactElement> = {
+  Home: HomeIcon,
+  Meals: MealsIcon,
+  Profile: AccountIcon,
+};
+
 export function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { innerBg, evening } = useAppPalette();
@@ -81,10 +123,20 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   const activeGhostBg = "rgba(54, 20, 22, 0.12)";
   const esterBg = K.brown;
 
-  const homeIndex = state.routes.findIndex((r) => r.name === "Home");
-  const profileIndex = state.routes.findIndex((r) => r.name === "Profile");
-  const isHomeFocused = state.index === homeIndex;
-  const isProfileFocused = state.index === profileIndex;
+  // Every tab but the last sits left of the Ester notch; the last one takes the
+  // right cap. With three tabs that reads Home · Meals · (Ester) · Profile at
+  // centres 40 · 120 · 205 · 290 — even 80/85/85 spacing across the bar.
+  const leftCount = Math.max(state.routes.length - 1, 1);
+  const shift = (leftCount - 1) * SLOT_W;
+  const pillW = BASE_PILL_W + shift;
+  const slots = state.routes.map((route, index) => ({
+    route,
+    index,
+    focused: state.index === index,
+    Icon: TAB_ICONS[route.name],
+    // Left slots run 0, 80, …; whatever is last lands in the right cap.
+    left: index < leftCount ? index * SLOT_W : shift + BASE_PILL_W - SLOT_W,
+  }));
 
   const onTabPress = (index: number, routeName: string, routeKey: string) => {
     const event = navigation.emit({
@@ -112,92 +164,105 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         },
       ]}
     >
-      <View style={styles.pill}>
+      <View style={[styles.pill, { width: pillW }]}>
         <Svg
-          width={PILL_W}
+          width={pillW}
           height={PILL_H}
-          viewBox={`0 0 ${PILL_W} ${PILL_H}`}
+          viewBox={`0 0 ${pillW} ${PILL_H}`}
           style={StyleSheet.absoluteFill}
         >
-          <Defs>
-            <Mask
-              id="leftMask"
-              maskUnits="userSpaceOnUse"
-              x={0}
-              y={0}
-              width={80}
-              height={50}
-            >
-              <Rect width={80} height={50} fill="white" />
-              <Path d={LEFT_D_PATH} fill="black" />
-            </Mask>
-            <Mask
-              id="rightMask"
-              maskUnits="userSpaceOnUse"
-              x={170}
-              y={0}
-              width={80}
-              height={50}
-            >
-              <Rect x={170} width={80} height={50} fill="white" />
-              <Path d={RIGHT_D_PATH} fill="black" />
-            </Mask>
-          </Defs>
-          <Path d={SUBTRACT_PATH} fill={pillBg} stroke={pillStroke} />
+          {/* 🔑 NO MASKS. Lang's two stroke paths are 2-unit BANDS, and her
+              export masked each one down to the outer unit. Painting the cap's
+              FILL on top of its own band does exactly the same thing — the fill
+              starts 1 unit in — and it leaves this file with nothing but plain
+              paths, which matters because the right half has to be moved: a
+              mask on a transformed path is resolved in the transformed space,
+              which is the kind of SVG detail iOS and Android disagree about.
+              ▶ Order is the whole trick here. Every piece is drawn before the
+              neighbour that has to cover its stroked edge:
+                notch piece → right band → right fill → inserted → left band →
+                left fill. SUBTRACT_PATH is stroked all the way round, so both
+                its vertical edges are seams; each one is painted over by the
+                fill that abuts it. Draw them the other way and you get a rule
+                down the middle of the bar — I shipped that to the simulator
+                once and it is plainly visible. */}
+          {/* Notch piece + right cap, moved across by the inserted width. */}
+          <G transform={`translate(${shift}, 0)`}>
+            <Path d={SUBTRACT_PATH} fill={pillBg} stroke={pillStroke} />
+            <Path d={RIGHT_D_STROKE_PATH} fill={pillStroke} />
+            <Path d={RIGHT_D_PATH} fill={pillBg} />
+            {/* SUBTRACT_PATH is stroked all the way round, so it carries an
+                inner stroke on BOTH vertical edges. The inserted section covers
+                the left one by drawing over it; nothing covered the right one,
+                because the cap's fill starts at x=170 while that stroke runs
+                169.5..170.5 — the inner half sat on top of the notch's own
+                fill. It is invisible at 3x, where it falls under a pixel
+                boundary, and a full-height hairline at the 2.625x of a 420dpi
+                Android device, which is where I found it. Cover it the same way
+                the left edge is covered. y 1..49 is exactly the caps' own fill
+                band, so the top and bottom rules are untouched. */}
+            <Rect x={169} y={1} width={2} height={PILL_H - 2} fill={pillBg} />
+          </G>
+          {/* One straight section per tab beyond the two Lang drew. Fill
+              y 1..49 between a 1-unit rule above and below is exactly what her
+              caps show, so the join is invisible. */}
+          {Array.from({ length: leftCount - 1 }).map((_, i) => (
+            <React.Fragment key={i}>
+              <Rect
+                x={SLOT_W + i * SLOT_W}
+                y={1}
+                width={SLOT_W}
+                height={PILL_H - 2}
+                fill={pillBg}
+              />
+              <Rect
+                x={SLOT_W + i * SLOT_W}
+                y={0}
+                width={SLOT_W}
+                height={1}
+                fill={pillStroke}
+              />
+              <Rect
+                x={SLOT_W + i * SLOT_W}
+                y={PILL_H - 1}
+                width={SLOT_W}
+                height={1}
+                fill={pillStroke}
+              />
+            </React.Fragment>
+          ))}
+          <Path d={LEFT_D_STROKE_PATH} fill={pillStroke} />
           <Path d={LEFT_D_PATH} fill={pillBg} />
-          <Path d={LEFT_D_STROKE_PATH} fill={pillStroke} mask="url(#leftMask)" />
-          <Path d={RIGHT_D_PATH} fill={pillBg} />
-          <Path
-            d={RIGHT_D_STROKE_PATH}
-            fill={pillStroke}
-            mask="url(#rightMask)"
-          />
         </Svg>
 
-        <TouchableOpacity
-          style={[styles.tabHalf, styles.tabHalfLeft]}
-          activeOpacity={0.7}
-          onPress={() => {
-            const route = state.routes[homeIndex];
-            onTabPress(homeIndex, route.name, route.key);
-          }}
-          accessibilityRole="button"
-          accessibilityState={isHomeFocused ? { selected: true } : {}}
-          accessibilityLabel="Home"
-        >
-          <View
-            style={[
-              styles.iconPill,
-              isHomeFocused && { backgroundColor: activeGhostBg },
-            ]}
+        {slots.map(({ route, index, focused, Icon, left }) => (
+          <TouchableOpacity
+            key={route.key}
+            style={[styles.tab, { left }]}
+            activeOpacity={0.7}
+            onPress={() => onTabPress(index, route.name, route.key)}
+            accessibilityRole="button"
+            accessibilityState={focused ? { selected: true } : {}}
+            accessibilityLabel={route.name}
           >
-            <HomeIcon color={isHomeFocused ? iconActive : iconInactive} />
-          </View>
-        </TouchableOpacity>
+            <View
+              style={[
+                styles.iconPill,
+                focused && { backgroundColor: activeGhostBg },
+              ]}
+            >
+              {Icon ? (
+                <Icon color={focused ? iconActive : iconInactive} />
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        ))}
 
         <TouchableOpacity
-          style={[styles.tabHalf, styles.tabHalfRight]}
-          activeOpacity={0.7}
-          onPress={() => {
-            const route = state.routes[profileIndex];
-            onTabPress(profileIndex, route.name, route.key);
-          }}
-          accessibilityRole="button"
-          accessibilityState={isProfileFocused ? { selected: true } : {}}
-          accessibilityLabel="Profile"
-        >
-          <View
-            style={[
-              styles.iconPill,
-              isProfileFocused && { backgroundColor: activeGhostBg },
-            ]}
-          >
-            <AccountIcon color={isProfileFocused ? iconActive : iconInactive} />
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.esterButton, { backgroundColor: esterBg }]}
+          style={[
+            styles.esterButton,
+            { backgroundColor: esterBg, left: shift + (BASE_PILL_W - ESTER_SIZE) / 2 },
+          ]}
           activeOpacity={0.85}
           onPress={() =>
             runWithAiConsent(() =>
@@ -225,7 +290,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   pill: {
-    width: PILL_W,
+    // width is set at render time — it grows with the number of tabs.
     height: PILL_H,
     position: "relative",
     ...Platform.select({
@@ -240,19 +305,13 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  tabHalf: {
+  tab: {
     position: "absolute",
     top: 0,
     height: PILL_H,
-    width: (PILL_W - 90) / 2,
+    width: SLOT_W,
     alignItems: "center",
     justifyContent: "center",
-  },
-  tabHalfLeft: {
-    left: 0,
-  },
-  tabHalfRight: {
-    right: 0,
   },
   iconPill: {
     paddingHorizontal: 12,
@@ -266,7 +325,7 @@ const styles = StyleSheet.create({
   esterButton: {
     position: "absolute",
     top: ESTER_TOP_OFFSET,
-    left: (PILL_W - ESTER_SIZE) / 2,
+    // left is set at render time — the button rides the notch, not the centre.
     width: ESTER_SIZE,
     height: ESTER_SIZE,
     borderRadius: ESTER_SIZE / 2,
