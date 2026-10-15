@@ -40,6 +40,15 @@ export interface MealFavorite {
   primaryProtein: string | null;
   cuisineCluster: string | null;
   inflammatoryIndex: string | null;
+  /**
+   * The recipe's current pinned version — what a swap must send.
+   *
+   * 🔴 OPTIONAL because this app has NO OTA channel: a build can run for weeks
+   * against a backend that predates the field, and the tag work already shipped
+   * a crash that way. Treat `undefined` (old server) and `null` (no version)
+   * the same — the meal cannot be swapped in.
+   */
+  currentVersionId?: string | null;
 }
 
 export async function addFavorite(mealId: string): Promise<void> {

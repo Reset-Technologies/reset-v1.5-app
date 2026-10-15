@@ -278,7 +278,59 @@ export function findMovedSlot(
 }
 
 /**
- * 📌 Remaining mutations (swap, add, remove, grocery, substitutions) are
+ * SWAP — replace the recipe in one slot, keeping the slot itself.
+ *
+ * 🔑 MY PLAN r9: *"Replace planned meal in same slot; refresh grocery delta."*
+ * Day, slot type, sort order, servings and planned time all survive; only the
+ * content changes. Like a move it writes a new `meal_plan_revision` and leaves
+ * the shared Score `plan_version_id` alone (START HERE r7), which is why an
+ * approved swap "can still count as On plan in Score".
+ *
+ * 🔴 A SWAP IS NOT A REJECTION. The sheet is explicit — *"A passive swap alone
+ * is not a rejection"* — so do NOT pair this with a "why did you swap?" prompt.
+ * Rejection is a separate, explicit signal with its own reasons endpoint, and
+ * conflating them would corrupt the Fit evidence Score reads.
+ *
+ * 🔴 `recipeVersionId` must be a CURRENT version of a live recipe. The server
+ * now refuses anything else (400) rather than committing a revision whose slot
+ * cannot render — but the UI should still only offer saved meals that carry a
+ * `currentVersionId`.
+ */
+export async function swapPlannedMeal(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  recipeVersionId: string;
+}): Promise<void> {
+  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}/swap`, {
+    method: "POST",
+    body: JSON.stringify({
+      mealPlanId: params.mealPlanId,
+      recipeVersionId: params.recipeVersionId,
+    }),
+  });
+}
+
+/**
+ * Find a slot again after a swap, so the swap can be undone.
+ *
+ * 🔑 Cleaner than the move case: a swap PRESERVES the slot, so the meal is
+ * still on the same day at the same `sortOrder` — an exact match rather than
+ * `findMovedSlot`'s "last on the day" reasoning. The id is still new, because
+ * every revision writes fresh planned-meal rows, which is the whole reason
+ * this function has to exist at all.
+ */
+export function findSwappedSlot(
+  plan: MyPlanResponse,
+  localDate: string,
+  sortOrder: number,
+): MyPlanSlot | null {
+  const day = plan.days.find((d) => d.date === localDate);
+  if (!day) return null;
+  return day.slots.find((s) => s.sortOrder === sortOrder) ?? null;
+}
+
+/**
+ * 📌 Remaining mutations (add, remove, grocery, substitutions) are
  * deliberately absent for now. Each arrives with the screen that needs it, so
  * the client never carries calls nothing exercises. The endpoints are listed in
  * `my-plan.controller.ts` when that time comes.

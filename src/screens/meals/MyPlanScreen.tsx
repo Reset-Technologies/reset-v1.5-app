@@ -19,13 +19,20 @@ import {
   getMyPlan,
   movePlannedMeal,
   findMovedSlot,
+  swapPlannedMeal,
+  findSwappedSlot,
   buildTags,
   MyPlanResponse,
   MyPlanRecipe,
   MyPlanSlot,
   MealSlotType,
 } from "../../services/myPlan";
-import { getFavorites, addFavorite, removeFavorite } from "../../services/meals";
+import {
+  getFavorites,
+  addFavorite,
+  removeFavorite,
+  MealFavorite,
+} from "../../services/meals";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { logEvent } from "../../services/amplitude";
@@ -188,7 +195,9 @@ export function MyPlanScreen({ navigation }: Props) {
    * REARRANGE (MY PLAN r10). The slot the member is moving, plus the day it
    * started on so an undo knows where to put it back.
    */
-  const [moving, setMoving] = useState<{ slot: MyPlanSlot; fromDate: string } | null>(null);
+  const [acting, setActing] = useState<{ slot: MyPlanSlot; onDate: string } | null>(null);
+  /** Which picker is open, once the member has chosen a verb. */
+  const [picker, setPicker] = useState<"move" | "swap" | null>(null);
   const [busy, setBusy] = useState(false);
   /**
    * 🔴 UNDO IS REQUIRED, not a nicety — r10 lists it in the member's column
@@ -196,8 +205,10 @@ export function MyPlanScreen({ navigation }: Props) {
    * it is the inverse move, and it needs the meal's NEW id, which only a
    * re-read can give us.
    */
-  const [undoMove, setUndoMove] = useState<
-    { plannedMealId: string; toDate: string; title: string } | null
+  const [undo, setUndo] = useState<
+    | { kind: "move"; plannedMealId: string; toDate: string; title: string }
+    | { kind: "swap"; plannedMealId: string; recipeVersionId: string; title: string }
+    | null
   >(null);
 
   /**
@@ -214,6 +225,14 @@ export function MyPlanScreen({ navigation }: Props) {
    * surfaces the existing save rather than introducing a second concept.
    */
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  /**
+   * The saved meals themselves, for the swap picker.
+   *
+   * 🔑 SAVED MEALS is a sanctioned swap source — "Direct browse source. Member
+   * may add/swap explicitly" (CURRENT). Explore is too, but has no backend
+   * yet. The same fetch already runs for the bookmarks, so this is free.
+   */
+  const [savedMeals, setSavedMeals] = useState<MealFavorite[]>([]);
 
   /**
    * Re-read saved state on every focus, not just on mount.
@@ -228,7 +247,10 @@ export function MyPlanScreen({ navigation }: Props) {
   useEffect(() => {
     const load = () => {
       getFavorites()
-        .then((favs) => setSavedIds(new Set(favs.map((f) => f.id))))
+        .then((favs) => {
+          setSavedIds(new Set(favs.map((f) => f.id)));
+          setSavedMeals(favs);
+        })
         // Saved state is decoration on a row that works without it; a failure
         // here must never blank the plan.
         .catch(() => {});
@@ -283,7 +305,8 @@ export function MyPlanScreen({ navigation }: Props) {
     async (slot: MyPlanSlot, fromDate: string, toLocalDate: string) => {
       if (!plan || busy) return;
       setBusy(true);
-      setMoving(null);
+      setActing(null);
+      setPicker(null);
       try {
         await movePlannedMeal({
           plannedMealId: slot.id,
@@ -297,9 +320,9 @@ export function MyPlanScreen({ navigation }: Props) {
             : null;
         // No landed row means the plan moved under us; drop the undo rather
         // than offering one that would act on a stale id.
-        setUndoMove(
+        setUndo(
           landed && slot.recipe
-            ? { plannedMealId: landed.id, toDate: fromDate, title: slot.recipe.title }
+            ? { kind: "move", plannedMealId: landed.id, toDate: fromDate, title: slot.recipe.title }
             : null,
         );
         const i = (fresh?.days ?? []).findIndex((d) => d.date === toLocalDate);
@@ -313,27 +336,82 @@ export function MyPlanScreen({ navigation }: Props) {
     [plan, busy, reloadPlan],
   );
 
-  /** Undo is simply the inverse move, against the id the re-read gave us. */
+  /**
+   * SWAP — replace this slot's recipe with a saved meal (MY PLAN r9).
+   *
+   * 🔑 The undo locator is exact here, unlike a move: a swap PRESERVES the
+   * slot, so the meal is still on the same day at the same `sortOrder`.
+   */
+  const doSwap = useCallback(
+    async (slot: MyPlanSlot, onDate: string, fav: MealFavorite) => {
+      if (!plan || busy || !fav.currentVersionId || !slot.recipe) return;
+      const previousVersionId = slot.recipe.versionId;
+      setBusy(true);
+      setActing(null);
+      setPicker(null);
+      try {
+        await swapPlannedMeal({
+          plannedMealId: slot.id,
+          mealPlanId: plan.mealPlanId,
+          recipeVersionId: fav.currentVersionId,
+        });
+        const fresh = await reloadPlan();
+        const landed = fresh ? findSwappedSlot(fresh, onDate, slot.sortOrder) : null;
+        setUndo(
+          landed
+            ? {
+                kind: "swap",
+                plannedMealId: landed.id,
+                recipeVersionId: previousVersionId,
+                title: fav.name,
+              }
+            : null,
+        );
+      } catch {
+        setError("That meal could not be swapped in.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [plan, busy, reloadPlan],
+  );
+
+  /**
+   * Undo — the inverse call, against the id the re-read gave us.
+   *
+   * 🔴 It cannot reuse the id the member acted on: every revision writes fresh
+   * planned-meal rows, so that id is already gone.
+   */
   const doUndo = useCallback(async () => {
-    if (!plan || !undoMove || busy) return;
+    if (!plan || !undo || busy) return;
     setBusy(true);
-    const target = undoMove;
-    setUndoMove(null);
+    const target = undo;
+    setUndo(null);
     try {
-      await movePlannedMeal({
-        plannedMealId: target.plannedMealId,
-        mealPlanId: plan.mealPlanId,
-        toLocalDate: target.toDate,
-      });
+      if (target.kind === "move") {
+        await movePlannedMeal({
+          plannedMealId: target.plannedMealId,
+          mealPlanId: plan.mealPlanId,
+          toLocalDate: target.toDate,
+        });
+      } else {
+        await swapPlannedMeal({
+          plannedMealId: target.plannedMealId,
+          mealPlanId: plan.mealPlanId,
+          recipeVersionId: target.recipeVersionId,
+        });
+      }
       const fresh = await reloadPlan();
-      const i = (fresh?.days ?? []).findIndex((d) => d.date === target.toDate);
-      if (i >= 0) setSelected(i);
+      if (target.kind === "move") {
+        const i = (fresh?.days ?? []).findIndex((d) => d.date === target.toDate);
+        if (i >= 0) setSelected(i);
+      }
     } catch {
-      setError("That move could not be undone.");
+      setError("That change could not be undone.");
     } finally {
       setBusy(false);
     }
-  }, [plan, undoMove, busy, reloadPlan]);
+  }, [plan, undo, busy, reloadPlan]);
 
   const day = plan?.days[selected] ?? null;
 
@@ -484,7 +562,7 @@ export function MyPlanScreen({ navigation }: Props) {
                   // 🔴 r6: "Edit any future/current planned meal" — a past day
                   // is history, not a draft, so it stays read-only.
                   slot.recipe && day && day.date >= localToday()
-                    ? () => setMoving({ slot, fromDate: day.date })
+                    ? () => setActing({ slot, onDate: day.date })
                     : undefined
                 }
                 saved={slot.recipe ? savedIds.has(slot.recipe.id) : false}
@@ -499,31 +577,57 @@ export function MyPlanScreen({ navigation }: Props) {
         </View>
       </ScrollView>
 
-      {/* ── Rearrange sheet (MY PLAN r10) ───────────────────────────────
-          Day picker only for this slice. The endpoint also takes a slot
-          type, but moving BETWEEN slots needs a slot list Lang has not
-          drawn, and the server keeps the slot when only a date is sent. */}
+      {/* ── Edit a planned meal: Rule 1's "swap · rearrange" ─────────────
+          One chooser, then the picker for the chosen verb. Both write a new
+          revision and neither touches the Score plan version (START HERE r7). */}
       <Modal
-        visible={!!moving}
+        visible={!!acting && !picker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActing(null)}
+      >
+        <Pressable style={styles.moveBackdrop} onPress={() => setActing(null)} />
+        <View style={styles.moveSheet}>
+          <Text style={styles.moveTitle}>Edit this meal</Text>
+          <Text style={styles.moveSub} numberOfLines={1}>
+            {acting?.slot.recipe?.title ?? ""}
+          </Text>
+          <Pressable style={styles.moveRow} onPress={() => setPicker("swap")}>
+            <Text style={styles.moveRowText}>Swap for a saved meal</Text>
+          </Pressable>
+          <Pressable style={styles.moveRow} onPress={() => setPicker("move")}>
+            <Text style={styles.moveRowText}>Move to another day</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* Rearrange (r10). Day picker only — the endpoint also takes a slot
+          type, but moving BETWEEN slots needs a slot list Lang has not drawn,
+          and the server keeps the slot when only a date is sent. */}
+      <Modal
+        visible={picker === "move"}
         transparent
         animationType="slide"
-        onRequestClose={() => setMoving(null)}
+        onRequestClose={() => setPicker(null)}
       >
-        <Pressable style={styles.moveBackdrop} onPress={() => setMoving(null)} />
+        <Pressable
+          style={styles.moveBackdrop}
+          onPress={() => { setPicker(null); setActing(null); }}
+        />
         <View style={styles.moveSheet}>
           <Text style={styles.moveTitle}>Move to another day</Text>
           <Text style={styles.moveSub} numberOfLines={1}>
-            {moving?.slot.recipe?.title ?? ""}
+            {acting?.slot.recipe?.title ?? ""}
           </Text>
           {(plan?.days ?? []).map((d) => {
             // Past days cannot receive a meal either — the same r6 rule that
             // makes them read-only as a source.
-            const disabled = d.date < localToday() || d.date === moving?.fromDate;
+            const disabled = d.date < localToday() || d.date === acting?.onDate;
             return (
               <Pressable
                 key={d.date}
                 disabled={disabled || busy}
-                onPress={() => moving && doMove(moving.slot, moving.fromDate, d.date)}
+                onPress={() => acting && doMove(acting.slot, acting.onDate, d.date)}
                 style={[styles.moveRow, disabled && styles.moveRowDisabled]}
                 accessibilityRole="button"
                 accessibilityState={{ disabled }}
@@ -531,7 +635,7 @@ export function MyPlanScreen({ navigation }: Props) {
               >
                 <Text style={[styles.moveRowText, disabled && styles.moveRowTextDisabled]}>
                   {shortDate(d.date)}
-                  {d.date === moving?.fromDate ? "  ·  current day" : ""}
+                  {d.date === acting?.onDate ? "  ·  current day" : ""}
                 </Text>
               </Pressable>
             );
@@ -539,19 +643,68 @@ export function MyPlanScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      {/* 🔴 UNDO — required by r10, and the ONLY way back: a move writes a new
-          revision, so there is nothing to "cancel" afterwards. */}
-      {undoMove ? (
+      {/* Swap (r9). 🔴 NO "why did you swap?" step — "A passive swap alone is
+          not a rejection", and asking here would corrupt the Fit signal. */}
+      <Modal
+        visible={picker === "swap"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPicker(null)}
+      >
+        <Pressable
+          style={styles.moveBackdrop}
+          onPress={() => { setPicker(null); setActing(null); }}
+        />
+        <View style={styles.moveSheet}>
+          <Text style={styles.moveTitle}>Swap for a saved meal</Text>
+          <Text style={styles.moveSub}>
+            {savedMeals.length
+              ? "Keeps the same day and slot."
+              : "Save a recipe first and it will show up here."}
+          </Text>
+          <ScrollView style={styles.swapList}>
+            {savedMeals.map((f) => {
+              // 🔴 `currentVersionId` is nullable, and undefined against an
+              // older server. Either way the meal cannot be planned, so show
+              // it as unavailable rather than offer it and fail.
+              const usable = !!f.currentVersionId;
+              return (
+                <Pressable
+                  key={f.id}
+                  disabled={!usable || busy}
+                  onPress={() => acting && doSwap(acting.slot, acting.onDate, f)}
+                  style={[styles.moveRow, !usable && styles.moveRowDisabled]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !usable }}
+                  accessibilityLabel={`Swap in ${f.name}`}
+                >
+                  <Text
+                    style={[styles.moveRowText, !usable && styles.moveRowTextDisabled]}
+                    numberOfLines={1}
+                  >
+                    {f.name}
+                    {usable ? "" : "  ·  unavailable"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* 🔴 UNDO — required by r9 and r10, and the only way back: both write a
+          new revision, so there is nothing to "cancel" afterwards. */}
+      {undo ? (
         <View style={styles.undoBar}>
           <Text style={styles.undoText} numberOfLines={1}>
-            Moved {undoMove.title}
+            {undo.kind === "move" ? "Moved" : "Swapped in"} {undo.title}
           </Text>
           <Pressable
             onPress={doUndo}
             disabled={busy}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Undo the move"
+            accessibilityLabel="Undo"
           >
             <Text style={styles.undoAction}>{busy ? "…" : "Undo"}</Text>
           </Pressable>
@@ -853,6 +1006,7 @@ const styles = StyleSheet.create({
   moveRowDisabled: { opacity: 0.35 },
   moveRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
   moveRowTextDisabled: { color: K.bone },
+  swapList: { maxHeight: 320 },
 
   undoBar: {
     position: "absolute",
