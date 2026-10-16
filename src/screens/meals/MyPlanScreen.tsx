@@ -393,10 +393,14 @@ export function MyPlanScreen({ navigation }: Props) {
       setUndo(null);
       // The dates are unchanged — a rebuild redraws the same week — so the
       // selected day index stays valid and the member keeps their place.
-      // 📌 "from here" rather than "fresh week": the days behind the member
-      // are deliberately untouched (r6), and the notice should not claim more
-      // than happened.
-      setNotice("The rest of your week is fresh.");
+      // 📌 BRYAN'S COPY (Slack, 2026-10-16), replacing my placeholder "…is
+      // fresh." He owns copy, and this was the last string on the flow still
+      // in my voice. "Ready" is also his register elsewhere — the onboarding
+      // Screen Copy sheet says "Your first meal is ready."
+      // 🔑 "The REST of your week" is load-bearing, not a flourish: the days
+      // behind the member are deliberately untouched (r6), so the notice must
+      // not claim the whole week was redrawn.
+      setNotice("The rest of your week is ready.");
     } catch {
       setError("Your week could not be rebuilt.");
     } finally {
