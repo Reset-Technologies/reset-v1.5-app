@@ -130,7 +130,7 @@ export function HomeScreenV2() {
   const handleMealPress = useCallback(
     (meal: Meal) => {
       logEvent("home_meal_recipeCTA", { mealId: meal.id });
-      navigation.navigate("RecipeDetail", { meal });
+      navigation.navigate("RecipeDetail", { meal, sourceSurface: "home" });
     },
     [navigation],
   );
@@ -140,7 +140,7 @@ export function HomeScreenV2() {
   const handleWindowMealPress = useCallback(
     (slot: Slot, meal: Meal) => {
       logEvent("home_window_mealCTA", { slot, mealId: meal.id });
-      navigation.navigate("RecipeDetail", { meal });
+      navigation.navigate("RecipeDetail", { meal, sourceSurface: "home" });
     },
     [navigation],
   );

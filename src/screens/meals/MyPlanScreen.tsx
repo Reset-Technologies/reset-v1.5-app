@@ -523,6 +523,7 @@ export function MyPlanScreen({ navigation }: Props) {
   const openRecipe = useCallback(
     (recipe: MyPlanRecipe, slotType: MealSlotType, slot: MyPlanSlot) => {
       navigation.navigate("RecipeDetail", {
+        sourceSurface: "my_plan",
         // 🔑 The ONLY entry point with plan context, so the only one where the
         // serving control can save. `slot.id` is the planned_meal row and
         // `slot.servings` is the multiplier already stored.

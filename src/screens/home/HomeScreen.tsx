@@ -329,12 +329,12 @@ export function HomeScreen() {
 
   const handleMealPress = (meal: Meal) => {
     recordMealTap();
-    navigation.navigate("RecipeDetail", { meal });
+    navigation.navigate("RecipeDetail", { meal, sourceSurface: "home" });
   };
 
   const handleRecipePress = (meal: Meal) => {
     BrazeService.logEvent("home_meal_recipeCTA", { mealId: meal.id });
-    navigation.navigate("RecipeDetail", { meal });
+    navigation.navigate("RecipeDetail", { meal, sourceSurface: "home" });
   };
 
   const handleNudgeDismiss = () => {
