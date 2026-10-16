@@ -328,6 +328,10 @@ export function RecipeDetailScreen() {
    * is 2."* So Standard shows ONE serving of the recipe, not all of it.
    */
   const plannedMeal = route.params.plannedMeal;
+  // Rides along on the detail fetch so the server can record `recipe_viewed`
+  // with r15's `source_surface`. Undefined from a call site that does not set
+  // it, which records the view with an unknown surface rather than losing it.
+  const sourceSurface = route.params.sourceSurface;
 
   // Opens where the member left it when there is a planned meal behind this
   // recipe; Standard otherwise, since there is nothing saved to restore.
@@ -347,7 +351,7 @@ export function RecipeDetailScreen() {
     async function loadRecipe() {
       try {
         const [mealDetail, mealIngredients] = await Promise.all([
-          getMealDetail(meal.id),
+          getMealDetail(meal.id, sourceSurface),
           getMealIngredients(meal.id),
         ]);
         if (cancelled) return;
@@ -366,6 +370,11 @@ export function RecipeDetailScreen() {
     return () => {
       cancelled = true;
     };
+    // 🔑 `sourceSurface` is deliberately NOT a dependency. It is fixed for the
+    // life of this screen (it is where the member came FROM), and adding it
+    // would only risk a second fetch — which the server would count as a
+    // second view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meal.id]);
 
   useEffect(() => {

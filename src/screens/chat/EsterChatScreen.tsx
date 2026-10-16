@@ -1756,7 +1756,10 @@ function InlineMealCard({ data, palette }: InlineMealCardProps) {
   if (!meal) return null;
 
   const handlePress = () => {
-    (navigation as any).navigate("RecipeDetail", { meal });
+    (navigation as any).navigate("RecipeDetail", {
+      meal,
+      sourceSurface: "ester_chat",
+    });
   };
 
   return (

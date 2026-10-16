@@ -38,6 +38,7 @@ import { WeeklyReviewScreen } from "../screens/review/WeeklyReviewScreen";
 import { WindowProgressScreen } from "../screens/window/WindowProgressScreen";
 import { TabBar } from "../components";
 import type { Meal } from "../components";
+import type { RecipeViewSurface } from "../services/meals";
 
 // Tab navigator param list
 export type MainTabParamList = {
@@ -89,6 +90,15 @@ export type MainStackParamList = {
       /** The multiplier already saved, so the control opens where it left off. */
       servings: number;
     };
+    /**
+     * Which surface opened this screen, for `recipe_viewed`'s `source_surface`
+     * (EVENTS r15).
+     *
+     * 🔑 Only the navigator knows this — the server sees one `GET /meals/:id`
+     * and cannot tell Home from Saved Meals. Optional so a missed call site
+     * degrades to a view with an unknown surface rather than no view at all.
+     */
+    sourceSurface?: RecipeViewSurface;
   };
   SavedMeals: undefined;
   GroceryList: undefined;

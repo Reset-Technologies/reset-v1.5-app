@@ -150,6 +150,7 @@ export function SavedMealsScreen() {
 
   const handleMealPress = (meal: MealFavorite) => {
     navigation.navigate("RecipeDetail", {
+      sourceSurface: "saved_meals",
       meal: {
         id: meal.id,
         name: meal.name,

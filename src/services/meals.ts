@@ -219,8 +219,34 @@ export interface MealIngredient {
   representText: string | null;
 }
 
-export async function getMealDetail(mealId: string): Promise<MealDetail> {
-  return apiClient<MealDetail>(`/api/meals/${mealId}`);
+/**
+ * Where the member opened Recipe Details from.
+ *
+ * 🔑 Mirrors the backend's whitelist for `recipe_viewed`'s `source_surface`
+ * (EVENTS r15). The server rejects anything not on its list and records null, so
+ * a value added here without being added there is silently lost — keep the two
+ * in step.
+ *
+ * 📌 "explore" and "grocery_list" are in the contract but nothing navigates to
+ * Recipe Details from them yet.
+ */
+export type RecipeViewSurface =
+  | "my_plan"
+  | "home"
+  | "saved_meals"
+  | "ester_chat"
+  | "explore"
+  | "grocery_list";
+
+export async function getMealDetail(
+  mealId: string,
+  sourceSurface?: RecipeViewSurface,
+): Promise<MealDetail> {
+  // The server emits `recipe_viewed` off this request — it is the one call made
+  // once per Recipe Details open — and only the client knows which surface the
+  // member came from, so it rides along as a query parameter.
+  const query = sourceSurface ? `?source=${encodeURIComponent(sourceSurface)}` : "";
+  return apiClient<MealDetail>(`/api/meals/${mealId}${query}`);
 }
 
 export async function getMealIngredients(
