@@ -393,10 +393,14 @@ export function MyPlanScreen({ navigation }: Props) {
       setUndo(null);
       // The dates are unchanged — a rebuild redraws the same week — so the
       // selected day index stays valid and the member keeps their place.
-      // 📌 "from here" rather than "fresh week": the days behind the member
-      // are deliberately untouched (r6), and the notice should not claim more
-      // than happened.
-      setNotice("The rest of your week is fresh.");
+      // 📌 BRYAN'S COPY (Slack, 2026-10-16), replacing my placeholder "…is
+      // fresh." He owns copy, and this was the last string on the flow still
+      // in my voice. "Ready" is also his register elsewhere — the onboarding
+      // Screen Copy sheet says "Your first meal is ready."
+      // 🔑 "The REST of your week" is load-bearing, not a flourish: the days
+      // behind the member are deliberately untouched (r6), so the notice must
+      // not claim the whole week was redrawn.
+      setNotice("The rest of your week is ready.");
     } catch {
       setError("Your week could not be rebuilt.");
     } finally {
@@ -545,6 +549,38 @@ export function MyPlanScreen({ navigation }: Props) {
     [navigation, plan],
   );
 
+  /**
+   * Open a saved meal from the Saved Meals block.
+   *
+   * 🔑 Deliberately NO `plannedMeal`: a saved meal is not on the plan, so
+   * there is no planned_meal row for the serving control to write to. Passing
+   * one would offer a control that silently fails — the same distinction
+   * RecipeDetail already draws between a plan entry and every other surface.
+   *
+   * 📌 `sourceSurface: "my_plan"` because that is where the member tapped.
+   * The saved_meals surface is the SavedMeals SCREEN, which sets its own.
+   */
+  const openSavedMeal = useCallback(
+    (fav: MealFavorite) => {
+      navigation.navigate("RecipeDetail", {
+        sourceSurface: "my_plan",
+        meal: {
+          id: fav.id,
+          name: fav.name,
+          whyLine: "",
+          calories: fav.calories ?? 0,
+          protein: fav.protein ?? 0,
+          prepTime: fav.prepTime ?? 0,
+          time: fav.isBreakfast ? "breakfast" : fav.isLunch ? "lunch" : "dinner",
+          imageUrl: fav.imageAsset ?? undefined,
+          primaryProtein: fav.primaryProtein ?? undefined,
+          cuisineCluster: fav.cuisineCluster ?? undefined,
+        },
+      });
+    },
+    [navigation],
+  );
+
   const range = useMemo(() => {
     if (!plan?.days.length) return "";
     const first = plan.days[0].date;
@@ -610,7 +646,7 @@ export function MyPlanScreen({ navigation }: Props) {
               hitSlop={8}
               style={[styles.cartButton, busy && styles.headerButtonBusy]}
               accessibilityRole="button"
-              accessibilityLabel="Rebuild this week"
+              accessibilityLabel="Rebuild the rest of your week"
               accessibilityState={{ disabled: busy }}
             >
               <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -692,6 +728,88 @@ export function MyPlanScreen({ navigation }: Props) {
             <Text style={styles.emptyDay}>No meals planned for this day.</Text>
           )}
         </View>
+
+        {/* ── Saved Meals ─────────────────────────────────────────────────
+            SAVED MEALS r7, status CURRENT: *"Saved Meals lives inside
+            Meals/Explore."* It only lived on Home, inherited from RES-161,
+            which predates the Meals handoff — so the surface contradicted a
+            canonical row while checklist item 9 read "Save ✅ shipped",
+            because that item is about the SAVE CONTRACT, not the placement.
+
+            Lang's frame 5039:29742 ("Frameless Content Block"): a title row
+            with "See all", then a horizontal run of 120pt Meal-Stacked cards,
+            16 apart, the last one running under a right-edge fade.
+
+            🔑 Costs no request. `savedMeals` is already loaded on focus for
+            the swap sheet, so this renders what the screen had in hand.
+            📌 The Home card stays until Bryan says otherwise — r7 says Saved
+            Meals lives inside Meals, not that it lives ONLY there. */}
+        {savedMeals.length > 0 && (
+          <View style={styles.savedBlock}>
+            <View style={styles.savedHeader}>
+              <Text style={styles.savedTitle}>Saved Meals</Text>
+              <Pressable
+                onPress={() => navigation.navigate("SavedMeals")}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="See all saved meals"
+              >
+                <Text style={styles.savedSeeAll}>See all</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.savedRow}
+            >
+              {savedMeals.map((fav) => (
+                <Pressable
+                  key={fav.id}
+                  style={styles.savedCard}
+                  onPress={() => openSavedMeal(fav)}
+                  accessibilityRole="button"
+                  accessibilityLabel={fav.name}
+                >
+                  <View style={styles.savedThumbWrap}>
+                    {fav.imageAsset ? (
+                      <Image source={{ uri: fav.imageAsset }} style={styles.savedThumb} />
+                    ) : (
+                      <View style={[styles.savedThumb, styles.savedThumbEmpty]} />
+                    )}
+                    {/* Same scrim the plan rows use, and for the same reason:
+                        Lang ramps a page-surface gradient up the bottom of every
+                        recipe image so a translucent chip can sit on a bright
+                        photo. 🔴 It must be a GRADIENT — my first pass used a
+                        flat block and it drew a hard band straight across every
+                        card on the device. Drawn with react-native-svg to match
+                        the plan rows rather than adding a gradient dependency. */}
+                    {fav.imageAsset ? (
+                      <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                        <Defs>
+                          <SvgLinearGradient id="savedScrim" x1="0" y1="0" x2="0" y2="1">
+                            <Stop offset="0.31" stopColor={K.brown} stopOpacity={0} />
+                            <Stop offset="1" stopColor={K.brown} stopOpacity={0.78} />
+                          </SvgLinearGradient>
+                        </Defs>
+                        <Rect x="0" y="0" width="100%" height="100%" rx="8" fill="url(#savedScrim)" />
+                      </Svg>
+                    ) : null}
+                    <View style={styles.savedBadge} pointerEvents="none">
+                      <BookmarkIcon filled color={K.bone} width={11} height={14} />
+                    </View>
+                  </View>
+                  <Text style={styles.savedName} numberOfLines={2}>
+                    {fav.name}
+                  </Text>
+                  {typeof fav.prepTime === "number" && fav.prepTime > 0 ? (
+                    <Text style={styles.savedTime}>{fav.prepTime} min</Text>
+                  ) : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </ScrollView>
 
       {/* ── Edit a planned meal: Rule 1's "swap · rearrange" ─────────────
@@ -818,9 +936,13 @@ export function MyPlanScreen({ navigation }: Props) {
           member are left exactly as they were — the same read-only line this
           screen already draws in the move picker. Swaps and moves from today
           on are gone, which is the part worth warning about.
-          📌 No canonical copy row exists for this; the Meals sheet carries no
-          member-facing wording for rebuild. Bryan owns copy, so this is a
-          stand-in to be replaced, not a decision. */}
+          📌 BRYAN'S COPY, verbatim (Slack, 2026-10-16), replacing my stand-in.
+          The Meals workbook carries no member-facing wording for rebuild —
+          a full 25-tab sweep confirmed that — so this came from him directly.
+          Do not reword it. His title says "the rest of your week", which
+          states the r6 scoping in the member's own terms; he also confirmed
+          the scope call itself ("your call is right") against SWAPS + EDITS
+          r12's looser "user rebuilds whole week". */}
       <Modal
         visible={confirmRebuild}
         transparent
@@ -829,19 +951,18 @@ export function MyPlanScreen({ navigation }: Props) {
       >
         <Pressable style={styles.moveBackdrop} onPress={() => setConfirmRebuild(false)} />
         <View style={styles.moveSheet}>
-          <Text style={styles.moveTitle}>Rebuild this week?</Text>
+          <Text style={styles.moveTitle}>Rebuild the rest of your week?</Text>
           <Text style={styles.moveSub}>
-            I'll draft the rest of this week again, starting today. Days
-            you've already been through stay as they are. Any meals you
-            swapped or moved from today on will be replaced. Your saved meals
-            stay saved.
+            I'll create a new plan starting today. Earlier days and saved
+            meals stay as they are. Any swaps or changes for the rest of this
+            week will be replaced.
           </Text>
           <Pressable
             style={styles.moveRow}
             onPress={doRebuild}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="Rebuild this week"
+            accessibilityLabel="Rebuild the rest of your week"
           >
             <Text style={styles.moveRowText}>{busy ? "Rebuilding…" : "Rebuild my week"}</Text>
           </Pressable>
@@ -1203,6 +1324,67 @@ const styles = StyleSheet.create({
     borderColor: "rgba(243,239,227,0.18)",
   },
   undoText: { flex: 1, fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  /* ── Saved Meals (Lang 5039:29742) ────────────────────────────────────
+     🔴 Her node's text token resolves to #361416 in the LIGHT theme, which is
+     the fallback the Figma export prints. My Plan is the DARK surface, and her
+     own render of this frame is bone-on-maroon — so these use K.bone, not the
+     literal from the export. Taking that hex at face value is the colour drift
+     already logged against Recipe Details. */
+  savedBlock: { marginTop: 32, gap: 16 },
+  savedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  /* Title 3: 20px, tracking -0.2. Her frame uses the sans face here, NOT the
+     Playfair that the screen's own h1 uses — this is a section head, a step
+     below the page title. */
+  savedTitle: {
+    fontFamily: fonts.dmSans,
+    fontSize: 20,
+    color: K.bone,
+    letterSpacing: -0.2,
+  },
+  /* Body 2 medium, 14px. A quiet text link, not a filled button. */
+  savedSeeAll: {
+    fontFamily: fonts.dmSansMedium,
+    fontSize: 14,
+    color: K.bone,
+    opacity: 0.8,
+  },
+  savedRow: { gap: 16, paddingRight: 4 },
+  savedCard: { width: 120, gap: 12 },
+  savedThumbWrap: { width: 120, height: 120 },
+  /* 🔑 Her corner radii are deliberately ASYMMETRIC — 8 / 4 / 16 / 4 clockwise
+     from top-left. The heavy corner is bottom-right, under the saved badge.
+     Rounding all four equally would flatten a detail she repeated on every
+     recipe image in the file. */
+  savedThumb: {
+    width: 120,
+    height: 120,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 4,
+    backgroundColor: "rgba(243,239,227,0.08)",
+  },
+  savedThumbEmpty: { backgroundColor: "rgba(243,239,227,0.12)" },
+  /* Body 1: 16px, tracking -0.16. */
+  savedName: {
+    fontFamily: fonts.dmSans,
+    fontSize: 16,
+    color: K.bone,
+    letterSpacing: -0.16,
+  },
+  /* 🔑 Body 2 QUADRANT — her time stamp is the SERIF face, not the sans the
+     title above it uses. `fonts.quadrant` is that face, already loaded. */
+  savedTime: {
+    fontFamily: fonts.quadrant,
+    fontSize: 14,
+    color: K.bone,
+    opacity: 0.6,
+    letterSpacing: -0.14,
+  },
   undoAction: {
     fontFamily: fonts.dmSansBold,
     fontSize: 14,
