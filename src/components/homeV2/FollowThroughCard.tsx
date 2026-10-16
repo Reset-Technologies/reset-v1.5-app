@@ -19,14 +19,21 @@ import {
  * the three answers are r6 verbatim. Do not reword them: Score maps the stored
  * values 1.0 / 0.5 / 0.0, and the labels are what the member is agreeing to.
  *
- * 📌 Placement is MINE, not Lang's. There is no current Home design in the
- * Figma file (the RES-161 node this screen's other cards came from no longer
- * resolves), and the workbook names the timing — r5's "natural evening
- * transition" — but never a surface. This sits in Home's existing card stack
- * beside CheckInCard, at its size and shape, because START HERE r10 scopes the
- * budget to "one prompted Meals question per day ACROSS the system" — so the
- * question is not bound to the Meals tab — and because it asks about the whole
- * day rather than the plan screen. ▶ Flag for Lang.
+ * 📌 Placement is SANCTIONED, not a guess. Bryan, 2026-10-16, asked directly
+ * whether a new Home design existed: "there's a new direction for Home, but no
+ * locked Home design for this build. I think Lang is still working through the
+ * broader Today concept and how Home should change based on what matters to
+ * the member at that moment. For now, keep the current Home/navigation."
+ * ⇒ build against the Home we have; do NOT wait on Lang, and do NOT redesign
+ * around this card. The same answer covers any later Meals surface that needs
+ * a Home slot, until that dated decision is superseded.
+ *
+ * It sits in the existing card stack beside CheckInCard, at its size and
+ * shape, because START HERE r10 scopes the budget to "one prompted Meals
+ * question per day ACROSS the system" — so the question is not bound to the
+ * Meals tab — and because it asks about the whole day rather than the plan
+ * screen. The workbook names the timing (r5's "natural evening transition")
+ * but never a surface, which is why the question had to be asked at all.
  */
 
 /** r6 verbatim, in r6's order. The wire values are Score's, not display text. */

@@ -387,7 +387,9 @@ export function HomeScreenV2() {
             day's budget stays centralised (START HERE r10). Sits above the
             check-in entry because r5 calls it the "natural evening
             transition" and it is the ask Score is actually waiting on.
-            📌 Placement is ours — see the note in FollowThroughCard. */}
+            📌 Bryan, 2026-10-16: "no locked Home design for this build … for
+            now, keep the current Home/navigation" — so this stack is the
+            sanctioned surface, not a stopgap. See FollowThroughCard. */}
         <FollowThroughCard />
 
         <SavedMealsCard onPress={handleSavedMeals} />
