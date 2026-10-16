@@ -303,3 +303,59 @@ export async function getCachedDailyPlan(): Promise<DailyPlan | null> {
     return null;
   }
 }
+
+/* ── Follow-through: the one Meals question per day (P0 #10) ───────────────
+ *
+ * SCORE CONTRACT r6 — Meals stores the answer VERBATIM and Reset Score owns
+ * the 1.0 / 0.5 / 0.0 mapping, the trailing-14-day lookback and the
+ * minimum-evidence rule. The client must never send a number.
+ */
+
+/** SCORE CONTRACT r6. The wire values; the labels live with the card. */
+export type FollowThroughResponse = "on_plan" | "mostly" | "not_really";
+
+export interface PendingPrompt {
+  /** False when the day's budget is spent or nothing is eligible. */
+  ask: boolean;
+  /** Which kind of question won the day — Score's ask wins when due. */
+  type?: string;
+  promptId?: string;
+}
+
+/**
+ * Today's one question, if there is one.
+ *
+ * 🔑 The BUDGET IS THE SERVER'S. START HERE r10 — "one prompted Meals question
+ * per day ACROSS the system" — so eligibility is centralised and the client
+ * only asks what, if anything, is due. Deciding here would let a taste prompt
+ * and a Score sample stack on the same day, which TEST CASES M24 forbids.
+ *
+ * 📌 Idempotent: if today's question was already served and is unanswered, the
+ * same promptId comes back rather than a second prompt being logged.
+ */
+export async function getPendingPrompt(): Promise<PendingPrompt> {
+  return apiClient<PendingPrompt>("/api/meals/prompts/pending");
+}
+
+/** Record the answer. Answering again the same day CORRECTS it. */
+export async function recordFollowThrough(
+  response: FollowThroughResponse,
+  promptId?: string,
+): Promise<void> {
+  await apiClient("/api/meals/follow-through", {
+    method: "POST",
+    body: JSON.stringify({ response, promptId }),
+  });
+}
+
+/**
+ * Close the prompt without answering.
+ *
+ * 🔴 SILENCE IS NOT A ZERO. LEARNING SIGNALS r24 is a hard rule: no response
+ * creates missing evidence only, never a dislike, a rejection or a low
+ * follow-through. This marks the day asked so the member is not asked twice;
+ * it deliberately writes NO sample. TEST CASES M23: "no sample; no penalty".
+ */
+export async function dismissPrompt(promptId: string): Promise<void> {
+  await apiClient(`/api/meals/prompts/${promptId}/dismiss`, { method: "POST" });
+}

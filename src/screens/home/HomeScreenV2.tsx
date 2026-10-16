@@ -43,6 +43,7 @@ import {
   MealTabsSection,
   HomeHeader,
   CheckInCard,
+  FollowThroughCard,
   ScoreCard,
   ConfidenceCard,
   GreetingBlock,
@@ -380,6 +381,16 @@ export function HomeScreenV2() {
           onFavoriteToggle={handleFavoriteToggle}
           onDeepRead={handleDeepRead}
         />
+
+        {/* P0 #10 — the one Meals question per day, when one is due.
+            Renders nothing unless the server says a prompt is eligible, so the
+            day's budget stays centralised (START HERE r10). Sits above the
+            check-in entry because r5 calls it the "natural evening
+            transition" and it is the ask Score is actually waiting on.
+            📌 Bryan, 2026-10-16: "no locked Home design for this build … for
+            now, keep the current Home/navigation" — so this stack is the
+            sanctioned surface, not a stopgap. See FollowThroughCard. */}
+        <FollowThroughCard />
 
         <SavedMealsCard onPress={handleSavedMeals} />
 

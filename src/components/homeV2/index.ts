@@ -5,6 +5,7 @@ export { SavedMealsCard } from "./SavedMealsCard";
 export { Mascot } from "./Mascot";
 export { HomeHeader } from "./HomeHeader";
 export { CheckInCard } from "./CheckInCard";
+export { FollowThroughCard } from "./FollowThroughCard";
 export { PastEntryTiles } from "./PastEntryTiles";
 export { CheckInV2 } from "./CheckInV2";
 export { ScoreCard } from "./ScoreCard";
