@@ -330,8 +330,29 @@ export function findSwappedSlot(
 }
 
 /**
- * 📌 Remaining mutations (add, remove, grocery, substitutions) are
- * deliberately absent for now. Each arrives with the screen that needs it, so
- * the client never carries calls nothing exercises. The endpoints are listed in
- * `my-plan.controller.ts` when that time comes.
+ * Rebuild the week — Rule 1's fourth verb.
+ *
+ * MY PLAN r11 ("Rebuild week"): *"Member explicitly chooses rebuild"* ->
+ * *"Generate a fresh week using same current strategy unless the plan engine
+ * has changed a major lever."* New `meal_plan_revision`, and the plan version
+ * is deliberately unchanged: *"A user-requested rebuild is not automatically a
+ * new Score experiment."*
+ *
+ * 🔑 EXPLICITLY is the whole contract. This is the same generation path
+ * `getMyPlan()` warns about, reached on purpose — r6's *"Never regenerate just
+ * because screen opened"* bans the speculative call, not this one. Only ever
+ * call it from a control the member pressed and confirmed.
+ *
+ * Returns the whole new week, so the caller replaces its state from the
+ * response rather than re-reading. Planned-meal ids are reborn with every
+ * revision, so the old ones are dead the moment this resolves.
+ *
+ * 📌 The other mutations (add, remove, substitutions) are still deliberately
+ * absent — each arrives with the screen that needs it. The endpoints are listed
+ * in `my-plan.controller.ts` when that time comes.
  */
+export async function rebuildWeek(): Promise<MyPlanResponse> {
+  return apiClient<MyPlanResponse>("/api/meals/my-plan/regenerate", {
+    method: "POST",
+  });
+}

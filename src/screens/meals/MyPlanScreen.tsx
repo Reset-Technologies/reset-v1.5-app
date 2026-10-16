@@ -26,6 +26,7 @@ import {
   findMovedSlot,
   swapPlannedMeal,
   findSwappedSlot,
+  rebuildWeek,
   buildTags,
   MyPlanResponse,
   MyPlanRecipe,
@@ -236,6 +237,17 @@ export function MyPlanScreen({ navigation }: Props) {
    * the same thing: the handoff sheet specifies **ONE Save action**, so this
    * surfaces the existing save rather than introducing a second concept.
    */
+  /**
+   * REBUILD (MY PLAN r11) — Rule 1's fourth verb.
+   *
+   * 🔑 Two pieces of state, and the split is the spec. The row's member column
+   * is *"Accept / continue editing"* — NOT "Undo", which r9 and r10 both list.
+   * So a rebuild is confirmed BEFORE it happens and simply announced after;
+   * there is nothing to take back, and `notice` is a statement, not an offer.
+   */
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   /**
    * The saved meals themselves, for the swap picker.
@@ -347,6 +359,57 @@ export function MyPlanScreen({ navigation }: Props) {
     },
     [plan, busy, reloadPlan],
   );
+
+  /**
+   * REBUILD the week (MY PLAN r11).
+   *
+   * 🔑 This is the one place allowed to reach the generation path on purpose.
+   * r6's *"Never regenerate just because screen opened"* bans the SPECULATIVE
+   * call; r11 is its counterpart — *"Member explicitly chooses rebuild"* —
+   * which is why this is reachable only from a control the member pressed and
+   * then confirmed.
+   *
+   * 🔑 The server holds the days before the member's local today — r6 scopes
+   * member editing to *"any future/current planned meal"*, and a rebuild is
+   * one of r5's member edit verbs, not an exception to them. So this redraws
+   * today onward and the week's earlier days come back unchanged.
+   *
+   * The endpoint returns the whole new week, so state is replaced from the
+   * response instead of re-read. That is not an optimisation:
+   * 🔴🔴 EVERY PLANNED-MEAL ID IN THE OLD WEEK IS NOW DEAD — a revision writes
+   * fresh rows — so an armed undo from a previous swap or move would act on
+   * ids that no longer exist. It is cleared here rather than left to 400.
+   */
+  const doRebuild = useCallback(async () => {
+    // `plan` is non-null for the control to exist at all; the guard keeps the
+    // event honest rather than logging an empty week.
+    if (!plan || busy) return;
+    setConfirmRebuild(false);
+    setBusy(true);
+    logEvent("myplan_rebuildWeekCTA", { weekStart: plan.weekStart });
+    try {
+      const fresh = await rebuildWeek();
+      setPlan(fresh);
+      setUndo(null);
+      // The dates are unchanged — a rebuild redraws the same week — so the
+      // selected day index stays valid and the member keeps their place.
+      // 📌 "from here" rather than "fresh week": the days behind the member
+      // are deliberately untouched (r6), and the notice should not claim more
+      // than happened.
+      setNotice("The rest of your week is fresh.");
+    } catch {
+      setError("Your week could not be rebuilt.");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, plan]);
+
+  /** The notice is an announcement, not an offer — it clears itself. */
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   /**
    * SWAP — replace this slot's recipe with a saved meal (MY PLAN r9).
@@ -529,20 +592,48 @@ export function MyPlanScreen({ navigation }: Props) {
             <Text style={styles.title}>My Plan</Text>
             <Text style={styles.range}>{range}</Text>
           </View>
-          <Pressable
-            onPress={() => navigation.navigate("GroceryList")}
-            hitSlop={8}
-            style={styles.cartButton}
-            accessibilityRole="button"
-            accessibilityLabel="Grocery list"
-          >
-            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"
-                fill={K.cream}
-              />
-            </Svg>
-          </Pressable>
+          {/* Lang's Header (Figma 5039:29724) carries a "Buttons" frame on the
+              right holding a 40x40 Rounded Icon button — one visible, one
+              hidden in the component. She drew no rebuild control anywhere on
+              this frame (its only other button is "Explore more meals", which
+              has no backend), so placing it is mine: it takes the second slot
+              her own header already allows for, at her size.
+              ▶ It belongs in the HEADER and not on the day card because a
+              rebuild redraws the WHOLE WEEK. Sitting beside the week's date
+              range, it reads at the scope it acts on; under a day's meals it
+              would read as "rebuild this day", which is not a thing. */}
+          <View style={styles.headerButtons}>
+            <Pressable
+              onPress={() => setConfirmRebuild(true)}
+              disabled={busy}
+              hitSlop={8}
+              style={[styles.cartButton, busy && styles.headerButtonBusy]}
+              accessibilityRole="button"
+              accessibilityLabel="Rebuild this week"
+              accessibilityState={{ disabled: busy }}
+            >
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                  fill={K.cream}
+                />
+              </Svg>
+            </Pressable>
+            <Pressable
+              onPress={() => navigation.navigate("GroceryList")}
+              hitSlop={8}
+              style={styles.cartButton}
+              accessibilityRole="button"
+              accessibilityLabel="Grocery list"
+            >
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"
+                  fill={K.cream}
+                />
+              </Svg>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.daysRow}>
@@ -717,6 +808,61 @@ export function MyPlanScreen({ navigation }: Props) {
         </View>
       </Modal>
 
+      {/* ── Rebuild the week (MY PLAN r11) ───────────────────────────────
+          Confirmed BEFORE, not undoable after: r11's member column is
+          "Accept / continue editing", where r9 and r10 both say "Undo".
+          🔴 The copy has to name what it replaces, and what it does NOT. A
+          rebuild redraws from today to Sunday: r6 scopes member editing to
+          "any future/current planned meal", so the days already behind the
+          member are left exactly as they were — the same read-only line this
+          screen already draws in the move picker. Swaps and moves from today
+          on are gone, which is the part worth warning about.
+          📌 No canonical copy row exists for this; the Meals sheet carries no
+          member-facing wording for rebuild. Bryan owns copy, so this is a
+          stand-in to be replaced, not a decision. */}
+      <Modal
+        visible={confirmRebuild}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmRebuild(false)}
+      >
+        <Pressable style={styles.moveBackdrop} onPress={() => setConfirmRebuild(false)} />
+        <View style={styles.moveSheet}>
+          <Text style={styles.moveTitle}>Rebuild this week?</Text>
+          <Text style={styles.moveSub}>
+            I'll draft the rest of this week again, starting today. Days
+            you've already been through stay as they are. Any meals you
+            swapped or moved from today on will be replaced. Your saved meals
+            stay saved.
+          </Text>
+          <Pressable
+            style={styles.moveRow}
+            onPress={doRebuild}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Rebuild this week"
+          >
+            <Text style={styles.moveRowText}>{busy ? "Rebuilding…" : "Rebuild my week"}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.moveRow}
+            onPress={() => setConfirmRebuild(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Keep my current week"
+          >
+            <Text style={styles.moveRowTextQuiet}>Keep what I have</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* The rebuild's "Accept" half: it announces and clears itself. There is
+          deliberately no action here — continuing to edit IS the other half. */}
+      {notice && !undo ? (
+        <View style={styles.undoBar}>
+          <Text style={styles.undoText} numberOfLines={1}>{notice}</Text>
+        </View>
+      ) : null}
+
       {/* 🔴 UNDO — required by r9 and r10, and the only way back: both write a
           new revision, so there is nothing to "cancel" afterwards. */}
       {undo ? (
@@ -868,6 +1014,8 @@ const styles = StyleSheet.create({
   // screen 48 was enough; as a tab root the pill would sit on the last card.
   scroll: { padding: 20, paddingBottom: 120 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  headerButtons: { flexDirection: "row", gap: 8 },
+  headerButtonBusy: { opacity: 0.5 },
   titleText: { flex: 1 },
   cartButton: {
     width: 40, height: 40, borderRadius: 999, marginTop: 4,
@@ -1033,6 +1181,7 @@ const styles = StyleSheet.create({
   moveRow: { paddingVertical: 14, borderTopWidth: 1, borderTopColor: "rgba(243,239,227,0.14)" },
   moveRowDisabled: { opacity: 0.35 },
   moveRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  moveRowTextQuiet: { fontFamily: fonts.dmSans, fontSize: 16, color: "rgba(243,239,227,0.6)" },
   moveRowTextDisabled: { color: K.bone },
   swapList: { maxHeight: 320 },
 
