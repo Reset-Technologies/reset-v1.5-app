@@ -369,6 +369,11 @@ export function MyPlanScreen({ navigation }: Props) {
    * which is why this is reachable only from a control the member pressed and
    * then confirmed.
    *
+   * 🔑 The server holds the days before the member's local today — r6 scopes
+   * member editing to *"any future/current planned meal"*, and a rebuild is
+   * one of r5's member edit verbs, not an exception to them. So this redraws
+   * today onward and the week's earlier days come back unchanged.
+   *
    * The endpoint returns the whole new week, so state is replaced from the
    * response instead of re-read. That is not an optimisation:
    * 🔴🔴 EVERY PLANNED-MEAL ID IN THE OLD WEEK IS NOW DEAD — a revision writes
@@ -388,7 +393,10 @@ export function MyPlanScreen({ navigation }: Props) {
       setUndo(null);
       // The dates are unchanged — a rebuild redraws the same week — so the
       // selected day index stays valid and the member keeps their place.
-      setNotice("Fresh week ready.");
+      // 📌 "from here" rather than "fresh week": the days behind the member
+      // are deliberately untouched (r6), and the notice should not claim more
+      // than happened.
+      setNotice("The rest of your week is fresh.");
     } catch {
       setError("Your week could not be rebuilt.");
     } finally {
@@ -803,11 +811,15 @@ export function MyPlanScreen({ navigation }: Props) {
       {/* ── Rebuild the week (MY PLAN r11) ───────────────────────────────
           Confirmed BEFORE, not undoable after: r11's member column is
           "Accept / continue editing", where r9 and r10 both say "Undo".
-          🔴 The copy has to name what it replaces. A rebuild draws a fresh
-          revision for the WHOLE week, so swaps and moves the member made are
-          gone — and the server regenerates every day of the week, including
-          ones already past, which this screen otherwise treats as read-only.
-          Saying "every day of this week" is the honest wording for that. */}
+          🔴 The copy has to name what it replaces, and what it does NOT. A
+          rebuild redraws from today to Sunday: r6 scopes member editing to
+          "any future/current planned meal", so the days already behind the
+          member are left exactly as they were — the same read-only line this
+          screen already draws in the move picker. Swaps and moves from today
+          on are gone, which is the part worth warning about.
+          📌 No canonical copy row exists for this; the Meals sheet carries no
+          member-facing wording for rebuild. Bryan owns copy, so this is a
+          stand-in to be replaced, not a decision. */}
       <Modal
         visible={confirmRebuild}
         transparent
@@ -818,8 +830,10 @@ export function MyPlanScreen({ navigation }: Props) {
         <View style={styles.moveSheet}>
           <Text style={styles.moveTitle}>Rebuild this week?</Text>
           <Text style={styles.moveSub}>
-            I'll draft every day of this week again. Any meals you swapped or
-            moved will be replaced. Your saved meals stay saved.
+            I'll draft the rest of this week again, starting today. Days
+            you've already been through stay as they are. Any meals you
+            swapped or moved from today on will be replaced. Your saved meals
+            stay saved.
           </Text>
           <Pressable
             style={styles.moveRow}
