@@ -43,6 +43,7 @@ import {
   MealTabsSection,
   HomeHeader,
   CheckInCard,
+  FollowThroughCard,
   ScoreCard,
   ConfidenceCard,
   GreetingBlock,
@@ -380,6 +381,14 @@ export function HomeScreenV2() {
           onFavoriteToggle={handleFavoriteToggle}
           onDeepRead={handleDeepRead}
         />
+
+        {/* P0 #10 — the one Meals question per day, when one is due.
+            Renders nothing unless the server says a prompt is eligible, so the
+            day's budget stays centralised (START HERE r10). Sits above the
+            check-in entry because r5 calls it the "natural evening
+            transition" and it is the ask Score is actually waiting on.
+            📌 Placement is ours — see the note in FollowThroughCard. */}
+        <FollowThroughCard />
 
         <SavedMealsCard onPress={handleSavedMeals} />
 
