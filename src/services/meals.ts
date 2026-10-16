@@ -359,3 +359,53 @@ export async function recordFollowThrough(
 export async function dismissPrompt(promptId: string): Promise<void> {
   await apiClient(`/api/meals/prompts/${promptId}/dismiss`, { method: "POST" });
 }
+
+/* ── Fit rejection capture (P0 #11) ────────────────────────────────────────
+ *
+ * EVENTS r11 — "Member explicitly rejects planned meal". Rejecting is NOT
+ * swapping: the route's own doc says "capture only — this does NOT change the
+ * plan. Swapping the meal out is a separate action."
+ */
+
+export interface RejectionReasonOption {
+  /** The stored code. Score-facing; never shown to a member. */
+  reason: string;
+  /**
+   * 🔴 THE ONLY STRING A MEMBER MAY SEE. Bryan's "Member wording" column from
+   * SWAPS + EDITS r18–r24, served by the API so this client never hardcodes
+   * copy that is his to change.
+   */
+  label: string;
+  /** Internal shorthand — "Prep friction". Never render this. */
+  meaning: string;
+  /** Visible so a caller can SEE the classification, never make one. */
+  fitQualifying: boolean;
+}
+
+/** The drawer's options, in Bryan's order. */
+export async function getRejectionReasons(): Promise<RejectionReasonOption[]> {
+  return apiClient<RejectionReasonOption[]>("/api/meals/rejections/reasons");
+}
+
+/**
+ * Record why a planned meal did not work.
+ *
+ * 🔑 Capture only — the plan is untouched. A member who also wants it gone
+ * swaps or removes it separately, which is why this does not close the plan
+ * sheet onto a changed week.
+ *
+ * 🔴 The client sends the CODE and never a judgement: whether a reason can
+ * become Reset Score Fit evidence is decided server-side from the reason
+ * table. Meals emits facts; Score interprets.
+ */
+export async function recordRejection(params: {
+  reason: string;
+  mealId?: string;
+  slotType?: string;
+  freeText?: string;
+}): Promise<void> {
+  await apiClient("/api/meals/rejections", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
