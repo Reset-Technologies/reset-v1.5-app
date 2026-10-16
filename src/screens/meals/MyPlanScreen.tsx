@@ -610,7 +610,7 @@ export function MyPlanScreen({ navigation }: Props) {
               hitSlop={8}
               style={[styles.cartButton, busy && styles.headerButtonBusy]}
               accessibilityRole="button"
-              accessibilityLabel="Rebuild this week"
+              accessibilityLabel="Rebuild the rest of your week"
               accessibilityState={{ disabled: busy }}
             >
               <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -818,9 +818,13 @@ export function MyPlanScreen({ navigation }: Props) {
           member are left exactly as they were — the same read-only line this
           screen already draws in the move picker. Swaps and moves from today
           on are gone, which is the part worth warning about.
-          📌 No canonical copy row exists for this; the Meals sheet carries no
-          member-facing wording for rebuild. Bryan owns copy, so this is a
-          stand-in to be replaced, not a decision. */}
+          📌 BRYAN'S COPY, verbatim (Slack, 2026-10-16), replacing my stand-in.
+          The Meals workbook carries no member-facing wording for rebuild —
+          a full 25-tab sweep confirmed that — so this came from him directly.
+          Do not reword it. His title says "the rest of your week", which
+          states the r6 scoping in the member's own terms; he also confirmed
+          the scope call itself ("your call is right") against SWAPS + EDITS
+          r12's looser "user rebuilds whole week". */}
       <Modal
         visible={confirmRebuild}
         transparent
@@ -829,19 +833,18 @@ export function MyPlanScreen({ navigation }: Props) {
       >
         <Pressable style={styles.moveBackdrop} onPress={() => setConfirmRebuild(false)} />
         <View style={styles.moveSheet}>
-          <Text style={styles.moveTitle}>Rebuild this week?</Text>
+          <Text style={styles.moveTitle}>Rebuild the rest of your week?</Text>
           <Text style={styles.moveSub}>
-            I'll draft the rest of this week again, starting today. Days
-            you've already been through stay as they are. Any meals you
-            swapped or moved from today on will be replaced. Your saved meals
-            stay saved.
+            I'll create a new plan starting today. Earlier days and saved
+            meals stay as they are. Any swaps or changes for the rest of this
+            week will be replaced.
           </Text>
           <Pressable
             style={styles.moveRow}
             onPress={doRebuild}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="Rebuild this week"
+            accessibilityLabel="Rebuild the rest of your week"
           >
             <Text style={styles.moveRowText}>{busy ? "Rebuilding…" : "Rebuild my week"}</Text>
           </Pressable>
