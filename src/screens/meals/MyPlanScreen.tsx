@@ -34,6 +34,9 @@ import {
   MealSlotType,
 } from "../../services/myPlan";
 import {
+  getRejectionReasons,
+  recordRejection,
+  RejectionReasonOption,
   getFavorites,
   addFavorite,
   removeFavorite,
@@ -209,8 +212,18 @@ export function MyPlanScreen({ navigation }: Props) {
    * started on so an undo knows where to put it back.
    */
   const [acting, setActing] = useState<{ slot: MyPlanSlot; onDate: string } | null>(null);
+
+  /**
+   * The rejection drawer's options (P0 #11).
+   *
+   * 🔴 Fetched, never hardcoded. The labels are Bryan's "Member wording" from
+   * SWAPS + EDITS r18–r24 and the server owns them, so copy he changes does
+   * not need an app release. An empty list simply means no drawer.
+   */
+  const [reasons, setReasons] = useState<RejectionReasonOption[]>([]);
+  const [rejecting, setRejecting] = useState(false);
   /** Which picker is open, once the member has chosen a verb. */
-  const [picker, setPicker] = useState<"move" | "swap" | null>(null);
+  const [picker, setPicker] = useState<"move" | "swap" | "reject" | null>(null);
   const [busy, setBusy] = useState(false);
   /**
    * 🔴 UNDO IS REQUIRED, not a nicety — r10 lists it in the member's column
@@ -270,6 +283,12 @@ export function MyPlanScreen({ navigation }: Props) {
    */
   useEffect(() => {
     const load = () => {
+      // The drawer's options. Fetched once on focus with everything else;
+      // a failure just means the row opens an empty drawer, never a crash.
+      getRejectionReasons()
+        .then(setReasons)
+        .catch(() => {});
+
       getFavorites()
         .then((favs) => {
           setSavedIds(new Set(favs.map((f) => f.id)));
@@ -560,6 +579,47 @@ export function MyPlanScreen({ navigation }: Props) {
    * 📌 `sourceSurface: "my_plan"` because that is where the member tapped.
    * The saved_meals surface is the SavedMeals SCREEN, which sets its own.
    */
+  /**
+   * Record why a planned meal did not work (P0 #11).
+   *
+   * 🔴 CAPTURE ONLY — no plan mutation, no revision, no refetch. The route's
+   * doc is explicit: "this does NOT change the plan. Swapping the meal out is
+   * a separate action." So this closes the sheet and leaves the week exactly
+   * as it was; the member chose to tell us something, not to change anything.
+   *
+   * 🔑 The CODE goes to the server and nothing else. Whether a reason may
+   * become Reset Score Fit evidence is decided there, from the reason table —
+   * `ate_out` and taste cannot, cost/effort/schedule/family can. Deciding it
+   * here would put Score interpretation in the client.
+   *
+   * 📌 Optimistic close. A failure is swallowed deliberately: the member has
+   * said their piece and re-opening a drawer to report a logging problem
+   * would make our plumbing their problem. The day's evidence is lost, which
+   * is the same "missing evidence" silence already produces — never a wrong
+   * signal.
+   */
+  const rejectMeal = useCallback(
+    async (reason: string) => {
+      if (rejecting) return;
+      setRejecting(true);
+      const slot = acting?.slot;
+      setPicker(null);
+      setActing(null);
+      try {
+        await recordRejection({
+          reason,
+          mealId: slot?.recipe?.id,
+          slotType: slot?.slotType,
+        });
+      } catch {
+        // Deliberately silent — see above.
+      } finally {
+        setRejecting(false);
+      }
+    },
+    [rejecting, acting],
+  );
+
   const openSavedMeal = useCallback(
     (fav: MealFavorite) => {
       navigation.navigate("RecipeDetail", {
@@ -833,6 +893,65 @@ export function MyPlanScreen({ navigation }: Props) {
           <Pressable style={styles.moveRow} onPress={() => setPicker("move")}>
             <Text style={styles.moveRowText}>Move to another day</Text>
           </Pressable>
+          {/* 🔑 A THIRD VERB, not a variant of the other two. Rejecting is
+              capture only — EVENTS r11 is "member explicitly rejects planned
+              meal", and the route's own doc says it "does NOT change the
+              plan". A member who also wants it gone swaps or moves it, which
+              is why this sits beside those rather than replacing them.
+              📌 This row's wording is OURS; the drawer's is Bryan's. */}
+          <Pressable style={styles.moveRow} onPress={() => setPicker("reject")}>
+            <Text style={styles.moveRowText}>This didn't work for me</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* ── Why didn't this work? (P0 #11) ──────────────────────────────
+          EVENTS r11 — "member explicitly rejects planned meal". ONE DRAWER,
+          ONE TAP: the route's own doc says the spec forbids a questionnaire,
+          so there is no free-text step and no confirm.
+
+          🔴 CAPTURE ONLY. The plan is untouched — rejecting is not swapping,
+          and the sheet closes onto the same week it opened on. A member who
+          also wants the meal gone uses the other two verbs.
+
+          🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
+          "Member wording"). This renders `label` and never `meaning`, which is
+          internal shorthand like "Prep friction".
+
+          📌 Only the title is ours. The seven options are his. */}
+      <Modal
+        visible={picker === "reject"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPicker(null)}
+      >
+        <Pressable
+          style={styles.moveBackdrop}
+          onPress={() => { setPicker(null); setActing(null); }}
+        />
+        <View style={styles.moveSheet}>
+          <Text style={styles.moveTitle}>Why didn't this work?</Text>
+          <Text style={styles.moveSub} numberOfLines={1}>
+            {acting?.slot.recipe?.title ?? ""}
+          </Text>
+          <ScrollView style={styles.swapList}>
+            {reasons.map((r) => (
+              <Pressable
+                key={r.reason}
+                style={styles.moveRow}
+                disabled={rejecting}
+                onPress={() => rejectMeal(r.reason)}
+                accessibilityRole="button"
+                accessibilityLabel={r.label}
+              >
+                {/* 🔴 `label`, never `meaning`. */}
+                <Text style={styles.moveRowText}>{r.label}</Text>
+              </Pressable>
+            ))}
+            {!reasons.length && (
+              <Text style={styles.moveSub}>Reasons could not be loaded.</Text>
+            )}
+          </ScrollView>
         </View>
       </Modal>
 
