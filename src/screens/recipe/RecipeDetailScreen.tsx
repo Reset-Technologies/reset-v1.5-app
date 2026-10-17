@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { shareWithLink } from "../../constants/links";
 import {
   View,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
+  Modal,
   Image,
   ActivityIndicator,
   Dimensions,
@@ -31,6 +33,9 @@ import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
   getMealDetail,
   getMealIngredients,
+  getSubstituteSuggestions,
+  applySubstitution,
+  SubstituteSuggestion,
   getCachedDailyPlan,
   addFavorite,
   removeFavorite,
@@ -328,6 +333,20 @@ export function RecipeDetailScreen() {
    * is 2."* So Standard shows ONE serving of the recipe, not all of it.
    */
   const plannedMeal = route.params.plannedMeal;
+
+  /**
+   * Ingredient substitution (P0 #8b), Lang's frame 5046:44621.
+   *
+   * 🔑 Only offered when there is a PLANNED MEAL behind the screen, for the
+   * same reason the serving control is: a substitution changes a planned
+   * recipe INSTANCE. Opened from Home, Saved Meals or Ester chat there is no
+   * instance to change, so the rows are plain text — the same distinction this
+   * screen already draws rather than a new one.
+   */
+  const [swapFor, setSwapFor] = useState<MealIngredient | null>(null);
+  const [suggestions, setSuggestions] = useState<SubstituteSuggestion[] | null>(null);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState(false);
   // Rides along on the detail fetch so the server can record `recipe_viewed`
   // with r15's `source_surface`. Undefined from a call site that does not set
   // it, which records the view with an unknown surface rather than losing it.
@@ -440,6 +459,72 @@ export function RecipeDetailScreen() {
       cancelled = true;
     };
   }, [meal.id]);
+
+  /**
+   * Open the swap drawer for one ingredient and fetch its options.
+   *
+   * 📌 Fetched on open, not with the screen. Each call is an Ester round-trip
+   * (~4s measured), and a member opens at most one ingredient's drawer —
+   * prefetching every row would spend that per ingredient for nothing.
+   */
+  const openSwap = useCallback(
+    async (ing: MealIngredient) => {
+      if (!plannedMeal) return;
+      setSwapFor(ing);
+      setSuggestions(null);
+      setChosen(null);
+      try {
+        const opts = await getSubstituteSuggestions({
+          plannedMealId: plannedMeal.id,
+          mealPlanId: plannedMeal.mealPlanId,
+          fromIngredientId: ing.ingredientId,
+          amount: `${ing.quantity} ${ing.measurement}`.trim(),
+          recipeTitle: meal.name,
+        });
+        setSuggestions(opts);
+        // Lang's frame has the first option pre-selected.
+        setChosen(opts[0]?.ingredientId ?? null);
+      } catch {
+        // An empty list renders the honest "no substitutes" state rather than
+        // an error the member can do nothing with.
+        setSuggestions([]);
+      }
+    },
+    [plannedMeal, meal.name],
+  );
+
+  /**
+   * Apply the chosen substitute.
+   *
+   * 🔑 Sends the canonical id, so this takes the STRUCTURED path: new plan
+   * revision, recomputed nutrition and grocery, same Reset Score plan version
+   * (SERVINGS + ING r7, SCORE CONTRACT r20).
+   *
+   * 📌 Refetches the ingredient list afterwards rather than patching it
+   * locally. The server decides what the swap actually did — including
+   * refusing to make it structured when a restriction cannot be verified — so
+   * reading the result back is the only honest way to show it.
+   */
+  const confirmSwap = useCallback(async () => {
+    if (!plannedMeal || !swapFor || !chosen || swapping) return;
+    setSwapping(true);
+    try {
+      await applySubstitution({
+        plannedMealId: plannedMeal.id,
+        mealPlanId: plannedMeal.mealPlanId,
+        fromIngredientId: swapFor.ingredientId,
+        toIngredientId: chosen,
+      });
+      setSwapFor(null);
+      const fresh = await getMealIngredients(meal.id);
+      setIngredients(fresh);
+    } catch {
+      // Leave the drawer open so the member can try again or back out; a
+      // silent close would look like it worked.
+    } finally {
+      setSwapping(false);
+    }
+  }, [plannedMeal, swapFor, chosen, swapping, meal.id]);
 
   /**
    * Pick a serving size, and save it when there is a planned meal behind it.
@@ -727,13 +812,23 @@ export function RecipeDetailScreen() {
                   // match what was bought.
                   const qty = (ing.quantity * multiplier) / (servingsBase || 1);
                   const qtyDisplay = formatQty(qty, ing.measurement);
+                  // 🔑 Tappable ONLY with a planned meal behind the screen —
+                  // a substitution changes a planned recipe instance, so from
+                  // Home or Saved Meals there is nothing to change. Same
+                  // distinction the serving control already draws.
+                  const Row: React.ElementType = plannedMeal ? Pressable : View;
                   return (
-                    <View
+                    <Row
                       key={ing.id + idx}
+                      onPress={plannedMeal ? () => openSwap(ing) : undefined}
                       style={[
                         styles.ingredientRow,
                         idx === 0 ? styles.ingredientRowFirst : null,
                       ]}
+                      accessibilityRole={plannedMeal ? "button" : undefined}
+                      accessibilityLabel={
+                        plannedMeal ? `Swap ${ing.ingredientName}` : undefined
+                      }
                     >
                       <Text style={styles.ingredientQty} numberOfLines={2}>
                         {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
@@ -741,7 +836,7 @@ export function RecipeDetailScreen() {
                       <Text style={styles.ingredientName}>
                         {ing.ingredientName}
                       </Text>
-                    </View>
+                    </Row>
                   );
                 })}
               </View>
@@ -840,6 +935,112 @@ export function RecipeDetailScreen() {
           <ActivityIndicator size="small" color={K.brown} />
         </View>
       ) : null}
+
+      {/* ── Swap ingredient (P0 #8b) ─────────────────────────────────────
+          Lang's frame 5046:44621: title, Ester's line, radio options each
+          with a reason and an amount, then confirm or keep.
+
+          🔴 Every option is a REAL canonical ingredient. The server builds the
+          pool from the ingredient table, filters it against the member's
+          restrictions, and Ester only chooses among it — so confirming takes
+          the STRUCTURED path (new revision, recomputed grocery and nutrition,
+          same Score plan version) instead of being stored as a note.
+
+          🔴 An EMPTY list is a real answer, not an error: no candidates, Ester
+          declining, or a restriction the server cannot verify all return one.
+          We say so plainly rather than inventing options. */}
+      <Modal
+        visible={!!swapFor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSwapFor(null)}
+      >
+        <Pressable style={styles.swapBackdrop} onPress={() => setSwapFor(null)} />
+        <View style={styles.swapSheet}>
+          <View style={styles.swapHeader}>
+            <Text style={styles.swapTitle}>Swap ingredient</Text>
+            <Pressable
+              onPress={() => setSwapFor(null)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Text style={styles.swapClose}>✕</Text>
+            </Pressable>
+          </View>
+
+          {suggestions === null ? (
+            <View style={styles.swapLoading}>
+              <ActivityIndicator size="small" color={K.brown} />
+            </View>
+          ) : suggestions.length === 0 ? (
+            <Text style={styles.swapEmpty}>
+              No substitutes we can suggest for this one.
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.swapEsterLabel}>Ester's suggestions</Text>
+              <View style={styles.swapEsterCard}>
+                <Text style={styles.swapEsterText}>
+                  Here's some substitutes for{" "}
+                  <Text style={styles.swapEsterStrong}>
+                    {swapFor?.ingredientName}
+                  </Text>
+                  .
+                </Text>
+              </View>
+
+              <ScrollView style={styles.swapList}>
+                {suggestions.map((opt) => {
+                  const selected = chosen === opt.ingredientId;
+                  return (
+                    <Pressable
+                      key={opt.ingredientId}
+                      onPress={() => setChosen(opt.ingredientId)}
+                      style={[styles.swapOption, selected && styles.swapOptionOn]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={opt.name}
+                    >
+                      <View style={styles.swapOptionBody}>
+                        <Text style={styles.swapOptionName}>{opt.name}</Text>
+                        {/* Ester's one line — never a nutrition claim. */}
+                        <Text style={styles.swapOptionWhy}>{opt.rationale}</Text>
+                        <Text style={styles.swapOptionQty}>{opt.quantity}</Text>
+                      </View>
+                      <View
+                        style={[styles.swapRadio, selected && styles.swapRadioOn]}
+                      >
+                        {selected ? <Text style={styles.swapTick}>✓</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              <Pressable
+                style={[styles.swapConfirm, (!chosen || swapping) && styles.swapConfirmOff]}
+                onPress={confirmSwap}
+                disabled={!chosen || swapping}
+                accessibilityRole="button"
+                accessibilityLabel="Swap ingredient"
+              >
+                <Text style={styles.swapConfirmText}>
+                  {swapping ? "Swapping…" : "Swap ingredient"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSwapFor(null)}
+                style={styles.swapKeep}
+                accessibilityRole="button"
+                accessibilityLabel="Keep original"
+              >
+                <Text style={styles.swapKeepText}>Keep original</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1190,6 +1391,100 @@ const styles = StyleSheet.create({
     fontFamily: fonts.dmSans,
   },
   // Loading
+  /* ── Swap ingredient (Lang 5046:44621) ──────────────────────────────
+     🔑 Recipe Details is the LIGHT surface — her frame draws this sheet on
+     bone with dark text, unlike My Plan's sheets. Reusing My Plan's dark
+     `moveSheet` values here would be the colour drift already logged against
+     this screen, so these take the page's own palette. */
+  swapBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(54,20,22,0.35)" },
+  swapSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: "86%",
+    backgroundColor: K.bone,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 12,
+  },
+  swapHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  swapTitle: { fontFamily: fonts.dmSans, fontSize: 26, color: K.brown, letterSpacing: -0.3 },
+  swapClose: { fontFamily: fonts.dmSans, fontSize: 20, color: K.brown, opacity: 0.7 },
+  swapLoading: { paddingVertical: 36, alignItems: "center" },
+  swapEmpty: {
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    color: K.brown,
+    opacity: 0.7,
+    paddingVertical: 24,
+  },
+  swapEsterLabel: {
+    fontFamily: fonts.dmSans,
+    fontSize: 13,
+    color: K.brown,
+    opacity: 0.6,
+  },
+  swapEsterCard: {
+    borderWidth: 1,
+    borderColor: "rgba(54,20,22,0.15)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  swapEsterText: { fontFamily: fonts.dmSans, fontSize: 15, color: K.brown, lineHeight: 21 },
+  swapEsterStrong: { fontFamily: fonts.dmSansBold },
+  swapList: { maxHeight: 330 },
+  /* Her option card: name, reason, amount, radio on the right. */
+  swapOption: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "rgba(54,20,22,0.15)",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+  },
+  swapOptionOn: { borderColor: K.brown, borderWidth: 1.5 },
+  swapOptionBody: { flex: 1, gap: 4 },
+  swapOptionName: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.brown },
+  swapOptionWhy: {
+    fontFamily: fonts.dmSans,
+    fontSize: 13,
+    color: K.brown,
+    opacity: 0.7,
+    lineHeight: 18,
+  },
+  swapOptionQty: { fontFamily: fonts.quadrant, fontSize: 13, color: K.brown, opacity: 0.55 },
+  swapRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "rgba(54,20,22,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  swapRadioOn: { backgroundColor: K.brown, borderColor: K.brown },
+  swapTick: { color: K.bone, fontSize: 13, lineHeight: 16 },
+  swapConfirm: {
+    backgroundColor: K.brown,
+    borderRadius: 999,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  swapConfirmOff: { opacity: 0.45 },
+  swapConfirmText: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.bone },
+  swapKeep: { alignItems: "center", paddingVertical: 10 },
+  swapKeepText: { fontFamily: fonts.dmSansMedium, fontSize: 14, color: K.brown },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,
