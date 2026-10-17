@@ -409,3 +409,75 @@ export async function recordRejection(params: {
     body: JSON.stringify(params),
   });
 }
+
+/* ── Ingredient substitution (P0 #8b) ──────────────────────────────────────
+ *
+ * SERVINGS + ING r7 — an approved substitution is a pre-authored alternative
+ * that passes restrictions/safety, with Ester explaining in one line. It
+ * changes the planned recipe INSTANCE: new plan revision, same Score version.
+ */
+
+export interface SubstituteSuggestion {
+  /** A canonical ingredient id. Send this back to apply the swap. */
+  ingredientId: string;
+  /** The catalogue's own wording — not the model's paraphrase. */
+  name: string;
+  /** Ester's one line about why it works in THIS dish. */
+  rationale: string;
+  /** How much to use, in plain cooking terms. */
+  quantity: string;
+}
+
+/**
+ * Up to three substitutes for one ingredient.
+ *
+ * 🔑 Every option is a real canonical ingredient: the server builds the pool
+ * from the ingredient table, filters it against the member's restrictions, and
+ * Ester only chooses among it. So accepting one takes the STRUCTURED path and
+ * actually recomputes nutrition and grocery, rather than being stored as a
+ * note.
+ *
+ * 🔴 An empty list is a real answer, not an error — the server returns one
+ * when it has no candidates, when Ester declines, or when a restriction cannot
+ * be verified. Show no drawer rather than inventing options.
+ */
+export async function getSubstituteSuggestions(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  fromIngredientId: string;
+  amount?: string;
+  recipeTitle?: string;
+}): Promise<SubstituteSuggestion[]> {
+  const q = new URLSearchParams({
+    mealPlanId: params.mealPlanId,
+    fromIngredientId: params.fromIngredientId,
+  });
+  if (params.amount) q.set("amount", params.amount);
+  if (params.recipeTitle) q.set("recipeTitle", params.recipeTitle);
+  return apiClient<SubstituteSuggestion[]>(
+    `/api/meals/my-plan/meals/${params.plannedMealId}/substitutions/suggestions?${q}`,
+  );
+}
+
+/**
+ * Apply one.
+ *
+ * 📌 Sends `toIngredientId`, never free text. The suggestion already carries a
+ * canonical id, so there is nothing to resolve and nothing to guess — which is
+ * the whole reason the suggestions come from a server-built pool.
+ */
+export async function applySubstitution(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+  fromIngredientId: string;
+  toIngredientId: string;
+}): Promise<void> {
+  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}/substitutions`, {
+    method: "POST",
+    body: JSON.stringify({
+      mealPlanId: params.mealPlanId,
+      fromIngredientId: params.fromIngredientId,
+      toIngredientId: params.toIngredientId,
+    }),
+  });
+}
