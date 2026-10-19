@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
   Text,
@@ -50,7 +51,8 @@ const TYPE_LOGO = {
 };
 
 function formatPrep(meal: DailyPlanMeal): string {
-  return meal.prepTime ? `${meal.prepTime} mins` : "";
+  // One rule, one place — see `formatPrepTime`.
+  return formatPrepTime(meal.prepTime, "mins") ?? "";
 }
 
 // Build tag pills from the meal's classification fields. Only surface

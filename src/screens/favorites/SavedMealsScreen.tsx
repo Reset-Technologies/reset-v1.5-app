@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
   Text,
@@ -157,7 +158,10 @@ export function SavedMealsScreen() {
         whyLine: "",
         calories: meal.calories ?? 0,
         protein: meal.protein ?? 0,
-        prepTime: meal.prepTime ?? 0,
+        // 🔴 Keep null as null. `?? 0` is what turned "unknown" into "0 min":
+        // zero is not a cooking time, and the sort below already treats a
+        // missing time as +Infinity rather than as instant.
+        prepTime: meal.prepTime ?? null,
         time: meal.isBreakfast ? "breakfast" : meal.isLunch ? "lunch" : "dinner",
         imageUrl: meal.imageAsset ?? undefined,
         primaryProtein: meal.primaryProtein ?? undefined,
@@ -390,9 +394,13 @@ export function SavedMealsScreen() {
                       frame shows prep time in this exact slot instead. Same
                       removal as Recipe Details, which Bryan approved on
                       2026-10-12. */}
-                  {meal.prepTime != null ? (
+                  {/* 🔴 Was `meal.prepTime != null`, over a value mapped with
+                      `?? 0` — so a recipe with no known time printed "0 min".
+                      It only surfaced once the server began nulling
+                      Spoonacular's 45-minute placeholder (76% of recipes). */}
+                  {formatPrepTime(meal.prepTime) ? (
                     <Text style={[styles.gridMeta, { color: metaColor }]}>
-                      {meal.prepTime} min
+                      {formatPrepTime(meal.prepTime)}
                     </Text>
                   ) : null}
                 </View>

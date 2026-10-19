@@ -184,7 +184,8 @@ export function ExploreScreen() {
           // passes — Recipe Details loads the real detail itself.
           calories: 0,
           protein: 0,
-          prepTime: item.readyInMinutes ?? 0,
+          // null, not 0 — the server already nulls the 45-min placeholder.
+          prepTime: item.readyInMinutes ?? null,
           time:
             item.slots[0] === "breakfast"
               ? "breakfast"
