@@ -30,6 +30,7 @@ import { WelcomeBackScreen } from "../screens/onboarding";
 // enters Meals".
 import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
 import { ExploreScreen } from "../screens/meals/ExploreScreen";
+import { CookModeScreen } from "../screens/meals/CookModeScreen";
 import { GroceryListScreen } from "../screens/meals/GroceryListScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
@@ -102,6 +103,13 @@ export type MainStackParamList = {
     sourceSurface?: RecipeViewSurface;
   };
   Explore: undefined;
+  CookMode: {
+    recipeVersionId: string;
+    /** Present when Cook Mode was opened from a planned meal (EVENTS r17). */
+    plannedMealId?: string | null;
+    /** For the completion screen's 120pt image. */
+    imageUrl?: string;
+  };
   SavedMeals: undefined;
   GroceryList: undefined;
   WeeklyReview: undefined;
@@ -230,6 +238,17 @@ export function MainNavigator() {
         component={RecipeDetailScreen}
         options={{
           animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="CookMode"
+        component={CookModeScreen}
+        options={{
+          // Full-screen and gesture-free: Cook Mode owns the screen while
+          // someone is cooking, and an accidental edge-swipe mid-recipe
+          // should not drop them out of it.
+          animation: "slide_from_bottom",
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen

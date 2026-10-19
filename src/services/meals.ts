@@ -191,6 +191,22 @@ export interface MealNutrient {
 
 export interface MealDetail {
   id: string;
+  /**
+   * The recipe's current published version.
+   *
+   * 🔑 Cook Mode is keyed on the VERSION (steps are versioned content), so
+   * this is what makes Cook Mode reachable from Recipe Details.
+   * 📌 Null when unpublished — which is also the signal not to offer it.
+   */
+  recipeVersionId: string | null;
+  /**
+   * How many Cook Mode steps exist for this version.
+   *
+   * 🔴 Gate the Cook Mode affordance on THIS, never on parsed instruction
+   * text: a recipe can show four instruction paragraphs and have zero cook
+   * steps, and Cook Mode 400s for those. Observed on device.
+   */
+  cookStepCount: number;
   name: string;
   description: string | null;
   instructions: string | null;
@@ -568,4 +584,73 @@ export async function searchExplore(
   return apiClient<ExploreSearchResponse>(
     `/api/meals/explore/search${qs ? `?${qs}` : ""}`,
   );
+}
+
+// --- Cook Mode (P0 #13) ---
+
+export interface CookStepIngredient {
+  name: string;
+  /** Display-ready ("2", "1 tsp"). Absent when unknown — Lang's "to taste" row. */
+  quantity?: string;
+}
+
+export interface CookModeStep {
+  index: number;
+  text: string;
+  /** Absent when the step has no timer. Never 0. */
+  timerSeconds?: number;
+  ingredients: CookStepIngredient[];
+}
+
+export interface CookModeSession {
+  sessionId: string;
+  recipeVersionId: string;
+  title: string;
+  steps: CookModeStep[];
+  /** Where to open — a resumed position, or 0 (COOK MODE r5). */
+  currentStep: number;
+  resumed: boolean;
+}
+
+/**
+ * Open or resume Cook Mode.
+ *
+ * 🔑 POST, not GET: it creates or resumes a session and emits
+ * `cook_mode_opened`. Throws for a recipe with no steps (20 of 520 are
+ * genuinely no-cook), so callers should only offer Cook Mode where steps exist.
+ */
+export async function openCookMode(
+  recipeVersionId: string,
+  plannedMealId?: string | null,
+): Promise<CookModeSession> {
+  const query = plannedMealId ? `?plannedMealId=${encodeURIComponent(plannedMealId)}` : "";
+  return apiClient<CookModeSession>(
+    `/api/meals/cook-mode/${recipeVersionId}/open${query}`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * Persist the step the member is on (COOK MODE r6/r10).
+ *
+ * 📌 Fire-and-forget at the call site: losing one write only costs the member
+ * a resume position, and blocking a swipe on a round trip would make the
+ * screen feel broken in a kitchen with bad signal.
+ */
+export async function setCookStep(sessionId: string, step: number): Promise<void> {
+  await apiClient(`/api/meals/cook-mode/${sessionId}/step`, {
+    method: "PATCH",
+    body: JSON.stringify({ step }),
+  });
+}
+
+export async function startCookTimer(sessionId: string, step: number): Promise<void> {
+  await apiClient(`/api/meals/cook-mode/${sessionId}/timer`, {
+    method: "POST",
+    body: JSON.stringify({ step }),
+  });
+}
+
+export async function completeCookMode(sessionId: string): Promise<void> {
+  await apiClient(`/api/meals/cook-mode/${sessionId}/complete`, { method: "POST" });
 }

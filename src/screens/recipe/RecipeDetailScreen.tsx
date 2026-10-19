@@ -843,6 +843,37 @@ export function RecipeDetailScreen() {
             </View>
           ) : null}
 
+          {/* ── Cook Mode ────────────────────────────────────────────────
+              DECISION LOG r12, CURRENT: recipe detail carries *"Cook Mode +
+              serving controls + ingredient swaps + single Save"*.
+              🔴 Gated on `cookStepCount`, NOT on parsed instruction text.
+              Salmon Frittata shows four instruction paragraphs and has ZERO
+              cook steps — gating on `steps.length` offered a button that
+              400s, which the device walk caught.
+              20 of 520 recipes are genuinely no-cook
+              (smoothie bowls, salads, dressings) and the API 400s for them —
+              so the button is hidden rather than letting a member tap into an
+              error.
+              📌 It sits ABOVE Instructions on purpose: it is the same content
+              in a form you can cook from, so offering it before the wall of
+              text is the point. */}
+          {detail?.recipeVersionId && (detail?.cookStepCount ?? 0) > 0 ? (
+            <Pressable
+              style={styles.cookModeButton}
+              onPress={() =>
+                navigation.navigate("CookMode", {
+                  recipeVersionId: detail.recipeVersionId as string,
+                  plannedMealId: plannedMeal?.id ?? null,
+                  imageUrl: detail?.imageAsset ?? meal.imageUrl,
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Start cook mode"
+            >
+              <Text style={styles.cookModeText}>Start Cook Mode</Text>
+            </Pressable>
+          ) : null}
+
           {/* Instructions */}
           {steps.length > 0 ? (
             <View style={styles.section}>
@@ -1193,6 +1224,22 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: K.border,
+  },
+  /* Cook Mode entry. Recipe Details is the LIGHT surface (bone bg, dark
+     text), unlike My Plan and Cook Mode itself — so this is a dark button on
+     bone, the inverse of the "Done" button inside Cook Mode. */
+  cookModeButton: {
+    height: 56,
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: K.brown,
+  },
+  cookModeText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 20,
+    letterSpacing: -0.2,
+    color: K.bone,
   },
   section: {
     gap: 30,
