@@ -29,6 +29,7 @@ import { WelcomeBackScreen } from "../screens/onboarding";
 // the tab is paid-only without a gate of its own — MY PLAN r4, "Paid member
 // enters Meals".
 import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
+import { ExploreScreen } from "../screens/meals/ExploreScreen";
 import { GroceryListScreen } from "../screens/meals/GroceryListScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
@@ -100,6 +101,7 @@ export type MainStackParamList = {
      */
     sourceSurface?: RecipeViewSurface;
   };
+  Explore: undefined;
   SavedMeals: undefined;
   GroceryList: undefined;
   WeeklyReview: undefined;
@@ -226,6 +228,13 @@ export function MainNavigator() {
       <Stack.Screen
         name="RecipeDetail"
         component={RecipeDetailScreen}
+        options={{
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="Explore"
+        component={ExploreScreen}
         options={{
           animation: "slide_from_right",
         }}

@@ -870,6 +870,23 @@ export function MyPlanScreen({ navigation }: Props) {
             </ScrollView>
           </View>
         )}
+
+        {/* ── Explore more meals ───────────────────────────────────────────
+            The last element of Lang's My Plan frame (5039:29721), below Saved
+            Meals. It had no backend until P0 #7, which is why it was the one
+            thing on her frame still unbuilt.
+            🔑 RECIPE LIBRARY rule 2: *"My Plan and Explore are separate
+            jobs… Explore never replaces the plan."* So this NAVIGATES and
+            changes nothing — adding a recipe stays an explicit action taken
+            from Recipe Details. */}
+        <Pressable
+          style={styles.exploreMore}
+          onPress={() => navigation.navigate("Explore")}
+          accessibilityRole="button"
+          accessibilityLabel="Explore more meals"
+        >
+          <Text style={styles.exploreMoreText}>Explore more meals</Text>
+        </Pressable>
       </ScrollView>
 
       {/* ── Edit a planned meal: Rule 1's "swap · rearrange" ─────────────
@@ -1443,6 +1460,26 @@ const styles = StyleSheet.create({
     borderColor: "rgba(243,239,227,0.18)",
   },
   undoText: { flex: 1, fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  /* ── Explore more meals (Lang 5039:29721, last element) ───────────────
+     Full-width ghost button in her bone-on-brown register, matching the
+     Saved Meals block's horizontal inset. */
+  exploreMore: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 28,
+    paddingVertical: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exploreMoreText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: K.bone,
+  },
   /* ── Saved Meals (Lang 5039:29742) ────────────────────────────────────
      🔴 Her node's text token resolves to #361416 in the LIGHT theme, which is
      the fallback the Figma export prints. My Plan is the DARK surface, and her

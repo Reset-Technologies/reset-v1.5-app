@@ -481,3 +481,91 @@ export async function applySubstitution(params: {
     }),
   });
 }
+
+// --- Explore (P0 #7) ---
+
+/**
+ * EXPLORE r5's search index, as the server returns it.
+ *
+ * 📌 No calories or macros, deliberately. The Do-Not-Build list is explicit —
+ * *"User-facing calories/macros: Do not build. Energy is internal only"* — so
+ * the endpoint does not send them and nothing here can render them by accident.
+ */
+export interface ExploreResult {
+  recipeId: string;
+  /** 🔑 Required by add-to-plan. Every result has one, by construction: the
+   *  search only returns published recipe VERSIONS. */
+  recipeVersionId: string;
+  title: string;
+  imageAssetId: string | null;
+  cuisine: string | null;
+  slots: string[];
+  readyInMinutes: number | null;
+  diets: string[];
+  saved: boolean;
+}
+
+export interface ExploreSearchResponse {
+  results: ExploreResult[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+  /** Null on the last page — the server derives this from the real total. */
+  nextOffset: number | null;
+}
+
+export interface ExploreBrowseRow {
+  key: string;
+  title: string;
+  query: Record<string, string | number | boolean | null>;
+  /** The row's real size, from the row's own query. */
+  count: number;
+  /** A photo of the row's first actual recipe. */
+  imageUrl: string | null;
+}
+
+export interface ExploreSection {
+  key: string;
+  title: string;
+  style: string;
+  rows: ExploreBrowseRow[];
+}
+
+export interface ExploreFilters {
+  q?: string;
+  cuisine?: string;
+  slot?: string;
+  maxMinutes?: number;
+  diet?: string;
+  savedOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * 🔑 The sections ARE the layout (EXPLORE r6, server-driven), so the screen
+ * renders whatever comes back rather than hard-coding "Meal Type"/"Cuisine".
+ * New merchandising is a backend change, not an app release.
+ */
+export async function getExploreSections(): Promise<ExploreSection[]> {
+  const res = await apiClient<{ sections?: ExploreSection[] }>(
+    "/api/meals/explore/rows",
+  );
+  return res.sections ?? [];
+}
+
+export async function searchExplore(
+  filters: ExploreFilters,
+): Promise<ExploreSearchResponse> {
+  // Built with URLSearchParams so a query containing & or = cannot break the
+  // request — members type whatever they like into a search bar.
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.append(key, String(value));
+  }
+  const qs = params.toString();
+  return apiClient<ExploreSearchResponse>(
+    `/api/meals/explore/search${qs ? `?${qs}` : ""}`,
+  );
+}
