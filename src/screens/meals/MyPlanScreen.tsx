@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
   Text,
@@ -559,7 +560,9 @@ export function MyPlanScreen({ navigation }: Props) {
           whyLine: "",
           calories: 0,
           protein: 0,
-          prepTime: recipe.readyInMinutes ?? 0,
+          // 🔴 null, not 0 — zero is not a cooking time, and `?? 0` is what
+          // turned "unknown" into "0 min" on Saved Meals.
+          prepTime: recipe.readyInMinutes ?? null,
           time: SLOT_TO_LEGACY_TIME[slotType],
           imageUrl: recipe.imageUrl ?? undefined,
         },
@@ -630,7 +633,7 @@ export function MyPlanScreen({ navigation }: Props) {
           whyLine: "",
           calories: fav.calories ?? 0,
           protein: fav.protein ?? 0,
-          prepTime: fav.prepTime ?? 0,
+          prepTime: fav.prepTime ?? null,
           time: fav.isBreakfast ? "breakfast" : fav.isLunch ? "lunch" : "dinner",
           imageUrl: fav.imageAsset ?? undefined,
           primaryProtein: fav.primaryProtein ?? undefined,
@@ -862,8 +865,8 @@ export function MyPlanScreen({ navigation }: Props) {
                   <Text style={styles.savedName} numberOfLines={2}>
                     {fav.name}
                   </Text>
-                  {typeof fav.prepTime === "number" && fav.prepTime > 0 ? (
-                    <Text style={styles.savedTime}>{fav.prepTime} min</Text>
+                  {formatPrepTime(fav.prepTime) ? (
+                    <Text style={styles.savedTime}>{formatPrepTime(fav.prepTime)}</Text>
                   ) : null}
                 </Pressable>
               ))}

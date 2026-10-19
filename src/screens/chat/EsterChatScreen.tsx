@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
   Text,
@@ -1782,11 +1783,17 @@ function InlineMealCard({ data, palette }: InlineMealCardProps) {
           "N cal • Ng protein • N min" and was the last live surface still
           printing them. Prep time stays — it is the one thing here a member
           chooses on, and it is what Lang's cards show. */}
-      <View style={styles.inlineMealMeta}>
-        <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
-          {meal.prepTime} min
-        </Text>
-      </View>
+      {/* 🔴 Guarded as of 2026-10-20. This rendered `{meal.prepTime} min`
+          unconditionally, so once the server started sending null for
+          Spoonacular's 45-minute placeholder — 76% of the catalogue — this card
+          would have printed a bare " min". */}
+      {formatPrepTime(meal.prepTime) ? (
+        <View style={styles.inlineMealMeta}>
+          <Text style={[styles.inlineMealMetaText, { color: palette.textPrimary }]}>
+            {formatPrepTime(meal.prepTime)}
+          </Text>
+        </View>
+      ) : null}
       <Text style={[styles.inlineMealTap, { color: K.ochre }]}>Tap for full recipe</Text>
     </TouchableOpacity>
   );

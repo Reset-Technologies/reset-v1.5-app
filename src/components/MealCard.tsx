@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { formatPrepTime } from "../utils/prepTime";
 import {
   View,
   Text,
@@ -28,7 +29,12 @@ export interface Meal {
   whyLine: string; // Max 15 words
   calories: number;
   protein: number;
-  prepTime: number; // in minutes
+  /**
+   * 🔴 Nullable as of 2026-10-20 — null when the time is unknown (Spoonacular's
+   * 45-minute placeholder, 76% of the catalogue, ruled missing data by Bryan).
+   * Render through `formatPrepTime`, which also treats 0 as unknown.
+   */
+  prepTime: number | null; // in minutes, or null when unknown
   time: "breakfast" | "lunch" | "dinner" | "snack";
   imageUrl?: string;
   // Meal engine fields
@@ -136,7 +142,10 @@ export function MealCard({ meal, metabolicType, isFavorited = false, isEaten = f
         )}
         {/* Prep time badge */}
         <View style={styles.prepBadge}>
-          <Text style={styles.prepText}>{meal.prepTime} min</Text>
+          {/* 🔴 Was unguarded. With a null time this printed a bare " min". */}
+          {formatPrepTime(meal.prepTime) ? (
+            <Text style={styles.prepText}>{formatPrepTime(meal.prepTime)}</Text>
+          ) : null}
         </View>
         {/* Favorite button */}
         {onFavoriteToggle && (

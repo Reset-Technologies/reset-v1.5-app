@@ -1,4 +1,5 @@
 import React from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
   Text,
@@ -58,7 +59,12 @@ function RecipeCarouselCard({
       <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
         {meal.name}
       </Text>
-      <Text style={[styles.meta, { color: subtleText }]}>{meal.prepTime} mins</Text>
+      {/* 🔴 Was unguarded — a null time printed a bare " mins". */}
+      {formatPrepTime(meal.prepTime, "mins") ? (
+        <Text style={[styles.meta, { color: subtleText }]}>
+          {formatPrepTime(meal.prepTime, "mins")}
+        </Text>
+      ) : null}
 
       {meal.whyLine ? (
         <View style={[styles.whyWrap, { borderTopColor: borderColor }]}>

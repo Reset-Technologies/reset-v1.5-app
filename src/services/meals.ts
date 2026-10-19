@@ -79,7 +79,14 @@ export interface DailyPlanMeal {
   whyLine: string;
   calories: number;
   protein: number;
-  prepTime: number;
+  /**
+   * 🔴 Nullable as of 2026-10-20. The server sends null when it does not know
+   * the time — Spoonacular's 45-minute placeholder, 76% of the catalogue, which
+   * Bryan ruled missing data. It was `number`, so screens wrote `?? 0` and a
+   * missing time became a claim of "0 min" and sorted as the FASTEST meal.
+   * Render it through `formatPrepTime`.
+   */
+  prepTime: number | null;
   time: "breakfast" | "lunch" | "dinner" | "snack";
   imageUrl?: string;
   iliScore?: number;

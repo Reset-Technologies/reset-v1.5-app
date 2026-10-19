@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { formatPrepTime } from "../../utils/prepTime";
 import { shareWithLink } from "../../constants/links";
 import {
   View,
@@ -666,7 +667,7 @@ export function RecipeDetailScreen() {
             <View style={styles.tagRow}>
               {prepTime ? (
                 <View style={styles.tag}>
-                  <Text style={styles.tagText}>{prepTime} minutes</Text>
+                  <Text style={styles.tagText}>{formatPrepTime(prepTime, "minutes")}</Text>
                 </View>
               ) : null}
               <View style={styles.tag}>
