@@ -42,6 +42,7 @@ import {
   removeFavorite,
   MealFavorite,
 } from "../../services/meals";
+import ReasonDrawer from "../../components/ReasonDrawer";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { logEvent } from "../../services/amplitude";
@@ -936,41 +937,37 @@ export function MyPlanScreen({ navigation }: Props) {
           internal shorthand like "Prep friction".
 
           📌 Only the title is ours. The seven options are his. */}
-      <Modal
+      {/* ── Why didn't this work? (P0 #11) ──────────────────────────────
+          EVENTS r11 — "member explicitly rejects planned meal". ONE DRAWER,
+          ONE TAP: the route's own doc says the spec forbids a questionnaire,
+          so there is no free-text step and no confirm.
+
+          🔴 CAPTURE ONLY. The plan is untouched — rejecting is not swapping,
+          and the sheet closes onto the same week it opened on. A member who
+          also wants the meal gone uses the other two verbs.
+
+          🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
+          "Member wording"). `ReasonDrawer` renders `label` and never
+          `meaning`, which is internal shorthand like "Prep friction".
+
+          📌 Moved into the shared `ReasonDrawer` on 2026-10-20, when P0 #9's
+          thumbs-down drawer needed the same sheet. The markup and styles are
+          the ones this screen shipped with — byte-identical, deliberately, so
+          this is not a quiet redesign of a live screen. No `skipLabel` here:
+          this drawer is reached by choosing "This didn't work for me", so the
+          member already opted in, and the backdrop still dismisses. */}
+      <ReasonDrawer
         visible={picker === "reject"}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPicker(null)}
-      >
-        <Pressable
-          style={styles.moveBackdrop}
-          onPress={() => { setPicker(null); setActing(null); }}
-        />
-        <View style={styles.moveSheet}>
-          <Text style={styles.moveTitle}>Why didn't this work?</Text>
-          <Text style={styles.moveSub} numberOfLines={1}>
-            {acting?.slot.recipe?.title ?? ""}
-          </Text>
-          <ScrollView style={styles.swapList}>
-            {reasons.map((r) => (
-              <Pressable
-                key={r.reason}
-                style={styles.moveRow}
-                disabled={rejecting}
-                onPress={() => rejectMeal(r.reason)}
-                accessibilityRole="button"
-                accessibilityLabel={r.label}
-              >
-                {/* 🔴 `label`, never `meaning`. */}
-                <Text style={styles.moveRowText}>{r.label}</Text>
-              </Pressable>
-            ))}
-            {!reasons.length && (
-              <Text style={styles.moveSub}>Reasons could not be loaded.</Text>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
+        title="Why didn't this work?"
+        subtitle={acting?.slot.recipe?.title ?? ""}
+        options={reasons}
+        busy={rejecting}
+        onPick={(reason) => void rejectMeal(reason)}
+        onDismiss={() => {
+          setPicker(null);
+          setActing(null);
+        }}
+      />
 
       {/* Rearrange (r10). Day picker only — the endpoint also takes a slot
           type, but moving BETWEEN slots needs a slot list Lang has not drawn,

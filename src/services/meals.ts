@@ -291,6 +291,33 @@ export async function submitMealFeedback(
   });
 }
 
+/**
+ * The reasons a member may give for a thumbs-down (P0 #9, PREFERENCE r6).
+ *
+ * 🔴 Fetched, never hardcoded — the same contract `getRejectionReasons` uses.
+ * The labels are Bryan's and the server owns them, so copy he changes does not
+ * need an app release. An empty list simply means no drawer.
+ *
+ * 📌 This is NOT the rejection list. `not_filling` belongs here and `ate_out`
+ * does not; the server decides which, from the spec's own split.
+ */
+export async function getPreferenceReasons(): Promise<PreferenceReasonOption[]> {
+  return apiClient<PreferenceReasonOption[]>("/api/meals/feedback/reasons");
+}
+
+export type PreferenceReasonOption = {
+  reason: string;
+  label: string;
+  /** Internal shorthand. 🔴 Never rendered. */
+  meaning: string;
+  /**
+   * Whether the code can become Reset Score Fit evidence on the REJECTION
+   * route. Returned so a caller can see the classification, never so it can
+   * make one — a thumbs-down never produces Fit whatever this says.
+   */
+  fitQualifying: boolean;
+};
+
 export async function removeMealFeedback(mealId: string): Promise<void> {
   await apiClient(`/api/meals/feedback/${mealId}`, { method: "DELETE" });
 }

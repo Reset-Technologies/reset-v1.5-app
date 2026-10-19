@@ -26,8 +26,11 @@ import {
   type DailyPlan,
   type DailyPlanMeal,
   type MealIngredient,
+  getPreferenceReasons,
+  PreferenceReasonOption,
 } from "../../services/meals";
 import { getResetScore } from "../../services/resetScore";
+import ReasonDrawer from "../../components/ReasonDrawer";
 import { getMealWhy } from "../../services/mealInsights";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
@@ -194,6 +197,14 @@ export function NextMealScreen() {
       .catch(() => setHasScore(false));
   }, []);
 
+  // The thumbs-down drawer's options (P0 #9). A failure leaves the list empty,
+  // which skips the drawer rather than crashing or blanking it.
+  useEffect(() => {
+    getPreferenceReasons()
+      .then(setReasonOptions)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     getDailyPlan()
       .then((dp) => {
@@ -300,6 +311,21 @@ export function NextMealScreen() {
     }
   };
 
+  /**
+   * The thumbs-down reason drawer (P0 #9).
+   *
+   * 🔴 `reasonOptions` is fetched, never hardcoded — the labels are Bryan's
+   * and the server owns them. A failed fetch leaves it empty, which skips the
+   * drawer entirely rather than opening a blank sheet.
+   */
+  const [reasonOptions, setReasonOptions] = useState<PreferenceReasonOption[]>([]);
+  const [reasonDrawer, setReasonDrawer] = useState(false);
+  const [pendingDislike, setPendingDislike] = useState<{
+    mealId: string;
+    planId: string;
+    title: string;
+  } | null>(null);
+
   // "I like it!" — record the positive signal, then move on. Feedback is
   // awaited best-effort but never blocks the advance.
   const handleLike = async () => {
@@ -314,15 +340,76 @@ export function NextMealScreen() {
     advanceToInsights();
   };
 
-  // "Not a fan, show me another" — record the negative signal (fire-and-forget)
-  // and swap in a fresh meal for this slot in place.
+  /**
+   * "Not a fan, show me another" — swap the meal out, then ask the ONE optional
+   * question about the one we just took away (P0 #9, PREFERENCE r6).
+   *
+   * 🔑 The regenerate runs FIRST and is not gated on the answer. The button
+   * promises another meal; making a member answer a question to collect on that
+   * promise is the questionnaire behaviour LEARNING SIGNALS r23 forbids. So the
+   * new meal arrives, and the drawer asks about the old one BY NAME — which is
+   * why `pendingDislike` captures the title before the swap, rather than
+   * reading whatever is on screen when the member taps.
+   *
+   * 🔴 The feedback is submitted ONCE, when the drawer resolves — on a pick
+   * WITH the reason, on a skip or dismiss without one. Submitting the dislike
+   * immediately and the reason as a second row would double every thumbs-down
+   * in `meal_feedback` and fire `meal_preference_response` twice, wrecking the
+   * "Preference response rate" the event exists to measure.
+   *
+   * 📌 The cost of that choice, taken deliberately: a member who kills the app
+   * with the drawer open loses the dislike. That is the same missing evidence
+   * silence already produces (r24 — "Null remains null"), never a wrong signal,
+   * and the submit was already fire-and-forget, so a dropped request always
+   * lost it too.
+   */
   const handleNotAFan = async () => {
     if (!meal || !plan || refreshing) return;
     logEvent("home_meal_thumbsDownCTA", { slot, mealId: meal.id, surface: "nextMeal" });
-    submitMealFeedback({ mealId: meal.id, planId: plan.id, slot, feedback: "down" }).catch(
-      () => {},
-    );
+    // Captured before the swap: in a moment `meal` is a different recipe.
+    setPendingDislike({ mealId: meal.id, planId: plan.id, title: meal.name ?? "" });
     await handleRegenerate();
+    // Only ask if there is something to ask. An empty drawer is worse than none.
+    if (reasonOptions.length > 0) setReasonDrawer(true);
+    else void finishDislike(null);
+  };
+
+  /**
+   * Write the thumbs-down, with the reason if the member gave one.
+   *
+   * 🔴 A skip still records the DISLIKE. The thumb was explicit; only the
+   * reason is optional (r6 — "Optional one reason drawer"). Dropping the
+   * dislike because they declined to explain it would discard the strong
+   * signal to protect the weak one.
+   */
+  const finishDislike = async (reason: string | null) => {
+    const pending = pendingDislike;
+    setReasonDrawer(false);
+    setPendingDislike(null);
+    if (!pending) return;
+    if (reason) {
+      logEvent("home_meal_thumbsDownReason", {
+        slot,
+        mealId: pending.mealId,
+        reason,
+        surface: "nextMeal",
+      });
+    }
+    try {
+      await submitMealFeedback({
+        mealId: pending.mealId,
+        planId: pending.planId,
+        slot,
+        feedback: "down",
+        // 📌 One reason, never an array of several: r23 is "at most one reason
+        // and stop". The API accepts a list because the rejection route needs
+        // one; sending two from here would invent a multi-select.
+        ...(reason ? { tags: [reason] } : {}),
+      });
+    } catch {
+      // Deliberately silent — the member has said their piece, and re-opening
+      // a drawer to report our logging problem makes it their problem.
+    }
   };
 
   // Show the spinner only while the fetch is in flight. Once it settles
@@ -589,6 +676,26 @@ export function NextMealScreen() {
           )}
         </ScrollView>
       </View>
+
+      {/* ── Why wasn't this one right? (P0 #9) ─────────────────────────────
+          PREFERENCE r6 — "Optional one reason drawer", and r23 is explicit
+          that it is ONE question with a skip. The meal is already swapped by
+          the time this opens, so the title names the meal we took away.
+
+          🔴 THE LABELS ARE BRYAN'S, served by the API. This renders `label`
+          and never `meaning`, which is internal shorthand like "Prep
+          friction".
+
+          📌 Only the title and the skip row are ours. The options are his. */}
+      <ReasonDrawer
+        visible={reasonDrawer}
+        title="Why wasn't this one right?"
+        subtitle={pendingDislike?.title}
+        options={reasonOptions}
+        onPick={(reason) => void finishDislike(reason)}
+        onDismiss={() => void finishDislike(null)}
+        skipLabel="Skip"
+      />
     </View>
   );
 }
