@@ -862,12 +862,30 @@ export function RecipeDetailScreen() {
     getMyPlan()
       .then((p) => {
         setPlan(p);
-        // Default to the first day of the week the member is actually shown.
-        setAddDate((cur) => cur ?? p.days[0]?.date ?? null);
+        /**
+         * 🔴 The day the member CAME FROM, not day one of the week.
+         *
+         * This used to default to `p.days[0]`, and the comment claimed that
+         * was "the day the member is actually shown". It was not. Opened from
+         * Tuesday's dinner, the sheet listed MONDAY's three meals — the same
+         * recipes in a different order, so it looked entirely plausible —
+         * and the swap landed on Monday's lunch. The button said "Added" and
+         * it was telling the truth: something was added, just not where the
+         * member was looking.
+         *
+         * Caught by finally doing the one check I had left open for two days:
+         * swap into a slot holding a DIFFERENT recipe and watch the plan.
+         */
+        const cameFrom = plannedMeal?.localDate ?? null;
+        const today = new Date().toISOString().slice(0, 10);
+        const fallback = p.days.some((d) => d.date === today)
+          ? today
+          : (p.days[0]?.date ?? null);
+        setAddDate((cur) => cur ?? cameFrom ?? fallback);
       })
       .catch(() => setPlan(null))
       .finally(() => setPlanLoading(false));
-  }, [plan, planLoading]);
+  }, [plan, planLoading, plannedMeal]);
 
   /**
    * Swap this recipe INTO one of the day's existing meals.
@@ -906,14 +924,21 @@ export function RecipeDetailScreen() {
           recipeVersionId: versionId,
         });
         setAddedTo(slot.recipe?.title ?? null);
+        // Name the day as well as the meal. The whole defect above was the
+        // member not knowing WHICH day they had just changed.
+        setToast(
+          `Swapped in for ${slot.recipe?.title ?? "that meal"} on ${dayLabel(addDate ?? "")}`,
+        );
       } catch {
-        // Deliberately silent — the member has said what they want, and
-        // reopening a sheet to report our network problem makes it theirs.
+        // 🔴 Was silent. "Deliberately silent" is how a failed swap looks
+        // identical to a successful one — the same empty-catch shape that hid
+        // a 400 on the ingredient swap for weeks.
+        setToast("That didn't go through. Try again.");
       } finally {
         setAdding(false);
       }
     },
-    [detail, plan, adding],
+    [detail, plan, adding, addDate],
   );
 
   return (
