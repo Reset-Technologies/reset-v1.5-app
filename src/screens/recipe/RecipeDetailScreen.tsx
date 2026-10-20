@@ -28,6 +28,7 @@ import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import type { Meal } from "../../components";
 import { AiConsentNudge } from "../../components";
+import { AskEsterSheet } from "./AskEsterSheet";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { ArrowBackIcon } from "../../components/PaywallIcons";
@@ -391,7 +392,7 @@ export function RecipeDetailScreen() {
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
-  const { aiConsentGranted } = useAiConsentGate();
+  const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
   // The Ester bubble's avatar + gradient reflect the user's metabolic type.
   const metabolicType: MetabolicType =
     toMetabolicType(state.user.metabolicType) ?? "Explorer";
@@ -452,6 +453,19 @@ export function RecipeDetailScreen() {
   const [reverting, setReverting] = useState(false);
   /** Lang's `5055:47291` toast. Cleared on a timer, and on unmount. */
   const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Ask Ester (Lang `5062:56495`, ESTER CONTEXT r8 — the only entry Bryan
+   * marks CURRENT).
+   *
+   * 📌 Gated on AI consent like the Ester block above it: opening a chat is
+   * the same promise as generating a why-line, so it goes through the same
+   * gate rather than around it.
+   */
+  const [askEsterOpen, setAskEsterOpen] = useState(false);
+  const openAskEster = useCallback(() => {
+    runWithAiConsent(() => setAskEsterOpen(true));
+  }, [runWithAiConsent]);
   // Rides along on the detail fetch so the server can record `recipe_viewed`
   // with r15's `source_surface`. Undefined from a call site that does not set
   // it, which records the view with an unknown surface rather than losing it.
@@ -1232,11 +1246,11 @@ export function RecipeDetailScreen() {
           ever called it — so a member could search all of Explore, open a
           recipe, and had no way to put it in their week.
 
-          📌 Two buttons, not three. Ask Ester is checklist item #14, whose
-          context contract does not exist yet (three of its four
-          `ester_opened_from_*` events are not even declared). A button that
-          opens nothing would be worse than its absence; it slots in beside
-          these when #14 lands. */}
+          ✅ Three buttons now — Lang's **Cook · Ask Ester · Add to plan**.
+          Ask Ester landed 2026-10-21 with the first half of #14's context
+          contract: all six `ester_opened_from_*` events declared, and this
+          entry passes `recipe_version_id` plus the serving and substitution
+          state r8 requires. The other five entries are still unbuilt. */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
         {canCook ? (
           <Pressable
@@ -1255,6 +1269,14 @@ export function RecipeDetailScreen() {
             <Text style={styles.actionSecondaryText}>Cook</Text>
           </Pressable>
         ) : null}
+        <Pressable
+          style={[styles.actionButton, styles.actionSecondary]}
+          onPress={openAskEster}
+          accessibilityRole="button"
+          accessibilityLabel="Ask Ester"
+        >
+          <Text style={styles.actionSecondaryText}>Ask Ester</Text>
+        </Pressable>
         <Pressable
           style={[styles.actionButton, styles.actionPrimary, !canAdd && styles.actionDisabled]}
           disabled={!canAdd || adding}
@@ -1573,6 +1595,31 @@ export function RecipeDetailScreen() {
           </Pressable>
         </View>
       </Modal>
+
+      {/* ── Ask Ester (Lang 5062:56495 · ESTER CONTEXT r8) ───────────────
+          🔑 The context is the point. r8 requires the recipe version plus the
+          CURRENT serving and substitution state — not just "a meal" — so the
+          multiplier on screen and the substitutions in force are handed over
+          rather than left for the model to guess at. */}
+      <AskEsterSheet
+        visible={askEsterOpen}
+        onClose={() => setAskEsterOpen(false)}
+        title="Meal Details"
+        openingMessage={esterMessage}
+        openingLoading={esterLoading}
+        mealId={meal.id}
+        renderRich={renderBoldSegments}
+        context={{
+          recipeId: meal.id,
+          recipeVersionId: (detail?.recipeVersionId as string) ?? null,
+          plannedMealId: plannedMeal?.id ?? null,
+          mealPlanId: plannedMeal?.mealPlanId ?? null,
+          localDate: plannedMeal?.localDate ?? null,
+          slotType: plannedMeal?.slotType ?? null,
+          servings: multiplier,
+          substitutionIds: subs.map((x) => x.id),
+        }}
+      />
 
       {/* ── Toast (Lang 5055:47291) ──────────────────────────────────────
           Sits over the hero, below the status bar. The ONLY confirmation

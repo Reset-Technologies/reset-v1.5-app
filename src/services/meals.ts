@@ -600,6 +600,48 @@ export async function revertSubstitution(params: {
   );
 }
 
+/* ── Ester context (P0 #14) ───────────────────────────────────────────────
+ *
+ * ESTER CONTEXT r5-r10 names SIX entry points and what each must hand over.
+ * The server refuses an entry that omits its required context, so this is a
+ * contract rather than a log line.
+ */
+export type EsterEntryPoint =
+  | "plan"
+  | "meal"
+  | "explore"
+  | "recipe"
+  | "cook"
+  | "grocery";
+
+export interface EsterMealContext {
+  mealPlanId?: string | null;
+  revisionId?: string | null;
+  plannedMealId?: string | null;
+  recipeId?: string | null;
+  recipeVersionId?: string | null;
+  localDate?: string | null;
+  slotType?: string | null;
+  /** r8's "current serving state" — the multiplier the screen is showing. */
+  servings?: number | null;
+  /** r8's "current substitution state" — ids in force on this meal. */
+  substitutionIds?: string[] | null;
+  stepIndex?: number | null;
+  groceryListId?: string | null;
+  groceryItemId?: string | null;
+}
+
+/** Record that a Meals surface opened Ester, with what it was looking at. */
+export async function recordEsterOpened(
+  entry: EsterEntryPoint,
+  context: EsterMealContext,
+): Promise<void> {
+  await apiClient("/api/meals/ester/opened", {
+    method: "POST",
+    body: JSON.stringify({ entry, context }),
+  });
+}
+
 // --- Explore (P0 #7) ---
 
 /**
