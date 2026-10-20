@@ -152,9 +152,20 @@ export function ExploreScreen() {
     setQuery("");
   }, []);
 
+  /**
+   * Drop the browse filter and KEEP what the member typed.
+   *
+   * 🔴 Found on a device pass, 2026-10-19. This also did `setQuery("")`, so
+   * the control labelled "Clear filter" silently threw away the search as well.
+   * The trap it created: typing a query while a collection is active searches
+   * INSIDE that collection, so "Assam" inside "Dinner in 20" returns nothing —
+   * and the only affordance offered then destroyed the query too, leaving the
+   * member to retype it to discover the recipe does exist.
+   *
+   * 📌 The query has its own ✕ inside the field. Two controls, two jobs.
+   */
   const clearBrowse = useCallback(() => {
     setActiveRow(null);
-    setQuery("");
   }, []);
 
   const loadMore = useCallback(() => {
@@ -335,7 +346,14 @@ export function ExploreScreen() {
               <Text style={styles.empty}>
                 {failed
                   ? "Something went wrong. Pull back and try again."
-                  : "No recipes match that yet."}
+                  : activeRow
+                    ? /* 🔴 Name the filter. A bare "no recipes match" is a lie by
+                         omission when a collection is narrowing the search: the
+                         recipe often DOES exist, one tap away. ⚠️ Wording is a
+                         mechanical extension of Bryan's own string, flagged to
+                         him rather than invented in a new voice. */
+                      `No recipes in ${activeRow.title} match that yet.`
+                    : "No recipes match that yet."}
               </Text>
             )
           }
