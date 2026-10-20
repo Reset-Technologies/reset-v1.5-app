@@ -17,9 +17,13 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Svg, { Circle, Path } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
+import { BookmarkIcon } from "../../components/BookmarkIcon";
 import {
   CookModeSession,
   CookModeStep,
+  addFavorite,
+  getFavorites,
+  removeFavorite,
   completeCookMode,
   openCookMode,
   setCookStep,
@@ -75,7 +79,7 @@ const PRESETS = [60, 180, 600, 900];
 export function CookModeScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<CookRoute>();
-  const { recipeVersionId, plannedMealId, imageUrl } = route.params ?? ({} as any);
+  const { recipeVersionId, plannedMealId, imageUrl, mealId } = route.params ?? ({} as any);
 
   const [session, setSession] = useState<CookModeSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,10 +91,37 @@ export function CookModeScreen() {
   const restored = useRef(false);
 
   // --- timer ---
+  /**
+   * 🔑 DEADLINE-based, not decrement-based.
+   *
+   * The old loop subtracted one per `setInterval`, which drifts, cannot say
+   * when the timer will actually finish, and silently loses time whenever the
+   * interval is throttled. A deadline is the truth: remaining is derived from
+   * it, and Lang's *"⏰ 10:01 PM"* finish line falls straight out of it.
+   *
+   * 📌 `remaining` holds the paused value when `deadline` is null, so pause and
+   * resume are just "forget the deadline" and "make a new one".
+   */
   const [timerOpen, setTimerOpen] = useState(false);
   const [timerTotal, setTimerTotal] = useState(300);
   const [remaining, setRemaining] = useState<number | null>(null);
-  const tick = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [deadline, setDeadline] = useState<number | null>(null);
+
+  const timerRunning = deadline !== null;
+  const timerActive = remaining !== null;
+
+  // Derive `remaining` from the deadline rather than counting down by hand.
+  useEffect(() => {
+    if (deadline === null) return;
+    const sync = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setRemaining(left);
+      if (left === 0) setDeadline(null);
+    };
+    sync();
+    const id = setInterval(sync, 250);
+    return () => clearInterval(id);
+  }, [deadline]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,11 +158,42 @@ export function CookModeScreen() {
     return () => clearTimeout(t);
   }, [session]);
 
+  /**
+   * "Save meal for next time" — the row Lang puts on `5062:58206`, between the
+   * copy and Done. SAVED MEALS r7: one Save action owns the concept, so this
+   * is the same favourite the bookmark on Recipe Details toggles, not a new
+   * kind of save.
+   */
+  const [saved, setSaved] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
   useEffect(() => {
+    if (!mealId) return;
+    let cancelled = false;
+    getFavorites()
+      .then((favs) => {
+        if (!cancelled) setSaved(favs.some((f) => f.id === mealId));
+      })
+      .catch(() => {});
     return () => {
-      if (tick.current) clearInterval(tick.current);
+      cancelled = true;
     };
-  }, []);
+  }, [mealId]);
+
+  const toggleSaved = useCallback(async () => {
+    if (!mealId || savePending) return;
+    const next = !saved;
+    setSaved(next);
+    setSavePending(true);
+    try {
+      if (next) await addFavorite(mealId);
+      else await removeFavorite(mealId);
+    } catch {
+      setSaved(!next);
+    } finally {
+      setSavePending(false);
+    }
+  }, [mealId, saved, savePending]);
 
   const steps = session?.steps ?? [];
   /** Steps plus one trailing page: the completion screen (her annotation). */
@@ -173,20 +235,43 @@ export function CookModeScreen() {
   const beginTimer = useCallback(() => {
     if (!session) return;
     setRemaining(timerTotal);
+    setDeadline(Date.now() + timerTotal * 1000);
     setTimerOpen(false);
     startCookTimer(session.sessionId, page).catch(() => {});
-    if (tick.current) clearInterval(tick.current);
-    tick.current = setInterval(() => {
-      setRemaining((r) => {
-        if (r === null) return null;
-        if (r <= 1) {
-          if (tick.current) clearInterval(tick.current);
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
   }, [session, timerTotal, page]);
+
+  /**
+   * The controls Lang's running frame has and this screen had none of.
+   *
+   * 🔴 Before this you could start a timer and then do nothing to it. On a
+   * recipe like Braised Short Ribs that means a THREE HOUR countdown with no
+   * pause and no cancel — and reopening the sheet showed the *setup* state
+   * with a Start button, offering to silently replace the running timer.
+   */
+  const pauseTimer = useCallback(() => setDeadline(null), []);
+
+  const resumeTimer = useCallback(() => {
+    setRemaining((r) => {
+      if (r !== null && r > 0) setDeadline(Date.now() + r * 1000);
+      return r;
+    });
+  }, []);
+
+  const extendTimer = useCallback((bySeconds: number) => {
+    setDeadline((d) => (d === null ? null : d + bySeconds * 1000));
+    setRemaining((r) => (r === null ? null : r + bySeconds));
+  }, []);
+
+  const restartTimer = useCallback(() => {
+    setRemaining(timerTotal);
+    setDeadline(Date.now() + timerTotal * 1000);
+  }, [timerTotal]);
+
+  const cancelTimer = useCallback(() => {
+    setDeadline(null);
+    setRemaining(null);
+    setTimerOpen(false);
+  }, []);
 
   const openTimerFor = useCallback(
     (step?: CookModeStep) => {
@@ -279,7 +364,14 @@ export function CookModeScreen() {
           item ? (
             <StepPage step={item} />
           ) : (
-            <CompletionPage title={session.title} imageUrl={imageUrl} onDone={finish} />
+            <CompletionPage
+              title={session.title}
+              imageUrl={imageUrl}
+              canSave={!!mealId}
+              saved={saved}
+              onToggleSave={toggleSaved}
+              onDone={finish}
+            />
           )
         }
       />
@@ -287,8 +379,17 @@ export function CookModeScreen() {
       <TimerSheet
         visible={timerOpen}
         seconds={timerTotal}
+        active={timerActive}
+        running={timerRunning}
+        remaining={remaining}
+        deadline={deadline}
         onPick={setTimerTotal}
         onStart={beginTimer}
+        onPause={pauseTimer}
+        onResume={resumeTimer}
+        onExtend={extendTimer}
+        onRestart={restartTimer}
+        onCancel={cancelTimer}
         onClose={() => setTimerOpen(false)}
       />
     </SafeAreaView>
@@ -359,10 +460,18 @@ function StepPage({ step }: { step: CookModeStep }) {
 function CompletionPage({
   title,
   imageUrl,
+  canSave,
+  saved,
+  onToggleSave,
   onDone,
 }: {
   title: string;
   imageUrl?: string;
+  /** False when Cook Mode was opened without a meal id — no row rather than a
+   *  dead one. */
+  canSave: boolean;
+  saved: boolean;
+  onToggleSave: () => void;
   onDone: () => void;
 }) {
   return (
@@ -372,6 +481,19 @@ function CompletionPage({
       <Text style={styles.completionTitle}>{title} is ready!</Text>
       <Text style={styles.completionSub}>Nice work, chef.</Text>
       <View style={styles.completionSpacer} />
+
+      {canSave ? (
+        <Pressable
+          style={styles.saveRow}
+          onPress={onToggleSave}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: saved }}
+          accessibilityLabel="Save meal for next time"
+        >
+          <Text style={styles.saveRowText}>Save meal for next time</Text>
+          <BookmarkIcon filled={saved} color={K.bone} />
+        </Pressable>
+      ) : null}
       <Pressable
         style={styles.doneButton}
         onPress={onDone}
@@ -385,19 +507,55 @@ function CompletionPage({
 }
 
 /** Her "Set cooking timer" sheet (`5062:56948`) — a LIGHT surface. */
+/** "10:01 PM" — Lang puts the finish time under the countdown. */
+function clockAt(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function TimerSheet({
   visible,
   seconds,
+  active,
+  running,
+  remaining,
+  deadline,
   onPick,
   onStart,
+  onPause,
+  onResume,
+  onExtend,
+  onRestart,
+  onCancel,
   onClose,
 }: {
   visible: boolean;
   seconds: number;
+  /** A timer exists — running or paused. Decides which face the sheet shows. */
+  active: boolean;
+  running: boolean;
+  remaining: number | null;
+  deadline: number | null;
   onPick: (s: number) => void;
   onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onExtend: (bySeconds: number) => void;
+  onRestart: () => void;
+  onCancel: () => void;
   onClose: () => void;
 }) {
+  const done = active && remaining === 0;
+  // Fraction elapsed, for Lang's progress ring.
+  const elapsed =
+    active && remaining !== null && seconds > 0
+      ? Math.min(1, Math.max(0, 1 - remaining / seconds))
+      : 0;
+  const R = 100;
+  const C = 2 * Math.PI * R;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
@@ -408,29 +566,153 @@ function TimerSheet({
               <Path d="M6 6l12 12M18 6L6 18" stroke={K.brown} strokeWidth={2} strokeLinecap="round" />
             </Svg>
           </Pressable>
-          <Text style={styles.sheetTitle}>Set cooking timer</Text>
+          <Text style={styles.sheetTitle}>
+            {done ? "Timer complete" : active ? "Cooking timer" : "Set cooking timer"}
+          </Text>
 
           <View style={styles.ring}>
-            <Text style={styles.ringText}>{formatDuration(seconds)}</Text>
+            {/* The ring fills as the timer runs — her running frame draws the
+                arc rather than a bare circle. */}
+            <Svg width={212} height={212} style={styles.ringSvg}>
+              {/* Idle: Lang draws a solid dark circle. Running: the track goes
+                  faint so the progress arc is what reads. */}
+              <Circle
+                cx={106}
+                cy={106}
+                r={R}
+                stroke={active ? "rgba(54,20,22,0.18)" : K.brown}
+                strokeWidth={3}
+                fill="none"
+              />
+              {active ? (
+                <Circle
+                  cx={106}
+                  cy={106}
+                  r={R}
+                  stroke={K.brown}
+                  strokeWidth={2.5}
+                  fill="none"
+                  strokeDasharray={`${C}`}
+                  strokeDashoffset={C * elapsed}
+                  strokeLinecap="round"
+                  transform="rotate(-90 106 106)"
+                />
+              ) : null}
+            </Svg>
+            <Text style={styles.ringText}>
+              {formatDuration(active && remaining !== null ? remaining : seconds)}
+            </Text>
+            {running && deadline !== null ? (
+              <View style={styles.ringFinishRow}>
+                {/* 🔴 NOT the character ⏰ (U+23F0). I used it, and it shipped
+                    to the simulator as a RED EMOJI — the third time this
+                    exact trap has bitten this screen after ▶ twice. Any
+                    pictograph in this range has emoji presentation on iOS;
+                    draw it. */}
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <Circle cx={12} cy={13} r={8} stroke="#8a7a74" strokeWidth={1.8} />
+                  <Path
+                    d="M12 9.5V13l2.2 1.6M9 2.8h6"
+                    stroke="#8a7a74"
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                  />
+                </Svg>
+                <Text style={styles.ringFinish}>{clockAt(deadline)}</Text>
+              </View>
+            ) : null}
+            {active && !running && !done ? (
+              <Text style={styles.ringFinish}>Paused</Text>
+            ) : null}
           </View>
 
-          <View style={styles.presets}>
-            {PRESETS.map((p) => (
-              <Pressable
-                key={p}
-                style={[styles.preset, seconds === p && styles.presetActive]}
-                onPress={() => onPick(p)}
-                accessibilityRole="button"
-              >
-                <Text style={styles.presetText}>{p / 60} min</Text>
-              </Pressable>
-            ))}
-          </View>
+          {active ? (
+            /* Running: add time, as Lang's +0:30 / +1:00. */
+            !done ? (
+              <View style={styles.presets}>
+                <Pressable style={styles.preset} onPress={() => onExtend(30)} accessibilityRole="button">
+                  <Text style={styles.presetText}>+ 0:30</Text>
+                </Pressable>
+                <Pressable style={styles.preset} onPress={() => onExtend(60)} accessibilityRole="button">
+                  <Text style={styles.presetText}>+ 1:00</Text>
+                </Pressable>
+              </View>
+            ) : null
+          ) : (
+            <View style={styles.presets}>
+              {PRESETS.map((p) => (
+                <Pressable
+                  key={p}
+                  style={[styles.preset, seconds === p && styles.presetActive]}
+                  onPress={() => onPick(p)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.presetText}>{p / 60} min</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <View style={styles.sheetSpacer} />
-          <Pressable style={styles.startButton} onPress={onStart} accessibilityRole="button">
-            <Text style={styles.startText}>▶  Start</Text>
-          </Pressable>
+
+          {active ? (
+            /* Restart · pause/resume · cancel — her three running controls. */
+            <View style={styles.timerControls}>
+              <Pressable
+                style={styles.controlSecondary}
+                onPress={onRestart}
+                accessibilityRole="button"
+                accessibilityLabel="Restart timer"
+              >
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5"
+                    stroke={K.brown}
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </Pressable>
+
+              <Pressable
+                style={styles.controlPrimary}
+                onPress={done ? onCancel : running ? onPause : onResume}
+                accessibilityRole="button"
+                accessibilityLabel={done ? "Dismiss timer" : running ? "Pause timer" : "Resume timer"}
+              >
+                <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
+                  {done ? (
+                    <Path d="M5 13l4 4L19 7" stroke={K.bone} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                  ) : running ? (
+                    <Path d="M9 5v14M15 5v14" stroke={K.bone} strokeWidth={2.4} strokeLinecap="round" />
+                  ) : (
+                    /* 🔴 Drawn, never the character ▶ — U+25B6 ships as a blue
+                       emoji on iOS, which is how the Start button looked. */
+                    <Path d="M7 4.5v15l12-7.5-12-7.5z" fill={K.bone} />
+                  )}
+                </Svg>
+              </Pressable>
+
+              <Pressable
+                style={styles.controlSecondary}
+                onPress={onCancel}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel timer"
+              >
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M6 6l12 12M18 6L6 18" stroke={K.brown} strokeWidth={2} strokeLinecap="round" />
+                </Svg>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable style={styles.startButton} onPress={onStart} accessibilityRole="button">
+              <Svg width={16} height={16} viewBox="0 0 16 16" style={{ marginRight: 8 }}>
+                <Path d="M2 1.5v13l11-6.5-11-6.5z" fill={K.bone} />
+              </Svg>
+              <Text style={styles.startText}>Start</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Modal>
@@ -589,11 +871,48 @@ const styles = StyleSheet.create({
     width: 212,
     height: 212,
     borderRadius: 999,
-    borderWidth: 3,
-    borderColor: K.brown,
+    // 🔑 No border here any more — the SVG below draws both the track and the
+    // progress arc. Leaving the border on would double the outline.
     alignItems: "center",
     justifyContent: "center",
   },
+  ringFinishRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+  },
+  ringFinish: {
+    fontFamily: fonts.dmSans,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    color: "#8a7a74",
+  },
+  /** Restart · pause/resume · cancel, as Lang lays them out. */
+  timerControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+    paddingBottom: 4,
+  },
+  controlPrimary: {
+    width: 68,
+    height: 68,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: K.brown,
+  },
+  controlSecondary: {
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(54,20,22,0.10)",
+  },
+  ringSvg: { position: "absolute", top: 0, left: 0 },
   ringText: {
     fontFamily: fonts.dmSans,
     fontSize: 38,
@@ -610,10 +929,26 @@ const styles = StyleSheet.create({
   presetActive: { backgroundColor: "#fafdfe" },
   presetText: { fontFamily: fonts.dmSans, fontSize: 14, color: K.brown, letterSpacing: -0.14 },
   sheetSpacer: { flex: 1, minHeight: 24 },
+  saveRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 18,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(243,239,227,0.18)",
+  },
+  saveRowText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    letterSpacing: -0.17,
+    color: K.bone,
+  },
   startButton: {
     width: "100%",
     height: 56,
     borderRadius: 999,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: K.brown,
