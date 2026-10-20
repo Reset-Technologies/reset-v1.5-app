@@ -2,17 +2,17 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import { shareWithLink } from "../../constants/links";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Pressable,
-  Modal,
-  Image,
   ActivityIndicator,
   Dimensions,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
   Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -48,7 +48,13 @@ import {
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
 import { COUNTABLE_UNITS } from "../../utils/countableUnits";
-import { setPlannedMealServings } from "../../services/myPlan";
+import {
+  MealSlotType,
+  MyPlanResponse,
+  addMealToPlan,
+  getMyPlan,
+  setPlannedMealServings,
+} from "../../services/myPlan";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
@@ -61,6 +67,43 @@ import { logEvent } from "../../services/braze";
 
 const HERO_HEIGHT = 360;
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+/** Height of the persistent action bar, so scroll content can clear it. */
+const ACTION_BAR_H = 64;
+
+/**
+ * Slot display names for the add sheet.
+ *
+ * 🔑 MY PLAN r16 keeps the MODEL semantic (`first_meal · midday · evening ·
+ * snack`) because a member on a Window may not eat three times a day — but
+ * *"Display can still say Breakfast/Lunch/Dinner when appropriate."* So this
+ * mapping lives in the view and the semantic code is what gets sent.
+ * 📌 Deliberately duplicated from `MyPlanScreen` rather than exported: these
+ * are two screens' presentation choices, and a shared constant would imply the
+ * model had settled on these words.
+ */
+const ADD_SLOT_LABEL: Record<MealSlotType, string> = {
+  first_meal: "Breakfast",
+  midday: "Lunch",
+  evening: "Dinner",
+  snack: "Snack",
+};
+
+/**
+ * `2026-10-20` -> `Mon 20`, without constructing a Date.
+ *
+ * 🔴 Parsing `YYYY-MM-DD` with `new Date()` reads it as UTC midnight and then
+ * renders it in local time, which moves the day backwards for anyone west of
+ * Greenwich. The plan's dates are plain local calendar days and must not be
+ * shifted — the same trap that produced "Mon Oct 12" from a date column.
+ */
+function dayLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
+  if (!y || !m || !d) return iso;
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${names[dow]} ${d}`;
+}
 
 function parseInstructions(instructions: string | null): string[] {
   if (!instructions) return [];
@@ -359,6 +402,14 @@ export function RecipeDetailScreen() {
     (plannedMeal?.servings as ServingMultiplier) ?? 1,
   );
   const [esterText, setEsterText] = useState<string | null>(null);
+
+  // ── Add to plan (new 2026-10-19) ───────────────────────────────────────
+  const [addSheet, setAddSheet] = useState(false);
+  const [plan, setPlan] = useState<MyPlanResponse | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [addDate, setAddDate] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addedTo, setAddedTo] = useState<string | null>(null);
   const [esterLoading, setEsterLoading] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
 
@@ -618,13 +669,70 @@ export function RecipeDetailScreen() {
       ? { uri: detail.imageAsset }
       : null;
 
+  const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
+  /**
+   * 🔴 Gated on `recipeVersionId`, not on the recipe existing. The route
+   * freezes the version a planned meal points at (MY PLAN r19), so without one
+   * there is nothing to add and the button must not pretend otherwise.
+   */
+  const canAdd = Boolean(detail?.recipeVersionId);
+
+  const openAddSheet = useCallback(() => {
+    setAddSheet(true);
+    if (plan || planLoading) return;
+    setPlanLoading(true);
+    getMyPlan()
+      .then((p) => {
+        setPlan(p);
+        // Default to the first day of the week the member is actually shown.
+        setAddDate((cur) => cur ?? p.days[0]?.date ?? null);
+      })
+      .catch(() => setPlan(null))
+      .finally(() => setPlanLoading(false));
+  }, [plan, planLoading]);
+
+  /**
+   * Write the add, then close.
+   *
+   * 📌 Optimistic close with a quiet failure, the same stance the rejection
+   * and thumbs drawers take: the member has said what they want, and reopening
+   * a sheet to report our network problem makes it their problem. The week is
+   * refetched when they next open My Plan, so a lost add shows up as the meal
+   * simply not being there rather than as a wrong plan.
+   */
+  const confirmAdd = useCallback(
+    async (slotType: MealSlotType) => {
+      const versionId = detail?.recipeVersionId;
+      const planId = plan?.mealPlanId;
+      const date = addDate;
+      if (!versionId || !planId || !date || adding) return;
+      setAdding(true);
+      setAddSheet(false);
+      try {
+        await addMealToPlan({
+          mealPlanId: planId,
+          localDate: date,
+          slotType,
+          recipeVersionId: versionId,
+        });
+        setAddedTo(`${dayLabel(date)} \u00b7 ${ADD_SLOT_LABEL[slotType]}`);
+      } catch {
+        // Deliberately silent — see above.
+      } finally {
+        setAdding(false);
+      }
+    },
+    [detail, plan, addDate, adding],
+  );
+
   return (
     <View style={styles.container}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 40 },
+          // Clears the persistent action bar.
+          { paddingBottom: insets.bottom + ACTION_BAR_H + 32 },
         ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -858,22 +966,10 @@ export function RecipeDetailScreen() {
               📌 It sits ABOVE Instructions on purpose: it is the same content
               in a form you can cook from, so offering it before the wall of
               text is the point. */}
-          {detail?.recipeVersionId && (detail?.cookStepCount ?? 0) > 0 ? (
-            <Pressable
-              style={styles.cookModeButton}
-              onPress={() =>
-                navigation.navigate("CookMode", {
-                  recipeVersionId: detail.recipeVersionId as string,
-                  plannedMealId: plannedMeal?.id ?? null,
-                  imageUrl: detail?.imageAsset ?? meal.imageUrl,
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel="Start cook mode"
-            >
-              <Text style={styles.cookModeText}>Start Cook Mode</Text>
-            </Pressable>
-          ) : null}
+          {/* 📌 Cook moved into the persistent bottom bar on 2026-10-19 — that
+              is where Lang's "Recipe Details - Scroll" frame puts it, beside
+              Ask Ester and Add to plan. The gate is unchanged: a recipe with no
+              parsed steps still offers no Cook action. */}
 
           {/* Instructions */}
           {steps.length > 0 ? (
@@ -918,6 +1014,111 @@ export function RecipeDetailScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      {/* ── Persistent actions ────────────────────────────────────────────
+          Lang's "Recipe Details - Scroll" frame (5046:44118) carries a bottom
+          bar of three: Cook · Ask Ester · Add to plan.
+
+          🔴 ADD TO PLAN IS NEW. `POST /api/meals/my-plan/meals` has been live
+          the whole time, emitting `meal_added` (M33), and nothing in the app
+          ever called it — so a member could search all of Explore, open a
+          recipe, and had no way to put it in their week.
+
+          📌 Two buttons, not three. Ask Ester is checklist item #14, whose
+          context contract does not exist yet (three of its four
+          `ester_opened_from_*` events are not even declared). A button that
+          opens nothing would be worse than its absence; it slots in beside
+          these when #14 lands. */}
+      <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
+        {canCook ? (
+          <Pressable
+            style={[styles.actionButton, styles.actionSecondary]}
+            onPress={() =>
+              navigation.navigate("CookMode", {
+                recipeVersionId: detail!.recipeVersionId as string,
+                plannedMealId: plannedMeal?.id ?? null,
+                imageUrl: detail?.imageAsset ?? meal.imageUrl,
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Start cook mode"
+          >
+            <Text style={styles.actionSecondaryText}>Cook</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={[styles.actionButton, styles.actionPrimary, !canAdd && styles.actionDisabled]}
+          disabled={!canAdd || adding}
+          onPress={openAddSheet}
+          accessibilityRole="button"
+          accessibilityLabel="Add to plan"
+        >
+          <Text style={styles.actionPrimaryText}>
+            {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* ── Add to plan: pick a day, then a slot ──────────────────────────
+          🔑 Two taps, no confirm step. The member already chose the recipe by
+          being here; day and slot are the only facts the route needs that it
+          cannot infer (`mealPlanId` and `recipeVersionId` come from state).
+
+          🔴 Slot labels are the VIEW's (MY PLAN r16: the model stays semantic
+          — first_meal · midday · evening · snack — because a member on a Window
+          may not eat three times, but *"Display can still say
+          Breakfast/Lunch/Dinner when appropriate"*). The code is what is sent. */}
+      <Modal
+        visible={addSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddSheet(false)}
+      >
+        <Pressable style={styles.addBackdrop} onPress={() => setAddSheet(false)} />
+        <View style={styles.addSheet}>
+          <Text style={styles.addTitle}>Add to your week</Text>
+          <Text style={styles.addSub} numberOfLines={1}>
+            {detail?.name ?? meal.name}
+          </Text>
+
+          {planLoading ? (
+            <ActivityIndicator color={K.cream} style={{ marginVertical: 24 }} />
+          ) : !plan ? (
+            <Text style={styles.addSub}>Couldn't load your week. Try again.</Text>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayRow}>
+                {plan.days.map((d) => (
+                  <Pressable
+                    key={d.date}
+                    style={[styles.dayChip, d.date === addDate && styles.dayChipOn]}
+                    onPress={() => setAddDate(d.date)}
+                    accessibilityRole="button"
+                    accessibilityLabel={dayLabel(d.date)}
+                  >
+                    <Text style={[styles.dayChipText, d.date === addDate && styles.dayChipTextOn]}>
+                      {dayLabel(d.date)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              {(["first_meal", "midday", "evening", "snack"] as MealSlotType[]).map((slot) => (
+                <Pressable
+                  key={slot}
+                  style={styles.slotRow}
+                  disabled={adding}
+                  onPress={() => void confirmAdd(slot)}
+                  accessibilityRole="button"
+                  accessibilityLabel={ADD_SLOT_LABEL[slot]}
+                >
+                  <Text style={styles.slotRowText}>{ADD_SLOT_LABEL[slot]}</Text>
+                </Pressable>
+              ))}
+            </>
+          )}
+        </View>
+      </Modal>
 
       {/* Floating header buttons */}
       <SafeAreaView
@@ -1533,6 +1734,78 @@ const styles = StyleSheet.create({
   swapConfirmText: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.bone },
   swapKeep: { alignItems: "center", paddingVertical: 10 },
   swapKeepText: { fontFamily: fonts.dmSansMedium, fontSize: 14, color: K.brown },
+  // ── Persistent action bar + add sheet (2026-10-19) ───────────────────
+  actionBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: ACTION_BAR_H,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: K.brown,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(243,239,227,0.14)",
+  },
+  actionButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionPrimary: { backgroundColor: K.cream },
+  actionPrimaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.brown },
+  actionSecondary: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+  },
+  actionSecondaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  actionDisabled: { opacity: 0.4 },
+  addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
+  addSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: K.brown,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 18,
+    paddingBottom: 34,
+    paddingHorizontal: 18,
+  },
+  addTitle: { fontFamily: fonts.catalogue, fontSize: 20, color: K.cream, letterSpacing: -0.2 },
+  addSub: {
+    fontFamily: fonts.dmSans,
+    fontSize: 14,
+    color: K.bone,
+    opacity: 0.7,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  dayRow: { flexGrow: 0, marginBottom: 6 },
+  dayChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.25)",
+    marginRight: 8,
+  },
+  dayChipOn: { backgroundColor: K.cream, borderColor: K.cream },
+  dayChipText: { fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  dayChipTextOn: { color: K.brown },
+  slotRow: {
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(243,239,227,0.14)",
+  },
+  slotRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,

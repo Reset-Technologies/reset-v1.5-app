@@ -150,6 +150,37 @@ export async function getMyPlan(): Promise<MyPlanResponse> {
 }
 
 /**
+ * Add a recipe to a day and slot of the member's week.
+ *
+ * 🔴 This call did not exist until 2026-10-19, and neither did any other — the
+ * route has been live on the server the whole time, emitting `meal_added`
+ * (TEST CASES M33), and **nothing in the app ever called it**. Every other app
+ * call goes to `/my-plan/meals/:plannedMealId/…`, which operates on meals that
+ * are already in the plan. So a member could search 528 recipes in Explore,
+ * open one, and had no way to put it in their week.
+ *
+ * 🔑 The gap survived because the endpoint existed. "The backend supports it"
+ * is not "the feature exists" — ExploreScreen's own comment asserted that
+ * adding "already lives" on Recipe Details, which was never true.
+ *
+ * 📌 EXPLORE r5/r6 put the plan effect at *"None until explicit add/swap"*, so
+ * this is the explicit half: it only ever runs from a member tapping Add.
+ */
+export async function addMealToPlan(params: {
+  mealPlanId: string;
+  /** `YYYY-MM-DD`, a day of the member's current week. */
+  localDate: string;
+  slotType: MealSlotType;
+  recipeVersionId: string;
+  servings?: number;
+}): Promise<void> {
+  await apiClient("/api/meals/my-plan/meals", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+/**
  * 🔴 NOT IMPLEMENTED ON PURPOSE: there is no "I ate this" call here.
  *
  * The backend does expose `POST /api/meals/my-plan/meals/:id/eaten`, but the
