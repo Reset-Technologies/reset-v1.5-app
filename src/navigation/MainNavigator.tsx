@@ -119,6 +119,13 @@ export type MainStackParamList = {
     plannedMealId?: string | null;
     /** For the completion screen's 120pt image. */
     imageUrl?: string;
+    /**
+     * The MEAL id, for "Save meal for next time" on the completion screen.
+     *
+     * 🔑 Not the same as `recipeVersionId`: favourites are keyed to the meal,
+     * and the cook session only carries the version. The caller has both.
+     */
+    mealId?: string;
   };
   SavedMeals: undefined;
   GroceryList: undefined;

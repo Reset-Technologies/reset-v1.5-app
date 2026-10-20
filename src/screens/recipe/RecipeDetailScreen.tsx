@@ -1246,6 +1246,7 @@ export function RecipeDetailScreen() {
                 recipeVersionId: detail!.recipeVersionId as string,
                 plannedMealId: plannedMeal?.id ?? null,
                 imageUrl: detail?.imageAsset ?? meal.imageUrl,
+                mealId: meal.id,
               })
             }
             accessibilityRole="button"
