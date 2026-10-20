@@ -304,6 +304,25 @@ function GroceryRow({
   onDelete?: () => void;
 }) {
   const amount = amountLabel(item);
+  /**
+   * GROCERY LIST r5's failure behavior: *"Flag unmapped ingredient; do not
+   * silently drop."* The server already decides this — `needsReview` is set
+   * when the units could not be reconciled into one number — and we were
+   * doing the first half only: the line was carried, never flagged.
+   *
+   * 📌 Two different failures, two different sentences. A line with an amount
+   * has amounts we could not ADD UP ("2 serving + 0.13 tablespoon + 1.04
+   * teaspoon"); a line without one has no usable amount at all. Saying
+   * "needs review" would be our word for our problem — these say what the
+   * member is actually looking at.
+   *
+   * ⚠️ Copy is mine, not Bryan's. He owns member-facing wording.
+   */
+  const flag = !item.needsReview
+    ? null
+    : amount
+      ? "Amounts not combined"
+      : "Amount unavailable";
   return (
     <Pressable
       onPress={onToggle}
@@ -316,7 +335,7 @@ function GroceryRow({
       style={[styles.row, !first && styles.rowDivider, item.checked && styles.rowChecked]}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: item.checked }}
-      accessibilityLabel={`${item.name}${amount ? `, ${amount}` : ""}`}
+      accessibilityLabel={`${item.name}${amount ? `, ${amount}` : ""}${flag ? `, ${flag}` : ""}`}
       accessibilityHint={onDelete ? "Long press to remove" : undefined}
     >
       <View style={styles.rowText}>
@@ -327,6 +346,7 @@ function GroceryRow({
           {item.name}
         </Text>
         {amount ? <Text style={styles.rowAmount}>{amount}</Text> : null}
+        {flag ? <Text style={styles.rowFlag}>{flag}</Text> : null}
       </View>
       <Checkmark checked={item.checked} />
     </Pressable>
@@ -531,6 +551,15 @@ function DeleteConfirm({
 }
 
 const styles = StyleSheet.create({
+  /** Quiet, not alarming: this is a data gap, not something they did wrong. */
+  rowFlag: {
+    marginTop: 2,
+    fontFamily: fonts.dmSans,
+    fontStyle: "italic",
+    fontSize: 12,
+    letterSpacing: -0.12,
+    color: "rgba(243,239,227,0.55)",
+  },
   toast: {
     position: "absolute",
     left: 16,
