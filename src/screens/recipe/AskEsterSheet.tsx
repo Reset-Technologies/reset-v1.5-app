@@ -17,6 +17,7 @@ import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { sendMessage } from "../../services/chat";
 import { recordEsterOpened, EsterMealContext } from "../../services/meals";
+import type { EsterEntryPoint } from "../../services/meals";
 
 const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
 
@@ -88,7 +89,19 @@ export function AskEsterSheet({
   useEffect(() => {
     if (!visible || announced.current) return;
     announced.current = true;
-    recordEsterOpened("recipe", context).catch(() => {
+    /**
+     * 🔑 WHICH entry this is depends on what we are looking at, not on which
+     * screen we are.
+     *
+     * ESTER CONTEXT r6 ("Planned meal") and r8 ("Recipe detail") are different
+     * entries with different required context, and this one screen is both:
+     * opened from My Plan it HAS a planned meal, opened from Explore it does
+     * not. TEST CASES **M34** pins the first case to `ester_opened_from_meal`,
+     * so sending `_recipe` for everything would have mislabelled every open
+     * that came from the plan — which is most of them.
+     */
+    const entry: EsterEntryPoint = context.plannedMealId ? "meal" : "recipe";
+    recordEsterOpened(entry, context).catch(() => {
       // Analytics must never block the member from asking a question.
     });
   }, [visible, context]);
@@ -124,6 +137,12 @@ export function AskEsterSheet({
     }
     if (context.servings != null) {
       lines.push(`Serving multiplier currently shown: ${context.servings}.`);
+    }
+    if (context.windowStatus) {
+      lines.push(
+        `Their Reset Window is "${context.windowStatus}"` +
+          (context.windowOpensAt ? `, eating opens at ${context.windowOpensAt}.` : "."),
+      );
     }
     if (context.substitutionIds?.length) {
       lines.push(
