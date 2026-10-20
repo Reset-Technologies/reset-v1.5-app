@@ -629,6 +629,14 @@ export interface EsterMealContext {
   stepIndex?: number | null;
   groceryListId?: string | null;
   groceryItemId?: string | null;
+  /**
+   * The member's Reset Window, which TEST CASES **M34** requires of the
+   * planned-meal entry: *"Context includes planned_meal_id + recipe_version +
+   * plan + Window"*. Ester cannot say whether a meal fits the member's day
+   * without knowing when they are eating.
+   */
+  windowStatus?: string | null;
+  windowOpensAt?: string | null;
 }
 
 /** Record that a Meals surface opened Ester, with what it was looking at. */

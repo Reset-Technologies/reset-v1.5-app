@@ -30,6 +30,7 @@ import type { Meal } from "../../components";
 import { AiConsentNudge } from "../../components";
 import { AskEsterSheet } from "./AskEsterSheet";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
+import { useResetWindow } from "../../hooks/useResetWindow";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
@@ -393,6 +394,12 @@ export function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useApp();
   const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
+  /**
+   * TEST CASES **M34**: the planned-meal Ester entry's context must include
+   * *"planned_meal_id + recipe_version + plan + Window"*. Ester cannot judge
+   * whether a meal suits the member's day without knowing when they eat.
+   */
+  const { state: windowState } = useResetWindow();
   // The Ester bubble's avatar + gradient reflect the user's metabolic type.
   const metabolicType: MetabolicType =
     toMetabolicType(state.user.metabolicType) ?? "Explorer";
@@ -1643,6 +1650,8 @@ export function RecipeDetailScreen() {
           slotType: plannedMeal?.slotType ?? null,
           servings: multiplier,
           substitutionIds: subs.map((x) => x.id),
+          windowStatus: windowState?.status ?? null,
+          windowOpensAt: windowState?.plan?.openLocalTime ?? null,
         }}
       />
 
