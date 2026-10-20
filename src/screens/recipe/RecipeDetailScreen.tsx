@@ -22,13 +22,15 @@ import {
   CommonActions,
 } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import Svg, { Defs, LinearGradient, Rect, Stop, Circle } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop, Circle } from "react-native-svg";
 import { K, toMetabolicType, type MetabolicType } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import type { Meal } from "../../components";
 import { AiConsentNudge } from "../../components";
+import { AskEsterSheet } from "./AskEsterSheet";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
+import { useResetWindow } from "../../hooks/useResetWindow";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
@@ -36,6 +38,9 @@ import {
   getMealIngredients,
   getSubstituteSuggestions,
   applySubstitution,
+  getPlanSubstitutions,
+  revertSubstitution,
+  PlanSubstitution,
   SubstituteSuggestion,
   getCachedDailyPlan,
   addFavorite,
@@ -340,6 +345,47 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
   2: "Double",
 };
 
+/**
+ * The two ingredient-row controls from Lang's `5055:47476`.
+ *
+ * 🔴 Drawn, not typed. The arrow characters she uses (↩ / ↻) are in Unicode's
+ * emoji data, and U+25B6 on the Cook Mode timer shipped as a BLUE EMOJI on
+ * iOS for exactly that reason. A path cannot be re-presented by the platform.
+ */
+function SwapGlyph() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      <Path
+        d="M2.5 5.5h9M9 3l2.5 2.5L9 8M13.5 10.5h-9M7 8l-2.5 2.5L7 13"
+        stroke={K.textMuted}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function RevertGlyph() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      <Path
+        d="M3.2 8a4.8 4.8 0 1 0 1.5-3.5"
+        stroke={K.brown}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M2.6 2.4v2.8h2.8"
+        stroke={K.brown}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function RecipeDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
@@ -347,7 +393,13 @@ export function RecipeDetailScreen() {
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
-  const { aiConsentGranted } = useAiConsentGate();
+  const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
+  /**
+   * TEST CASES **M34**: the planned-meal Ester entry's context must include
+   * *"planned_meal_id + recipe_version + plan + Window"*. Ester cannot judge
+   * whether a meal suits the member's day without knowing when they eat.
+   */
+  const { state: windowState } = useResetWindow();
   // The Ester bubble's avatar + gradient reflect the user's metabolic type.
   const metabolicType: MetabolicType =
     toMetabolicType(state.user.metabolicType) ?? "Explorer";
@@ -392,6 +444,35 @@ export function RecipeDetailScreen() {
   const [suggestions, setSuggestions] = useState<SubstituteSuggestion[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
+
+  /**
+   * The substitutions in force on THIS slot.
+   *
+   * 🔴 Without these the screen cannot show a swap at all. The ingredient list
+   * comes from `GET /meals/:id/ingredients`, which is keyed by meal id and
+   * serves the recipe — a substitution changes the planned recipe INSTANCE
+   * (SERVINGS + ING r2), never the recipe, so that endpoint returns byte-identical
+   * rows before and after. Measured: apply a swap, refetch, every name the same,
+   * while the grocery list had already switched to the substitute.
+   */
+  const [subs, setSubs] = useState<PlanSubstitution[]>([]);
+  const [revertFor, setRevertFor] = useState<PlanSubstitution | null>(null);
+  const [reverting, setReverting] = useState(false);
+  /** Lang's `5055:47291` toast. Cleared on a timer, and on unmount. */
+  const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Ask Ester (Lang `5062:56495`, ESTER CONTEXT r8 — the only entry Bryan
+   * marks CURRENT).
+   *
+   * 📌 Gated on AI consent like the Ester block above it: opening a chat is
+   * the same promise as generating a why-line, so it goes through the same
+   * gate rather than around it.
+   */
+  const [askEsterOpen, setAskEsterOpen] = useState(false);
+  const openAskEster = useCallback(() => {
+    runWithAiConsent(() => setAskEsterOpen(true));
+  }, [runWithAiConsent]);
   // Rides along on the detail fetch so the server can record `recipe_viewed`
   // with r15's `source_surface`. Undefined from a call site that does not set
   // it, which records the view with an unknown surface rather than losing it.
@@ -514,6 +595,49 @@ export function RecipeDetailScreen() {
   }, [meal.id]);
 
   /**
+   * Which substitutions apply to the meal on screen.
+   *
+   * 📌 Filtered by `localDate` + `slotType`, the slot's stable identity. A
+   * plan can hold the same recipe in several slots and only one of them may
+   * have been changed — keying on the recipe would paint the swap onto all of
+   * them.
+   */
+  const loadSubstitutions = useCallback(async () => {
+    if (!plannedMeal) return;
+    try {
+      const all = await getPlanSubstitutions(plannedMeal.mealPlanId);
+      setSubs(
+        all.filter(
+          (sub) =>
+            sub.structured &&
+            sub.localDate === plannedMeal.localDate &&
+            sub.slotType === plannedMeal.slotType,
+        ),
+      );
+    } catch {
+      // Leave the list as it was. A failed read must not erase a swap the
+      // member can see — that would look like their change was undone.
+    }
+  }, [plannedMeal]);
+
+  useEffect(() => {
+    void loadSubstitutions();
+  }, [loadSubstitutions]);
+
+  /** Index by the ingredient being replaced, which is what a row knows. */
+  const subByIngredient = useMemo(() => {
+    const m = new Map<string, PlanSubstitution>();
+    for (const sub of subs) m.set(sub.fromIngredientId, sub);
+    return m;
+  }, [subs]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /**
    * Open the swap drawer for one ingredient and fetch its options.
    *
    * 📌 Fetched on open, not with the screen. Each call is an Ester round-trip
@@ -535,8 +659,12 @@ export function RecipeDetailScreen() {
           recipeTitle: meal.name,
         });
         setSuggestions(opts);
-        // Lang's frame has the first option pre-selected.
-        setChosen(opts[0]?.ingredientId ?? null);
+        // 📌 Nothing pre-selected. Lang draws two states for this sheet:
+        // `5046:46228` with no radio filled and the primary dimmed, and
+        // `5046:44621` with one chosen and the primary live. Pre-selecting
+        // the first skipped her empty state and let a member confirm a
+        // substitute they never actually picked.
+        setChosen(null);
       } catch {
         // An empty list renders the honest "no substitutes" state rather than
         // an error the member can do nothing with.
@@ -562,22 +690,70 @@ export function RecipeDetailScreen() {
     if (!plannedMeal || !swapFor || !chosen || swapping) return;
     setSwapping(true);
     try {
-      await applySubstitution({
+      const applied = await applySubstitution({
         plannedMealId: plannedMeal.id,
         mealPlanId: plannedMeal.mealPlanId,
         fromIngredientId: swapFor.ingredientId,
         toIngredientId: chosen,
       });
       setSwapFor(null);
-      const fresh = await getMealIngredients(meal.id);
+      // 🔴 The result decides the message. A restriction we cannot verify
+      // turns the request into a NOTE that changes nothing, and announcing
+      // "swapped successfully" over that would be the screen telling the
+      // member something the plan does not say. The server's own reason is
+      // already written for them to read.
+      setToast(
+        applied.structured
+          ? "Ingredient swapped successfully"
+          : (applied.unstructuredReason ??
+            "We saved that as a note — it did not change the recipe."),
+      );
+      // The recipe never changes, so this re-read is only for servings; the
+      // swap itself shows up through `loadSubstitutions`.
+      const [fresh] = await Promise.all([
+        getMealIngredients(meal.id),
+        loadSubstitutions(),
+      ]);
       setIngredients(fresh);
     } catch {
       // Leave the drawer open so the member can try again or back out; a
       // silent close would look like it worked.
+      //
+      // 🔴 And SAY so. This catch used to be empty, which is how a 400 from a
+      // stale planned-meal id went unnoticed: the member pressed the button,
+      // nothing happened, and nothing explained why.
+      setToast("That didn't go through. Try again.");
     } finally {
       setSwapping(false);
     }
-  }, [plannedMeal, swapFor, chosen, swapping, meal.id]);
+  }, [plannedMeal, swapFor, chosen, swapping, meal.id, loadSubstitutions]);
+
+  /**
+   * Take one back — Lang's `5065:58762` *"Revert to original ingredient"*.
+   *
+   * 🔴 Not in Bryan's workbook: SERVINGS + ING has no undo column and EVENTS
+   * declares no revert event. MY PLAN r9/r10 give every other plan edit an
+   * "Undo", so a swap you cannot take back is the odd one out — built on that
+   * reading, with the event name left to Bryan rather than invented here.
+   */
+  const confirmRevert = useCallback(async () => {
+    if (!plannedMeal || !revertFor || reverting) return;
+    setReverting(true);
+    try {
+      await revertSubstitution({
+        substitutionId: revertFor.id,
+        mealPlanId: plannedMeal.mealPlanId,
+      });
+      setRevertFor(null);
+      setToast("Reverted to the original ingredient");
+      await loadSubstitutions();
+    } catch {
+      // Same reasoning as a failed swap: keep the sheet open, and say so.
+      setToast("That didn't go through. Try again.");
+    } finally {
+      setReverting(false);
+    }
+  }, [plannedMeal, revertFor, reverting, loadSubstitutions]);
 
   /**
    * Pick a serving size, and save it when there is a planned meal behind it.
@@ -639,8 +815,12 @@ export function RecipeDetailScreen() {
     try {
       if (next) await addFavorite(meal.id);
       else await removeFavorite(meal.id);
+      // Lang's "Saving a Meal" annotation on `5039:39399`. The bookmark fills
+      // in, which is easy to miss on a photo; this says what happened.
+      setToast(next ? "Meal saved" : "Removed from Saved Meals");
     } catch {
       setIsFavorited(!next);
+      setToast("That didn't go through. Try again.");
     }
   };
 
@@ -689,12 +869,30 @@ export function RecipeDetailScreen() {
     getMyPlan()
       .then((p) => {
         setPlan(p);
-        // Default to the first day of the week the member is actually shown.
-        setAddDate((cur) => cur ?? p.days[0]?.date ?? null);
+        /**
+         * 🔴 The day the member CAME FROM, not day one of the week.
+         *
+         * This used to default to `p.days[0]`, and the comment claimed that
+         * was "the day the member is actually shown". It was not. Opened from
+         * Tuesday's dinner, the sheet listed MONDAY's three meals — the same
+         * recipes in a different order, so it looked entirely plausible —
+         * and the swap landed on Monday's lunch. The button said "Added" and
+         * it was telling the truth: something was added, just not where the
+         * member was looking.
+         *
+         * Caught by finally doing the one check I had left open for two days:
+         * swap into a slot holding a DIFFERENT recipe and watch the plan.
+         */
+        const cameFrom = plannedMeal?.localDate ?? null;
+        const today = new Date().toISOString().slice(0, 10);
+        const fallback = p.days.some((d) => d.date === today)
+          ? today
+          : (p.days[0]?.date ?? null);
+        setAddDate((cur) => cur ?? cameFrom ?? fallback);
       })
       .catch(() => setPlan(null))
       .finally(() => setPlanLoading(false));
-  }, [plan, planLoading]);
+  }, [plan, planLoading, plannedMeal]);
 
   /**
    * Swap this recipe INTO one of the day's existing meals.
@@ -733,14 +931,21 @@ export function RecipeDetailScreen() {
           recipeVersionId: versionId,
         });
         setAddedTo(slot.recipe?.title ?? null);
+        // Name the day as well as the meal. The whole defect above was the
+        // member not knowing WHICH day they had just changed.
+        setToast(
+          `Swapped in for ${slot.recipe?.title ?? "that meal"} on ${dayLabel(addDate ?? "")}`,
+        );
       } catch {
-        // Deliberately silent — the member has said what they want, and
-        // reopening a sheet to report our network problem makes it theirs.
+        // 🔴 Was silent. "Deliberately silent" is how a failed swap looks
+        // identical to a successful one — the same empty-catch shape that hid
+        // a 400 on the ingredient swap for weeks.
+        setToast("That didn't go through. Try again.");
       } finally {
         setAdding(false);
       }
     },
-    [detail, plan, adding],
+    [detail, plan, adding, addDate],
   );
 
   return (
@@ -944,25 +1149,56 @@ export function RecipeDetailScreen() {
                   // Home or Saved Meals there is nothing to change. Same
                   // distinction the serving control already draws.
                   const Row: React.ElementType = plannedMeal ? Pressable : View;
+                  // 🔑 The substitution, if this row has one. Its name is the
+                  // only thing on the screen that proves the swap happened.
+                  const sub = subByIngredient.get(ing.ingredientId);
+                  const shownName = sub?.toIngredientName ?? ing.ingredientName;
                   return (
                     <Row
                       key={ing.id + idx}
-                      onPress={plannedMeal ? () => openSwap(ing) : undefined}
+                      onPress={
+                        plannedMeal
+                          ? () => (sub ? setRevertFor(sub) : openSwap(ing))
+                          : undefined
+                      }
                       style={[
                         styles.ingredientRow,
                         idx === 0 ? styles.ingredientRowFirst : null,
                       ]}
                       accessibilityRole={plannedMeal ? "button" : undefined}
                       accessibilityLabel={
-                        plannedMeal ? `Swap ${ing.ingredientName}` : undefined
+                        plannedMeal
+                          ? sub
+                            ? `Revert ${shownName} to ${sub.fromIngredientName ?? ing.ingredientName}`
+                            : `Swap ${ing.ingredientName}`
+                          : undefined
                       }
                     >
                       <Text style={styles.ingredientQty} numberOfLines={2}>
                         {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
                       </Text>
                       <Text style={styles.ingredientName}>
-                        {ing.ingredientName}
+                        {shownName}
+                        {sub ? (
+                          // Lang's `5055:47291` marks the changed row in
+                          // italics beside the name.
+                          <Text style={styles.ingredientSwapped}> Swapped</Text>
+                        ) : null}
                       </Text>
+                      {/* 🔴 A visible affordance. The row was already
+                          pressable but drew nothing, so the only way to find
+                          ingredient swaps was to tap a list that looks like
+                          text. Lang puts a control on every row. */}
+                      {plannedMeal ? (
+                        <View
+                          style={[
+                            styles.ingredientAction,
+                            sub ? styles.ingredientActionOn : null,
+                          ]}
+                        >
+                          {sub ? <RevertGlyph /> : <SwapGlyph />}
+                        </View>
+                      ) : null}
                     </Row>
                   );
                 })}
@@ -1042,11 +1278,11 @@ export function RecipeDetailScreen() {
           ever called it — so a member could search all of Explore, open a
           recipe, and had no way to put it in their week.
 
-          📌 Two buttons, not three. Ask Ester is checklist item #14, whose
-          context contract does not exist yet (three of its four
-          `ester_opened_from_*` events are not even declared). A button that
-          opens nothing would be worse than its absence; it slots in beside
-          these when #14 lands. */}
+          ✅ Three buttons now — Lang's **Cook · Ask Ester · Add to plan**.
+          Ask Ester landed 2026-10-21 with the first half of #14's context
+          contract: all six `ester_opened_from_*` events declared, and this
+          entry passes `recipe_version_id` plus the serving and substitution
+          state r8 requires. The other five entries are still unbuilt. */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
         {canCook ? (
           <Pressable
@@ -1056,6 +1292,7 @@ export function RecipeDetailScreen() {
                 recipeVersionId: detail!.recipeVersionId as string,
                 plannedMealId: plannedMeal?.id ?? null,
                 imageUrl: detail?.imageAsset ?? meal.imageUrl,
+                mealId: meal.id,
               })
             }
             accessibilityRole="button"
@@ -1064,6 +1301,14 @@ export function RecipeDetailScreen() {
             <Text style={styles.actionSecondaryText}>Cook</Text>
           </Pressable>
         ) : null}
+        <Pressable
+          style={[styles.actionButton, styles.actionSecondary]}
+          onPress={openAskEster}
+          accessibilityRole="button"
+          accessibilityLabel="Ask Ester"
+        >
+          <Text style={styles.actionSecondaryText}>Ask Ester</Text>
+        </Pressable>
         <Pressable
           style={[styles.actionButton, styles.actionPrimary, !canAdd && styles.actionDisabled]}
           disabled={!canAdd || adding}
@@ -1304,6 +1549,132 @@ export function RecipeDetailScreen() {
           )}
         </View>
       </Modal>
+
+      {/* ── Revert to original ingredient (Lang 5065:58762) ──────────────
+          Her sheet names both sides and strikes through the one being
+          given up, so the member can see exactly what they are undoing.
+
+          🔴 The layer names in this frame still read "Original Meal" and
+          "Basil and Tomato One-Pan Pasta" — a reused component. The RENDER
+          is the spec: Swapped Ingredient → Original Ingredient. */}
+      <Modal
+        visible={!!revertFor}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRevertFor(null)}
+      >
+        <Pressable
+          style={styles.swapBackdrop}
+          onPress={() => setRevertFor(null)}
+        />
+        <View style={styles.swapSheet}>
+          <View style={styles.swapHeader}>
+            <Text style={styles.swapTitle}>Revert to original ingredient</Text>
+            <Pressable
+              onPress={() => setRevertFor(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={12}
+            >
+              <Text style={styles.swapClose}>✕</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.revertCompare}>
+            <View style={styles.revertSide}>
+              <Text style={styles.revertLabel}>Swapped Ingredient</Text>
+              <Text style={[styles.revertName, styles.revertNameOld]}>
+                {revertFor?.toIngredientName ?? ""}
+              </Text>
+            </View>
+            <View style={styles.revertArrow}>
+              <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+                <Path
+                  d="M4 10h11M11.5 6.5 15 10l-3.5 3.5"
+                  stroke={K.textMuted}
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </View>
+            <View style={styles.revertSide}>
+              <Text style={styles.revertLabel}>Original Ingredient</Text>
+              <Text style={styles.revertName}>
+                {revertFor?.fromIngredientName ?? ""}
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={[styles.swapConfirm, reverting && styles.swapConfirmOff]}
+            onPress={confirmRevert}
+            disabled={reverting}
+            accessibilityRole="button"
+            accessibilityLabel="Revert to original"
+          >
+            <Text style={styles.swapConfirmText}>
+              {reverting ? "Reverting…" : "Revert to original"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setRevertFor(null)}
+            style={styles.swapKeep}
+            accessibilityRole="button"
+            accessibilityLabel="Keep current"
+          >
+            <Text style={styles.swapKeepText}>Keep current</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* ── Ask Ester (Lang 5062:56495 · ESTER CONTEXT r8) ───────────────
+          🔑 The context is the point. r8 requires the recipe version plus the
+          CURRENT serving and substitution state — not just "a meal" — so the
+          multiplier on screen and the substitutions in force are handed over
+          rather than left for the model to guess at. */}
+      <AskEsterSheet
+        visible={askEsterOpen}
+        onClose={() => setAskEsterOpen(false)}
+        title="Meal Details"
+        openingMessage={esterMessage}
+        openingLoading={esterLoading}
+        mealId={meal.id}
+        renderRich={renderBoldSegments}
+        context={{
+          recipeId: meal.id,
+          recipeVersionId: (detail?.recipeVersionId as string) ?? null,
+          plannedMealId: plannedMeal?.id ?? null,
+          mealPlanId: plannedMeal?.mealPlanId ?? null,
+          localDate: plannedMeal?.localDate ?? null,
+          slotType: plannedMeal?.slotType ?? null,
+          servings: multiplier,
+          substitutionIds: subs.map((x) => x.id),
+          windowStatus: windowState?.status ?? null,
+          windowOpensAt: windowState?.plan?.openLocalTime ?? null,
+        }}
+      />
+
+      {/* ── Toast (Lang 5055:47291) ──────────────────────────────────────
+          Sits over the hero, below the status bar. The ONLY confirmation
+          either of these actions gives — the recipe text itself cannot
+          change, so without this a successful swap looked like nothing
+          happened at all. */}
+      {toast ? (
+        <View style={styles.toast} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+            <Circle cx={10} cy={10} r={8.25} stroke={K.textLight} strokeWidth={1.4} />
+            <Path
+              d="m6.5 10.2 2.4 2.4 4.6-5"
+              stroke={K.textLight}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1553,6 +1924,86 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
+  },
+  /** Lang marks the changed row beside the name, in italics. */
+  ingredientSwapped: {
+    fontFamily: fonts.dmSans,
+    fontStyle: "italic",
+    fontSize: 14,
+    color: K.textMuted,
+  },
+  ingredientAction: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: K.border,
+    marginTop: -2,
+  },
+  ingredientActionOn: {
+    borderColor: K.brown,
+    backgroundColor: K.cream,
+  },
+  // Revert to original ingredient (Lang 5065:58762)
+  revertCompare: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 20,
+  },
+  revertSide: {
+    flex: 1,
+    gap: 4,
+  },
+  revertLabel: {
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    letterSpacing: 0.2,
+    color: K.textMuted,
+    textAlign: "center",
+  },
+  revertName: {
+    fontFamily: fonts.dmSansBold,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    color: K.brown,
+    textAlign: "center",
+  },
+  /** Struck through, because it is the side being given up. */
+  revertNameOld: {
+    color: K.textMuted,
+    textDecorationLine: "line-through",
+  },
+  revertArrow: {
+    width: 20,
+    alignItems: "center",
+  },
+  // Toast (Lang 5055:47291)
+  toast: {
+    position: "absolute",
+    // 🔑 Below the floating back / share / bookmark circles, not over them.
+    // At 56 it covered all three for the three seconds it was up — visible on
+    // both platforms once I looked at Android, and I had missed it on iOS.
+    top: 112,
+    left: 11,
+    right: 11,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: K.brown,
+  },
+  toastText: {
+    flex: 1,
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    letterSpacing: -0.15,
+    color: K.textLight,
   },
   // Instructions
   stepsList: {

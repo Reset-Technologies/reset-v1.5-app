@@ -45,6 +45,7 @@ export function GroceryListScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<GroceryItem | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (rebuild = false) => {
@@ -109,10 +110,21 @@ export function GroceryListScreen({ navigation }: Props) {
     setList((prev) => prev?.filter((i) => i.id !== item.id) ?? prev);
     try {
       await removeGroceryItem(item.id);
+      // Lang's annotation on this flow. 📌 No Undo here, unlike her Saved
+      // Meals toasts — she draws one there and not here, and the confirm
+      // dialog already stands between the member and the delete.
+      setToast("Removed from Grocery List");
     } catch {
       setList(before ?? null);
+      setToast("That didn't go through. Try again.");
     }
   }, [pendingDelete, list]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleAdded = useCallback((item: GroceryItem) => {
     setAddOpen(false);
@@ -265,6 +277,17 @@ export function GroceryListScreen({ navigation }: Props) {
         onKeep={() => setPendingDelete(null)}
         onDelete={confirmDelete}
       />
+
+      {/* 🔴 NOT a dark pill. This screen's background IS brown, so Lang's dark
+          toast would be invisible on it — the same mistake I made once on
+          Saved Meals and only caught on the device. */}
+      {toast ? (
+        <View style={styles.toast} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast}
+          </Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -281,6 +304,27 @@ function GroceryRow({
   onDelete?: () => void;
 }) {
   const amount = amountLabel(item);
+  /**
+   * GROCERY LIST r5's failure behavior: *"Flag unmapped ingredient; do not
+   * silently drop."* The server already decides this — `needsReview` is set
+   * when the units could not be reconciled into one number — and we were
+   * doing the first half only: the line was carried, never flagged.
+   *
+   * 📌 Two different failures, two different sentences. A line with an amount
+   * has amounts we could not ADD UP ("2 serving + 0.13 tablespoon + 1.04
+   * teaspoon"); a line without one has no usable amount at all. Saying
+   * "needs review" would be our word for our problem — these say what the
+   * member is actually looking at.
+   *
+   * ✅ "Amounts shown separately" is Bryan's, 2026-10-20.
+   * ⚠️ "Amount unavailable" is still mine — the no-amount case was not in the
+   * list he ruled on, so it has not been through him.
+   */
+  const flag = !item.needsReview
+    ? null
+    : amount
+      ? "Amounts shown separately"
+      : "Amount unavailable";
   return (
     <Pressable
       onPress={onToggle}
@@ -293,7 +337,7 @@ function GroceryRow({
       style={[styles.row, !first && styles.rowDivider, item.checked && styles.rowChecked]}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: item.checked }}
-      accessibilityLabel={`${item.name}${amount ? `, ${amount}` : ""}`}
+      accessibilityLabel={`${item.name}${amount ? `, ${amount}` : ""}${flag ? `, ${flag}` : ""}`}
       accessibilityHint={onDelete ? "Long press to remove" : undefined}
     >
       <View style={styles.rowText}>
@@ -304,6 +348,7 @@ function GroceryRow({
           {item.name}
         </Text>
         {amount ? <Text style={styles.rowAmount}>{amount}</Text> : null}
+        {flag ? <Text style={styles.rowFlag}>{flag}</Text> : null}
       </View>
       <Checkmark checked={item.checked} />
     </Pressable>
@@ -508,6 +553,33 @@ function DeleteConfirm({
 }
 
 const styles = StyleSheet.create({
+  /** Quiet, not alarming: this is a data gap, not something they did wrong. */
+  rowFlag: {
+    marginTop: 2,
+    fontFamily: fonts.dmSans,
+    fontStyle: "italic",
+    fontSize: 12,
+    letterSpacing: -0.12,
+    color: "rgba(243,239,227,0.55)",
+  },
+  toast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    minHeight: 52,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: K.bone,
+  },
+  toastText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    letterSpacing: -0.15,
+    color: K.brown,
+  },
   container: { flex: 1, backgroundColor: K.brown },
   header: {
     flexDirection: "row",

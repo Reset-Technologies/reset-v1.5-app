@@ -546,14 +546,27 @@ export function MyPlanScreen({ navigation }: Props) {
    * show calories and protein. See project_meals_tab.
    */
   const openRecipe = useCallback(
-    (recipe: MyPlanRecipe, slotType: MealSlotType, slot: MyPlanSlot) => {
+    (
+      recipe: MyPlanRecipe,
+      slotType: MealSlotType,
+      slot: MyPlanSlot,
+      localDate: string,
+    ) => {
       navigation.navigate("RecipeDetail", {
         sourceSurface: "my_plan",
         // 🔑 The ONLY entry point with plan context, so the only one where the
         // serving control can save. `slot.id` is the planned_meal row and
         // `slot.servings` is the multiplier already stored.
         plannedMeal: plan
-          ? { id: slot.id, mealPlanId: plan.mealPlanId, servings: slot.servings }
+          ? {
+              id: slot.id,
+              mealPlanId: plan.mealPlanId,
+              servings: slot.servings,
+              // The slot's own identity, so the screen can find this meal's
+              // ingredient substitutions. See the param's own note.
+              localDate,
+              slotType,
+            }
           : undefined,
         meal: {
           id: recipe.id,
@@ -772,7 +785,13 @@ export function MyPlanScreen({ navigation }: Props) {
                 emptyCopy={emptyCopy(slot.slotType)}
                 onPress={
                   slot.recipe
-                    ? () => openRecipe(slot.recipe!, slot.slotType, slot)
+                    ? () =>
+                        openRecipe(
+                          slot.recipe!,
+                          slot.slotType,
+                          slot,
+                          day!.date,
+                        )
                     : undefined
                 }
                 onLongPress={

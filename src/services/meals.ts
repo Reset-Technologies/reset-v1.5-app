@@ -521,14 +521,132 @@ export async function applySubstitution(params: {
   mealPlanId: string;
   fromIngredientId: string;
   toIngredientId: string;
-}): Promise<void> {
-  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}/substitutions`, {
+}): Promise<AppliedSubstitution> {
+  return apiClient<AppliedSubstitution>(`/api/meals/my-plan/meals/${params.plannedMealId}/substitutions`, {
     method: "POST",
     body: JSON.stringify({
       mealPlanId: params.mealPlanId,
       fromIngredientId: params.fromIngredientId,
       toIngredientId: params.toIngredientId,
     }),
+  });
+}
+
+/**
+ * What the server decided the request actually was.
+ *
+ * 🔴 `structured: false` means it became a NOTE — the plan, the nutrition and
+ * the grocery list are all unchanged. Returning this is what stops the screen
+ * saying "Ingredient swapped successfully" over a swap that did not happen.
+ * `unstructuredReason` is already written for the member to read.
+ */
+export interface AppliedSubstitution {
+  id: string;
+  structured: boolean;
+  unstructuredReason: string | null;
+}
+
+/**
+ * One substitution the member has in force, as the recipe screen needs it.
+ *
+ * 🔴 This is the ONLY way a screen can know a swap happened.
+ * `GET /meals/:id/ingredients` is keyed by meal id alone and serves the
+ * RECIPE, which a substitution never touches — SERVINGS + ING r2: recipe
+ * customization *"changes the planned recipe instance"*. Before this existed
+ * the member applied a swap, the list refetched, and every row came back
+ * identical.
+ *
+ * 📌 Keyed by `localDate` + `slotType`, not by planned-meal id, because
+ * planned-meal rows are rewritten on every revision — the same reason the
+ * server keys them that way.
+ */
+export interface PlanSubstitution {
+  id: string;
+  localDate: string;
+  slotType: string;
+  fromIngredientId: string;
+  fromIngredientName: string | null;
+  toIngredientId: string | null;
+  /** The substitute's name, or what the member typed when nothing resolved. */
+  toIngredientName: string | null;
+  kind: string;
+  /** False for a note: shown to the member, changes nothing about the plan. */
+  structured: boolean;
+  unstructuredReason: string | null;
+}
+
+/** Substitutions still in force on a plan. Reverted ones are not returned. */
+export async function getPlanSubstitutions(
+  mealPlanId: string,
+): Promise<PlanSubstitution[]> {
+  return apiClient<PlanSubstitution[]>(
+    `/api/meals/my-plan/substitutions?mealPlanId=${encodeURIComponent(mealPlanId)}`,
+  );
+}
+
+/**
+ * Take one back — Lang's *"Revert to original ingredient"*.
+ *
+ * 📌 Idempotent server-side, so a double tap cannot mint two revisions.
+ */
+export async function revertSubstitution(params: {
+  substitutionId: string;
+  mealPlanId: string;
+}): Promise<void> {
+  await apiClient(
+    `/api/meals/my-plan/substitutions/${params.substitutionId}` +
+      `?mealPlanId=${encodeURIComponent(params.mealPlanId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/* ── Ester context (P0 #14) ───────────────────────────────────────────────
+ *
+ * ESTER CONTEXT r5-r10 names SIX entry points and what each must hand over.
+ * The server refuses an entry that omits its required context, so this is a
+ * contract rather than a log line.
+ */
+export type EsterEntryPoint =
+  | "plan"
+  | "meal"
+  | "explore"
+  | "recipe"
+  | "cook"
+  | "grocery";
+
+export interface EsterMealContext {
+  mealPlanId?: string | null;
+  revisionId?: string | null;
+  plannedMealId?: string | null;
+  recipeId?: string | null;
+  recipeVersionId?: string | null;
+  localDate?: string | null;
+  slotType?: string | null;
+  /** r8's "current serving state" — the multiplier the screen is showing. */
+  servings?: number | null;
+  /** r8's "current substitution state" — ids in force on this meal. */
+  substitutionIds?: string[] | null;
+  stepIndex?: number | null;
+  groceryListId?: string | null;
+  groceryItemId?: string | null;
+  /**
+   * The member's Reset Window, which TEST CASES **M34** requires of the
+   * planned-meal entry: *"Context includes planned_meal_id + recipe_version +
+   * plan + Window"*. Ester cannot say whether a meal fits the member's day
+   * without knowing when they are eating.
+   */
+  windowStatus?: string | null;
+  windowOpensAt?: string | null;
+}
+
+/** Record that a Meals surface opened Ester, with what it was looking at. */
+export async function recordEsterOpened(
+  entry: EsterEntryPoint,
+  context: EsterMealContext,
+): Promise<void> {
+  await apiClient("/api/meals/ester/opened", {
+    method: "POST",
+    body: JSON.stringify({ entry, context }),
   });
 }
 

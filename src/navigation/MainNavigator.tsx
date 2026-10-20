@@ -91,6 +91,16 @@ export type MainStackParamList = {
       mealPlanId: string;
       /** The multiplier already saved, so the control opens where it left off. */
       servings: number;
+      /**
+       * 🔑 The slot's identity, `YYYY-MM-DD` + slot type.
+       *
+       * Ingredient substitutions are keyed to the SLOT, not to `id` — planned
+       * meal rows are rewritten on every revision, so an id would be orphaned
+       * by the next edit. Without these two the screen cannot tell which of
+       * the plan's substitutions belong to the meal it is showing.
+       */
+      localDate: string;
+      slotType: string;
     };
     /**
      * Which surface opened this screen, for `recipe_viewed`'s `source_surface`
@@ -109,6 +119,13 @@ export type MainStackParamList = {
     plannedMealId?: string | null;
     /** For the completion screen's 120pt image. */
     imageUrl?: string;
+    /**
+     * The MEAL id, for "Save meal for next time" on the completion screen.
+     *
+     * 🔑 Not the same as `recipeVersionId`: favourites are keyed to the meal,
+     * and the cook session only carries the version. The caller has both.
+     */
+    mealId?: string;
   };
   SavedMeals: undefined;
   GroceryList: undefined;

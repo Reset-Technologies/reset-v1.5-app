@@ -14,6 +14,7 @@ import {
   ActionSheetIOS,
   Alert,
   Platform,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -24,7 +25,7 @@ import { K } from "../../constants/colors";
 import { fonts, typography, spacing, radius } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
-import { getFavorites, removeFavorite } from "../../services/meals";
+import { getFavorites, removeFavorite, addFavorite } from "../../services/meals";
 import { logEvent } from "../../services/braze";
 import type { MealFavorite } from "../../services/meals";
 
@@ -106,6 +107,8 @@ export function SavedMealsScreen() {
   const [filter, setFilter] = useState<MealTypeFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+  /** Toast state. `undo` carries the meal so it can be put back. */
+  const [toast, setToast] = useState<{ text: string; undo: MealFavorite | null } | null>(null);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -139,15 +142,52 @@ export function SavedMealsScreen() {
     loadFavorites();
   };
 
-  const handleRemove = async (mealId: string) => {
-    setMeals((prev) => prev.filter((m) => m.id !== mealId));
+  /**
+   * Unsaving.
+   *
+   * 🔴 It used to remove the meal on a single tap of the bookmark with no
+   * message and no way back. Observed on device — two results became one and
+   * nothing on screen acknowledged it. A member who mis-taps a badge the size
+   * of a thumbnail corner lost a saved recipe and had to go find it again.
+   *
+   * Lang's section annotates a confirm ("Remove meal from saved?") *and* an
+   * Undo toast. Bryan ruled 2026-10-20: **TEST CASES M14 is the rule
+   * throughout — "Tapping Save toggles immediately, with no confirmation."**
+   * The grid keeps the Undo toast, because here the meal leaves the screen, so
+   * the repair is what the member needs rather than a second tap up front.
+   */
+  const handleRemove = async (meal: MealFavorite) => {
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id));
     try {
-      await removeFavorite(mealId);
+      await removeFavorite(meal.id);
+      // 📌 The toast holds the meal, not just its id — Undo has to put back
+      // something this screen can render before the refetch returns.
+      setToast({ text: "Removed from Saved Meals", undo: meal });
     } catch {
       // Reload to restore if API fails
       loadFavorites();
+      setToast({ text: "That didn't go through. Try again.", undo: null });
     }
   };
+
+  const undoRemove = async (meal: MealFavorite) => {
+    setToast(null);
+    setMeals((prev) => (prev.some((m) => m.id === meal.id) ? prev : [meal, ...prev]));
+    try {
+      await addFavorite(meal.id);
+      setToast({ text: "Meal saved", undo: null });
+    } catch {
+      loadFavorites();
+    }
+  };
+
+  // 📌 Longer than a plain toast: this one carries Undo, so it has to stay up
+  // long enough to be read AND acted on.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.undo ? 6000 : 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleMealPress = (meal: MealFavorite) => {
     navigation.navigate("RecipeDetail", {
@@ -375,7 +415,7 @@ export function SavedMealsScreen() {
                     )}
                     <TouchableOpacity
                       style={styles.gridBookmark}
-                      onPress={() => handleRemove(meal.id)}
+                      onPress={() => void handleRemove(meal)}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <BookmarkIcon filled halo />
@@ -410,11 +450,68 @@ export function SavedMealsScreen() {
           ))}
         </ScrollView>
       )}
+
+      {/* ── Toast with Undo ───────────────────────────────────────────────
+          Lang's annotations put Undo on BOTH "Meal saved" and the removal.
+          With the confirm gone (M14) this toast is the only thing standing
+          between a mis-tapped badge and a lost recipe, so it is not optional
+          here the way it is on Recipe Details. */}
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast.text}
+          </Text>
+          {toast.undo ? (
+            <Pressable
+              onPress={() => void undoRemove(toast.undo!)}
+              accessibilityRole="button"
+              accessibilityLabel="Undo"
+              hitSlop={10}
+            >
+              <Text style={styles.toastUndo}>Undo</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Undo toast (Lang's `5039:39399` annotations)
+  toast: {
+    position: "absolute",
+    left: 11,
+    right: 11,
+    bottom: 28,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    // 🔴 NOT K.brown. Lang draws a dark toast because her annotation sits on a
+    // light canvas — but THIS screen is brown, and a brown pill on a brown
+    // background is invisible. Observed on device: the text floated with no
+    // surface behind it. A toast has to contrast with the screen it is on,
+    // not with the swatch it was drawn against.
+    backgroundColor: K.bone,
+  },
+  toastText: {
+    flex: 1,
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    letterSpacing: -0.15,
+    color: K.brown,
+  },
+  toastUndo: {
+    fontFamily: fonts.dmSansMedium,
+    fontSize: 15,
+    color: K.brown,
+    textDecorationLine: "underline",
+  },
   container: {
     flex: 1,
   },
