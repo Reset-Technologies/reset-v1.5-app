@@ -429,7 +429,18 @@ function TimerSheet({
 
           <View style={styles.sheetSpacer} />
           <Pressable style={styles.startButton} onPress={onStart} accessibilityRole="button">
-            <Text style={styles.startText}>▶  Start</Text>
+            {/* 🔴 Was the character ▶ (U+25B6) inline in the label. On iOS that
+                has EMOJI presentation by default, so the button rendered a blue
+                colour emoji against a brown pill — caught on a device pass, not
+                by tsc, because it is a perfectly valid string. Drawn as SVG
+                instead, the way every other icon in this file is, so it
+                inherits the label's colour. */}
+            <View style={styles.startRow}>
+              <Svg width={14} height={16} viewBox="0 0 14 16" fill="none">
+                <Path d="M2 1.5v13l11-6.5-11-6.5z" fill={K.bone} />
+              </Svg>
+              <Text style={styles.startText}>Start</Text>
+            </View>
           </Pressable>
         </View>
       </View>
@@ -618,5 +629,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: K.brown,
   },
+  startRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   startText: { fontFamily: fonts.dmSans, fontSize: 20, letterSpacing: -0.2, color: K.bone },
 });

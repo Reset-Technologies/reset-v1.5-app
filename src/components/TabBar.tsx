@@ -33,6 +33,12 @@ import { useAiConsentGate } from "../hooks/useAiConsentGate";
 // bar now ... we can move to the new nav once Progress, Account, and the Ester
 // decision are ready.")
 const SLOT_W = 80; // one tab slot — Lang's frames "1" and "4" are both 80 wide
+/**
+ * Half a unit of overlap on each inserted section, so abutting fills never
+ * share an edge. See the note at the render site — a shared edge between two
+ * antialiased rects is a hairline at any non-integer raster scale.
+ */
+const SEAM_OVERLAP = 0.5;
 const NOTCH_W = 90; // the middle piece, SUBTRACT_PATH, x 79.5..170.5
 const PILL_H = 50;
 /** The pill exactly as Lang drew it: cap + notch + cap. */
@@ -208,24 +214,43 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               caps show, so the join is invisible. */}
           {Array.from({ length: leftCount - 1 }).map((_, i) => (
             <React.Fragment key={i}>
+              {/* 🔴 SEAM_OVERLAP, and this is the SECOND time this bar has grown
+                  a hairline. The first was a stroke left uncovered (see the
+                  note above). This one is different and is caused by ABUTMENT:
+                  each inserted section used to start exactly where the previous
+                  one ended, so two independently antialiased edges met on the
+                  same coordinate. Their coverage does not sum to 1 at a
+                  non-integer raster scale, which leaves a visible vertical
+                  line.
+
+                  Why it hid on iOS: the pill is scaled to `pillW`, so the
+                  effective scale depends on device width AND slot count. At the
+                  iPhone's 3x it landed on a pixel boundary and vanished; at the
+                  2.625x of a 420dpi Android it did not — found on a device pass
+                  with FOUR slots, where there are two of these joins rather
+                  than one.
+
+                  🔑 Overlapping by half a unit removes the shared edge entirely
+                  rather than trying to land it on a boundary, so it cannot come
+                  back for a third time on some future device scale. */}
               <Rect
-                x={SLOT_W + i * SLOT_W}
+                x={SLOT_W + i * SLOT_W - SEAM_OVERLAP}
                 y={1}
-                width={SLOT_W}
+                width={SLOT_W + SEAM_OVERLAP * 2}
                 height={PILL_H - 2}
                 fill={pillBg}
               />
               <Rect
-                x={SLOT_W + i * SLOT_W}
+                x={SLOT_W + i * SLOT_W - SEAM_OVERLAP}
                 y={0}
-                width={SLOT_W}
+                width={SLOT_W + SEAM_OVERLAP * 2}
                 height={1}
                 fill={pillStroke}
               />
               <Rect
-                x={SLOT_W + i * SLOT_W}
+                x={SLOT_W + i * SLOT_W - SEAM_OVERLAP}
                 y={PILL_H - 1}
-                width={SLOT_W}
+                width={SLOT_W + SEAM_OVERLAP * 2}
                 height={1}
                 fill={pillStroke}
               />
