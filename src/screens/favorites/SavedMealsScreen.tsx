@@ -14,6 +14,8 @@ import {
   ActionSheetIOS,
   Alert,
   Platform,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -24,7 +26,7 @@ import { K } from "../../constants/colors";
 import { fonts, typography, spacing, radius } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
-import { getFavorites, removeFavorite } from "../../services/meals";
+import { getFavorites, removeFavorite, addFavorite } from "../../services/meals";
 import { logEvent } from "../../services/braze";
 import type { MealFavorite } from "../../services/meals";
 
@@ -106,6 +108,9 @@ export function SavedMealsScreen() {
   const [filter, setFilter] = useState<MealTypeFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+  /** Lang's confirm + toast. `undo` carries the meal so it can be put back. */
+  const [pendingRemove, setPendingRemove] = useState<MealFavorite | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo: MealFavorite | null } | null>(null);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -139,15 +144,57 @@ export function SavedMealsScreen() {
     loadFavorites();
   };
 
-  const handleRemove = async (mealId: string) => {
-    setMeals((prev) => prev.filter((m) => m.id !== mealId));
+  /**
+   * Unsaving, with the two things Lang's section annotates and this screen
+   * had neither of.
+   *
+   * 🔴 It used to remove the meal on a single tap of the bookmark: no
+   * confirmation, no message, no way back. Observed on device — two results
+   * became one and nothing on screen acknowledged it. A member who mis-taps a
+   * badge the size of a thumbnail corner loses a saved recipe and has to go
+   * find it again.
+   *
+   * Her flow is *"Remove meal from saved?"* [Cancel] [Remove] → a toast
+   * carrying **Undo**. Both are here now; the confirm is what stops the
+   * accident and the Undo is what repairs it.
+   */
+  const handleRemove = (meal: MealFavorite) => setPendingRemove(meal);
+
+  const confirmRemove = async () => {
+    const meal = pendingRemove;
+    if (!meal) return;
+    setPendingRemove(null);
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id));
     try {
-      await removeFavorite(mealId);
+      await removeFavorite(meal.id);
+      // 📌 The toast holds the meal, not just its id — Undo has to put back
+      // something this screen can render before the refetch returns.
+      setToast({ text: "Meal removed from saved", undo: meal });
     } catch {
       // Reload to restore if API fails
       loadFavorites();
+      setToast({ text: "That didn't go through. Try again.", undo: null });
     }
   };
+
+  const undoRemove = async (meal: MealFavorite) => {
+    setToast(null);
+    setMeals((prev) => (prev.some((m) => m.id === meal.id) ? prev : [meal, ...prev]));
+    try {
+      await addFavorite(meal.id);
+      setToast({ text: "Meal saved", undo: null });
+    } catch {
+      loadFavorites();
+    }
+  };
+
+  // 📌 Longer than a plain toast: this one carries Undo, so it has to stay up
+  // long enough to be read AND acted on.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.undo ? 6000 : 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleMealPress = (meal: MealFavorite) => {
     navigation.navigate("RecipeDetail", {
@@ -375,7 +422,7 @@ export function SavedMealsScreen() {
                     )}
                     <TouchableOpacity
                       style={styles.gridBookmark}
-                      onPress={() => handleRemove(meal.id)}
+                      onPress={() => handleRemove(meal)}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <BookmarkIcon filled halo />
@@ -410,11 +457,147 @@ export function SavedMealsScreen() {
           ))}
         </ScrollView>
       )}
+
+      {/* ── Remove meal from saved? (Lang's `5039:39399` annotation) ───────
+          A bookmark badge sits in the corner of a thumbnail; a mis-tap used
+          to delete a saved recipe outright. */}
+      <Modal
+        visible={!!pendingRemove}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingRemove(null)}
+      >
+        <Pressable style={styles.dialogBackdrop} onPress={() => setPendingRemove(null)} />
+        <View style={styles.dialogWrap} pointerEvents="box-none">
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>Remove meal from saved?</Text>
+            <View style={styles.dialogButtons}>
+              <Pressable
+                style={styles.dialogCancel}
+                onPress={() => setPendingRemove(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
+                <Text style={styles.dialogCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.dialogRemove}
+                onPress={confirmRemove}
+                accessibilityRole="button"
+                accessibilityLabel="Remove"
+              >
+                <Text style={styles.dialogRemoveText}>Remove</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Toast with Undo ───────────────────────────────────────────────
+          Her annotations put Undo on BOTH "Meal saved" and "Meal removed
+          from saved". Undo is the part that makes the action safe; without
+          it the confirm is just friction. */}
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast.text}
+          </Text>
+          {toast.undo ? (
+            <Pressable
+              onPress={() => void undoRemove(toast.undo!)}
+              accessibilityRole="button"
+              accessibilityLabel="Undo"
+              hitSlop={10}
+            >
+              <Text style={styles.toastUndo}>Undo</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Remove-from-saved confirm + toast (Lang's `5039:39399` annotations)
+  dialogBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(54,20,22,0.45)",
+  },
+  dialogWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+  },
+  dialog: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 14,
+    backgroundColor: K.bone,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    gap: 16,
+  },
+  dialogTitle: {
+    fontFamily: fonts.dmSansMedium,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: K.brown,
+    textAlign: "center",
+  },
+  dialogButtons: { flexDirection: "row", gap: 10 },
+  dialogCancel: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(54,20,22,0.25)",
+    alignItems: "center",
+  },
+  dialogCancelText: { fontFamily: fonts.dmSansMedium, fontSize: 15, color: K.brown },
+  dialogRemove: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: K.brown,
+    alignItems: "center",
+  },
+  dialogRemoveText: { fontFamily: fonts.dmSansMedium, fontSize: 15, color: K.bone },
+  toast: {
+    position: "absolute",
+    left: 11,
+    right: 11,
+    bottom: 28,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    // 🔴 NOT K.brown. Lang draws a dark toast because her annotation sits on a
+    // light canvas — but THIS screen is brown, and a brown pill on a brown
+    // background is invisible. Observed on device: the text floated with no
+    // surface behind it. A toast has to contrast with the screen it is on,
+    // not with the swatch it was drawn against.
+    backgroundColor: K.bone,
+  },
+  toastText: {
+    flex: 1,
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    letterSpacing: -0.15,
+    color: K.brown,
+  },
+  toastUndo: {
+    fontFamily: fonts.dmSansMedium,
+    fontSize: 15,
+    color: K.brown,
+    textDecorationLine: "underline",
+  },
   container: {
     flex: 1,
   },

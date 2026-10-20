@@ -794,8 +794,12 @@ export function RecipeDetailScreen() {
     try {
       if (next) await addFavorite(meal.id);
       else await removeFavorite(meal.id);
+      // Lang's "Saving a Meal" annotation on `5039:39399`. The bookmark fills
+      // in, which is easy to miss on a photo; this says what happened.
+      setToast(next ? "Meal saved" : "Meal removed from saved");
     } catch {
       setIsFavorited(!next);
+      setToast("That didn't go through. Try again.");
     }
   };
 
