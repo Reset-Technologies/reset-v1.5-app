@@ -51,9 +51,10 @@ import { COUNTABLE_UNITS } from "../../utils/countableUnits";
 import {
   MealSlotType,
   MyPlanResponse,
-  addMealToPlan,
+  MyPlanSlot,
   getMyPlan,
   setPlannedMealServings,
+  swapPlannedMeal,
 } from "../../services/myPlan";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
@@ -669,6 +670,10 @@ export function RecipeDetailScreen() {
       ? { uri: detail.imageAsset }
       : null;
 
+  /** The chosen day's planned meals — what the member picks between. */
+  const dayMeals: MyPlanSlot[] =
+    plan?.days.find((d) => d.date === addDate)?.slots.filter((sl) => sl.recipe) ?? [];
+
   const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
   /**
    * 🔴 Gated on `recipeVersionId`, not on the recipe existing. The route
@@ -692,37 +697,50 @@ export function RecipeDetailScreen() {
   }, [plan, planLoading]);
 
   /**
-   * Write the add, then close.
+   * Swap this recipe INTO one of the day's existing meals.
    *
-   * 📌 Optimistic close with a quiet failure, the same stance the rejection
-   * and thumbs drawers take: the member has said what they want, and reopening
-   * a sheet to report our network problem makes it their problem. The week is
-   * refetched when they next open My Plan, so a lost add shows up as the meal
-   * simply not being there rather than as a wrong plan.
+   * 🔴 This REPLACES; it does not append — and the correction came from
+   * Lang's own flow. Her "Add to meal plan" section (5055:48783) reads
+   * *"Choose a meal to swap this one in for"*, confirms with an
+   * **Original Meal → New Meal** sheet, and calls the result "Swap confirmed".
+   *
+   * The first cut of this screen used `POST my-plan/meals`, whose own doc says
+   * it *"Appends into the named day and slot"*. On device that gave the member
+   * a Tuesday with TWO dinners — the original plus the one they added, the same
+   * recipe twice in one day. A plan that grows every time you like something is
+   * not a plan.
+   *
+   * 🔑 MY PLAN r9: *"Replace planned meal in same slot; refresh grocery
+   * delta."* Day, slot, sort order and servings survive; only the content
+   * changes. It writes a new revision and leaves the Score plan version alone
+   * (START HERE r7), which is why an approved swap can still count as On plan.
+   *
+   * 📌 A swap is NOT a rejection — SWAPS + EDITS is explicit that *"a passive
+   * swap alone is not a rejection"* — so nothing here emits `meal_rejected` or
+   * touches Fit. The member is choosing, not complaining.
    */
-  const confirmAdd = useCallback(
-    async (slotType: MealSlotType) => {
+  const confirmPlanSwap = useCallback(
+    async (slot: MyPlanSlot) => {
       const versionId = detail?.recipeVersionId;
       const planId = plan?.mealPlanId;
-      const date = addDate;
-      if (!versionId || !planId || !date || adding) return;
+      if (!versionId || !planId || adding) return;
       setAdding(true);
       setAddSheet(false);
       try {
-        await addMealToPlan({
+        await swapPlannedMeal({
+          plannedMealId: slot.id,
           mealPlanId: planId,
-          localDate: date,
-          slotType,
           recipeVersionId: versionId,
         });
-        setAddedTo(`${dayLabel(date)} \u00b7 ${ADD_SLOT_LABEL[slotType]}`);
+        setAddedTo(slot.recipe?.title ?? null);
       } catch {
-        // Deliberately silent — see above.
+        // Deliberately silent — the member has said what they want, and
+        // reopening a sheet to report our network problem makes it theirs.
       } finally {
         setAdding(false);
       }
     },
-    [detail, plan, addDate, adding],
+    [detail, plan, adding],
   );
 
   return (
@@ -1077,8 +1095,9 @@ export function RecipeDetailScreen() {
         <Pressable style={styles.addBackdrop} onPress={() => setAddSheet(false)} />
         <View style={styles.addSheet}>
           <Text style={styles.addTitle}>Add to your week</Text>
-          <Text style={styles.addSub} numberOfLines={1}>
-            {detail?.name ?? meal.name}
+          {/* Lang's instruction, verbatim from the frame. */}
+          <Text style={styles.addSub} numberOfLines={2}>
+            Choose a meal to swap this one in for
           </Text>
 
           {planLoading ? (
@@ -1103,18 +1122,29 @@ export function RecipeDetailScreen() {
                 ))}
               </ScrollView>
 
-              {(["first_meal", "midday", "evening", "snack"] as MealSlotType[]).map((slot) => (
-                <Pressable
-                  key={slot}
-                  style={styles.slotRow}
-                  disabled={adding}
-                  onPress={() => void confirmAdd(slot)}
-                  accessibilityRole="button"
-                  accessibilityLabel={ADD_SLOT_LABEL[slot]}
-                >
-                  <Text style={styles.slotRowText}>{ADD_SLOT_LABEL[slot]}</Text>
-                </Pressable>
-              ))}
+              {/* 🔴 The day's EXISTING meals, not a list of empty slots. Her
+                  frame puts each day's meals under the selector and asks the
+                  member to pick one — the thing being replaced has to be
+                  visible, or "swap" is a guess. */}
+              {dayMeals.length === 0 ? (
+                <Text style={styles.addSub}>Nothing planned that day yet.</Text>
+              ) : (
+                dayMeals.map((slot) => (
+                  <Pressable
+                    key={slot.id}
+                    style={styles.slotRow}
+                    disabled={adding}
+                    onPress={() => void confirmPlanSwap(slot)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Swap ${slot.recipe?.title ?? "this meal"}`}
+                  >
+                    <Text style={styles.slotRowLabel}>{ADD_SLOT_LABEL[slot.slotType]}</Text>
+                    <Text style={styles.slotRowText} numberOfLines={1}>
+                      {slot.recipe?.title ?? "Empty slot"}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
             </>
           )}
         </View>
@@ -1804,6 +1834,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderTopWidth: 1,
     borderTopColor: "rgba(243,239,227,0.14)",
+  },
+  slotRowLabel: {
+    fontFamily: fonts.dmSans,
+    fontSize: 12,
+    color: K.bone,
+    opacity: 0.7,
+    marginBottom: 2,
   },
   slotRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
   loadingOverlay: {
