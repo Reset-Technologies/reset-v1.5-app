@@ -45,10 +45,14 @@ const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
  * r16's *"avoid architecture that traps Ester in advice-only mode"*.
  */
 
-/** 🔴 Lang's wording. Bryan owns member-facing copy; these stand in. */
+/**
+ * Lang's wording, with the middle chip replaced by Bryan's own, 2026-10-20:
+ * "Why is this good for recovery?" → *"Why did you recommend this meal?"*.
+ * The other two he passed as written.
+ */
 const SUGGESTIONS = [
   "Can I swap something in this meal?",
-  "Why is this good for recovery?",
+  "Why did you recommend this meal?",
   "How tricky is this to cook?",
 ];
 
