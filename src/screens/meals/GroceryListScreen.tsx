@@ -113,7 +113,7 @@ export function GroceryListScreen({ navigation }: Props) {
       // Lang's annotation on this flow. 📌 No Undo here, unlike her Saved
       // Meals toasts — she draws one there and not here, and the confirm
       // dialog already stands between the member and the delete.
-      setToast("Item deleted from Grocery List");
+      setToast("Removed from Grocery List");
     } catch {
       setList(before ?? null);
       setToast("That didn't go through. Try again.");
@@ -316,12 +316,14 @@ function GroceryRow({
    * "needs review" would be our word for our problem — these say what the
    * member is actually looking at.
    *
-   * ⚠️ Copy is mine, not Bryan's. He owns member-facing wording.
+   * ✅ "Amounts shown separately" is Bryan's, 2026-10-20.
+   * ⚠️ "Amount unavailable" is still mine — the no-amount case was not in the
+   * list he ruled on, so it has not been through him.
    */
   const flag = !item.needsReview
     ? null
     : amount
-      ? "Amounts not combined"
+      ? "Amounts shown separately"
       : "Amount unavailable";
   return (
     <Pressable
