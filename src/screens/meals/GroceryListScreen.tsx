@@ -45,6 +45,7 @@ export function GroceryListScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<GroceryItem | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (rebuild = false) => {
@@ -109,10 +110,21 @@ export function GroceryListScreen({ navigation }: Props) {
     setList((prev) => prev?.filter((i) => i.id !== item.id) ?? prev);
     try {
       await removeGroceryItem(item.id);
+      // Lang's annotation on this flow. 📌 No Undo here, unlike her Saved
+      // Meals toasts — she draws one there and not here, and the confirm
+      // dialog already stands between the member and the delete.
+      setToast("Item deleted from Grocery List");
     } catch {
       setList(before ?? null);
+      setToast("That didn't go through. Try again.");
     }
   }, [pendingDelete, list]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleAdded = useCallback((item: GroceryItem) => {
     setAddOpen(false);
@@ -265,6 +277,17 @@ export function GroceryListScreen({ navigation }: Props) {
         onKeep={() => setPendingDelete(null)}
         onDelete={confirmDelete}
       />
+
+      {/* 🔴 NOT a dark pill. This screen's background IS brown, so Lang's dark
+          toast would be invisible on it — the same mistake I made once on
+          Saved Meals and only caught on the device. */}
+      {toast ? (
+        <View style={styles.toast} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast}
+          </Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -508,6 +531,24 @@ function DeleteConfirm({
 }
 
 const styles = StyleSheet.create({
+  toast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    minHeight: 52,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: K.bone,
+  },
+  toastText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    letterSpacing: -0.15,
+    color: K.brown,
+  },
   container: { flex: 1, backgroundColor: K.brown },
   header: {
     flexDirection: "row",
