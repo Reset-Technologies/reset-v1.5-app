@@ -1901,7 +1901,10 @@ const styles = StyleSheet.create({
   // Toast (Lang 5055:47291)
   toast: {
     position: "absolute",
-    top: 56,
+    // 🔑 Below the floating back / share / bookmark circles, not over them.
+    // At 56 it covered all three for the three seconds it was up — visible on
+    // both platforms once I looked at Android, and I had missed it on iOS.
+    top: 112,
     left: 11,
     right: 11,
     minHeight: 58,
