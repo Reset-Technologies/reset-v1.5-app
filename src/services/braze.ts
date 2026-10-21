@@ -33,8 +33,14 @@ try {
  * actually came from. Set EXPO_PUBLIC_BRAZE_IN_DEV=1 to opt a dev build back
  * in deliberately.
  *
- * 📌 Amplitude and ad-attribution are intentionally left alone — they do not
- * send anyone an email. Worth revisiting separately for analytics hygiene.
+ * 📌 Amplitude now has the same gate (`AMPLITUDE_ENABLED`, 2026-10-21) — the
+ * hygiene problem this note deferred turned out to be measurable: 30 phantom
+ * signups in one week. See amplitude.ts for the numbers.
+ *
+ * 📌 Ad-attribution is still deliberately left alone. A dev build does report
+ * to the real AppsFlyer account, but we are mid-ticket with them over install
+ * counts for exactly this window — changing what dev builds report now would
+ * muddy the comparison we are asking them to explain.
  */
 const BRAZE_ENABLED =
   !__DEV__ || process.env.EXPO_PUBLIC_BRAZE_IN_DEV === "1";
