@@ -66,6 +66,7 @@ export function AskEsterSheet({
   openingLoading,
   mealId,
   context,
+  sourceSurface,
   renderRich,
 }: {
   visible: boolean;
@@ -77,6 +78,12 @@ export function AskEsterSheet({
   openingLoading: boolean;
   mealId: string;
   context: EsterMealContext;
+  /**
+   * Which surface navigated here — `RecipeDetail`'s own route param, already
+   * sent to the server with the recipe view (#184). It is what separates
+   * ESTER CONTEXT r7 from r8; see the entry derivation below.
+   */
+  sourceSurface?: string;
   /** Renders `**bold**` the way the screen's own Ester block does. */
   renderRich: (text: string) => React.ReactNode;
 }) {
@@ -103,12 +110,25 @@ export function AskEsterSheet({
      * not. TEST CASES **M34** pins the first case to `ester_opened_from_meal`,
      * so sending `_recipe` for everything would have mislabelled every open
      * that came from the plan — which is most of them.
+     *
+     * 🔑 Same argument separates r7 ("Explore") from r8. A recipe reached by
+     * browsing is not yet in the member's plan, and r7 is its own entry with
+     * its own required context — so an open from Explore is `_explore`, not
+     * `_recipe`. The screen already carries `sourceSurface` for exactly this
+     * distinction (#184 sends it with the recipe view), so this reads the
+     * answer rather than guessing it. Both entries require only
+     * `recipeVersionId`, which is why the mislabel was invisible: the server
+     * accepted it and the counts simply landed on the wrong entry.
      */
-    const entry: EsterEntryPoint = context.plannedMealId ? "meal" : "recipe";
+    const entry: EsterEntryPoint = context.plannedMealId
+      ? "meal"
+      : sourceSurface === "explore"
+        ? "explore"
+        : "recipe";
     recordEsterOpened(entry, context).catch(() => {
       // Analytics must never block the member from asking a question.
     });
-  }, [visible, context]);
+  }, [visible, context, sourceSurface]);
 
   useEffect(() => {
     if (!visible) {

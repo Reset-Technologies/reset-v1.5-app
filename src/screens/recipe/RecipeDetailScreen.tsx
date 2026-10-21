@@ -1640,6 +1640,7 @@ export function RecipeDetailScreen() {
         openingMessage={esterMessage}
         openingLoading={esterLoading}
         mealId={meal.id}
+        sourceSurface={sourceSurface}
         renderRich={renderBoldSegments}
         context={{
           recipeId: meal.id,
