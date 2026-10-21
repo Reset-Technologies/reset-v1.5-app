@@ -32,7 +32,27 @@ let initialized = false;
 /** Set before init happens; replayed into init() so the first events are attributed. */
 let pendingUserId: string | null = null;
 
+/**
+ * 🔴 A dev build logs to the PRODUCTION Amplitude project — `app.config.ts`
+ * falls back to a hardcoded key when `AMPLITUDE_API_KEY` is unset, which is
+ * every local run, and there is no dev project.
+ *
+ * Measured 2026-10-21, answering Alex's "is amplitude accurate?": over
+ * Oct 1-7 Amplitude counted **39** email signups where the production backend
+ * registered **9** — 30 phantom signups, in the week onboarding was being
+ * rebuilt and device-walked. Over Oct 8-21, with no such testing, the two
+ * agree (54 vs 53). So the number is sound except on the days we work on it,
+ * which is exactly when someone looks.
+ *
+ * Same shape and same opt-out as `BRAZE_ENABLED` in braze.ts. ⚠️ Release
+ * builds are UNAFFECTED, TestFlight and internal-track included — this closes
+ * the debug/Metro hole, which is where the strays come from.
+ */
+const AMPLITUDE_ENABLED =
+  !__DEV__ || process.env.EXPO_PUBLIC_AMPLITUDE_IN_DEV === "1";
+
 function ready(): boolean {
+  if (!AMPLITUDE_ENABLED) return false;
   if (!Amplitude || !API_KEY) return false;
   if (initialized) return true;
 
