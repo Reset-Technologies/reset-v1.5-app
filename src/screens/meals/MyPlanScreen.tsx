@@ -49,6 +49,7 @@ import ReasonDrawer from "../../components/ReasonDrawer";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { logEvent } from "../../services/amplitude";
+import { ApiError } from "../../services/apiClient";
 
 /**
  * 🔑 Typed against the real param list, NOT `any`.
@@ -501,8 +502,16 @@ export function MyPlanScreen({ navigation }: Props) {
    *
    * 🔴 The server refuses to remove the last meal in the plan — a product rule
    * ("My Plan is never empty"), not a failure. It arrives as a 400 like any
-   * other, so it is caught and worded for the member rather than reported as
-   * a generic error.
+   * other, so it is caught and worded for the member.
+   *
+   * 🔴🔴 It must NOT go through `setError`, which renders a FULL-SCREEN error
+   * view and replaces the entire week. Caught on device: refusing the removal
+   * blanked My Plan down to a title and one line, so the member lost the
+   * screen over a rule they merely bumped into and had to navigate away and
+   * back to recover it. A refusal leaves the plan on screen valid and
+   * unchanged, so it belongs in the transient `notice` bar — the same one a
+   * rebuild uses. Only a 400 is the rule; anything else is a real failure and
+   * says so rather than blaming the member's week.
    */
   const doRemove = useCallback(
     async (slot: MyPlanSlot, onDate: string) => {
@@ -524,10 +533,12 @@ export function MyPlanScreen({ navigation }: Props) {
         });
         await reloadPlan();
         setUndo(restore);
-      } catch {
+      } catch (e) {
         setUndo(null);
-        setError(
-          "That's the only meal left this week. Rebuild the week instead.",
+        setNotice(
+          e instanceof ApiError && e.status === 400
+            ? "That's the only meal left this week. Rebuild the week instead."
+            : "That meal could not be removed.",
         );
       } finally {
         setBusy(false);
