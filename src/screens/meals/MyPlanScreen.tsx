@@ -23,6 +23,8 @@ import { fonts } from "../../constants/typography";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import {
   getMyPlan,
+  addMealToPlan,
+  removePlannedMeal,
   movePlannedMeal,
   findMovedSlot,
   swapPlannedMeal,
@@ -47,6 +49,7 @@ import ReasonDrawer from "../../components/ReasonDrawer";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Path } from "react-native-svg";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { logEvent } from "../../services/amplitude";
+import { ApiError } from "../../services/apiClient";
 
 /**
  * 🔑 Typed against the real param list, NOT `any`.
@@ -236,6 +239,19 @@ export function MyPlanScreen({ navigation }: Props) {
   const [undo, setUndo] = useState<
     | { kind: "move"; plannedMealId: string; toDate: string; title: string }
     | { kind: "swap"; plannedMealId: string; recipeVersionId: string; title: string }
+    /**
+     * 🔑 Remove's undo carries the MEAL, not an id — there is no row left to
+     * point at. Putting it back is an add, so it needs everything the add
+     * route wants, captured before the removal.
+     */
+    | {
+        kind: "remove";
+        localDate: string;
+        slotType: MealSlotType;
+        recipeVersionId: string;
+        servings: number;
+        title: string;
+      }
     | null
   >(null);
 
@@ -477,6 +493,61 @@ export function MyPlanScreen({ navigation }: Props) {
   );
 
   /**
+   * Remove a meal from the day — Bryan, 2026-10-21.
+   *
+   * 🔑 Undo is owed here by the rule he set on 10-20: the meal LEAVES THE
+   * SCREEN, and that is what makes a toast with Undo necessary rather than
+   * decorative. Unlike move and swap, there is no row afterwards to re-read,
+   * so the undo payload is captured BEFORE the call and the inverse is an add.
+   *
+   * 🔴 The server refuses to remove the last meal in the plan — a product rule
+   * ("My Plan is never empty"), not a failure. It arrives as a 400 like any
+   * other, so it is caught and worded for the member.
+   *
+   * 🔴🔴 It must NOT go through `setError`, which renders a FULL-SCREEN error
+   * view and replaces the entire week. Caught on device: refusing the removal
+   * blanked My Plan down to a title and one line, so the member lost the
+   * screen over a rule they merely bumped into and had to navigate away and
+   * back to recover it. A refusal leaves the plan on screen valid and
+   * unchanged, so it belongs in the transient `notice` bar — the same one a
+   * rebuild uses. Only a 400 is the rule; anything else is a real failure and
+   * says so rather than blaming the member's week.
+   */
+  const doRemove = useCallback(
+    async (slot: MyPlanSlot, onDate: string) => {
+      if (!plan || busy || !slot.recipe) return;
+      setBusy(true);
+      setActing(null);
+      const restore = {
+        kind: "remove" as const,
+        localDate: onDate,
+        slotType: slot.slotType,
+        recipeVersionId: slot.recipe.versionId,
+        servings: slot.servings,
+        title: slot.recipe.title,
+      };
+      try {
+        await removePlannedMeal({
+          plannedMealId: slot.id,
+          mealPlanId: plan.mealPlanId,
+        });
+        await reloadPlan();
+        setUndo(restore);
+      } catch (e) {
+        setUndo(null);
+        setNotice(
+          e instanceof ApiError && e.status === 400
+            ? "That's the only meal left this week. Rebuild the week instead."
+            : "That meal could not be removed.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [plan, busy, reloadPlan],
+  );
+
+  /**
    * Undo — the inverse call, against the id the re-read gave us.
    *
    * 🔴 It cannot reuse the id the member acted on: every revision writes fresh
@@ -488,7 +559,16 @@ export function MyPlanScreen({ navigation }: Props) {
     const target = undo;
     setUndo(null);
     try {
-      if (target.kind === "move") {
+      if (target.kind === "remove") {
+        // Put it back where it was, at the servings it had.
+        await addMealToPlan({
+          mealPlanId: plan.mealPlanId,
+          localDate: target.localDate,
+          slotType: target.slotType,
+          recipeVersionId: target.recipeVersionId,
+          servings: target.servings,
+        });
+      } else if (target.kind === "move") {
         await movePlannedMeal({
           plannedMealId: target.plannedMealId,
           mealPlanId: plan.mealPlanId,
@@ -942,6 +1022,18 @@ export function MyPlanScreen({ navigation }: Props) {
           <Pressable style={styles.moveRow} onPress={() => setPicker("reject")}>
             <Text style={styles.moveRowText}>This didn't work for me</Text>
           </Pressable>
+          {/* 🔑 Bryan, 2026-10-21: *"let's use the existing UI patterns"* — so
+              Remove is a fourth row on the sheet the member already opens to
+              swap or move, not a new gesture to learn. It sits last because it
+              is the only one that takes a meal away. */}
+          <Pressable
+            style={styles.moveRow}
+            onPress={() => {
+              if (acting) void doRemove(acting.slot, acting.onDate);
+            }}
+          >
+            <Text style={styles.moveRowText}>Remove from this day</Text>
+          </Pressable>
         </View>
       </Modal>
 
@@ -1145,7 +1237,12 @@ export function MyPlanScreen({ navigation }: Props) {
       {undo ? (
         <View style={styles.undoBar}>
           <Text style={styles.undoText} numberOfLines={1}>
-            {undo.kind === "move" ? "Moved" : "Swapped in"} {undo.title}
+            {undo.kind === "move"
+              ? "Moved"
+              : undo.kind === "swap"
+                ? "Swapped in"
+                : "Removed"}{" "}
+            {undo.title}
           </Text>
           <Pressable
             onPress={doUndo}

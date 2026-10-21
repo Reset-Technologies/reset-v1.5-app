@@ -276,6 +276,35 @@ export async function movePlannedMeal(params: {
 }
 
 /**
+ * Remove a meal from the week — Bryan's ruling, 2026-10-21: *"Let's include a
+ * simple Remove action so members can remove a meal they've added to a day.
+ * The remaining meals stay in place, and the grocery list should update
+ * accordingly."*
+ *
+ * 🔑 Both of those are the server's doing, not ours. `removeMeal` commits a
+ * revision carrying every other meal forward with its own day, slot, order,
+ * servings and planned time untouched, and the grocery list derives from the
+ * current revision — so it re-derives on the next read with nothing to
+ * invalidate here.
+ *
+ * 🔴 The server REFUSES to remove the last meal in the plan ("My Plan is never
+ * empty"), which is a product rule, not an error condition. The caller has to
+ * say something useful when that comes back.
+ *
+ * 📌 `mealPlanId` goes in the BODY, not the query string — this route reads
+ * `@Body()`, unlike the substitution delete beside it, which reads `@Query()`.
+ */
+export async function removePlannedMeal(params: {
+  plannedMealId: string;
+  mealPlanId: string;
+}): Promise<void> {
+  await apiClient(`/api/meals/my-plan/meals/${params.plannedMealId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ mealPlanId: params.mealPlanId }),
+  });
+}
+
+/**
  * Find a meal after it has been moved, so the move can be undone.
  *
  * 🔴🔴 PLANNED-MEAL IDS DO NOT SURVIVE AN EDIT. `commitRevision` is handed
