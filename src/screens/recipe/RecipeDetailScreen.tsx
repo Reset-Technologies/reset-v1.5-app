@@ -116,11 +116,27 @@ function parseInstructions(instructions: string | null): string[] {
 
   const normalized = instructions
     .replace(/\.(?=[A-Za-z])/g, ". ")
+    // 🔴 Line-start markers must be stripped BEFORE newlines are collapsed —
+    // afterwards `^` can only mean the start of the whole string, and a
+    // newline-delimited list ("1. Chop\n2. Fry") keeps its numbers.
+    .replace(/^\s*\d+\.\s*/gm, " ")
     .replace(/\s*\n\s*/g, " ")
     .replace(/^\s*Instructions\s*:?\s*/i, " ")
     .replace(/^\s*Instructions(?=[A-Z])/, " ")
-    .replace(/^\s*\d+\.\s*/gm, " ")
-    .replace(/(?:^|\s)\d+\.\s+/g, " ")
+    /**
+     * 🔴🔴 A number followed by a full stop is only a LIST MARKER where one
+     * can occur: at the start, or straight after a sentence ended. The old
+     * rule matched `\d+\.` after ANY whitespace, so
+     * *"Preheat oven to 325.In a 10-inch skillet…"* rendered as **"Preheat
+     * oven to In a 10-inch skillet"** — the oven temperature silently deleted
+     * from a cooking instruction. Found walking Recipe Details 2026-10-21;
+     * the source data was correct, we were destroying it on the way to the
+     * screen. "Bake for 45." lost its 45 the same way.
+     *
+     * 📌 Capped at two digits as a second guard: list markers are small, oven
+     * temperatures and quantities are not.
+     */
+    .replace(/(^|[.!?])\s*\d{1,2}\.\s+/g, "$1 ")
     .replace(/\bStep\s*\d+\s*:?\s*/gi, " ")
     .replace(/\s{2,}/g, " ")
     .trim();

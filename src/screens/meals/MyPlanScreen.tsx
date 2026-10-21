@@ -102,6 +102,27 @@ const SLOT_LABEL: Record<MealSlotType, string> = {
   snack: "Snack",
 };
 
+/**
+ * The order a day READS in, which is not the order rows were written in.
+ *
+ * 🔴 `sortOrder` is an insertion counter: both `addMeal` and `moveMeal` set it
+ * to `max(sortOrder) + 1`, so anything added to a day lands LAST. Sorting the
+ * view by it alone put a restored lunch under dinner — caught walking the tab
+ * 2026-10-21 after an Undo, and it is not an Undo bug: adding a breakfast from
+ * "Add to plan" shows it below dinner the same way.
+ *
+ * 📌 `sortOrder` still breaks ties INSIDE a slot, which is the one thing it is
+ * genuinely good for — two dinners on one day keep the order they were added.
+ * MY PLAN r16 keeps the model semantic, so this ranking lives in the view
+ * beside `SLOT_LABEL` rather than becoming a column.
+ */
+const SLOT_RANK: Record<MealSlotType, number> = {
+  first_meal: 0,
+  midday: 1,
+  evening: 2,
+  snack: 3,
+};
+
 const DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
 
 /**
@@ -856,7 +877,11 @@ export function MyPlanScreen({ navigation }: Props) {
         <View style={styles.card}>
           {(day?.slots ?? [])
             .slice()
-            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .sort(
+              (a, b) =>
+                (SLOT_RANK[a.slotType] ?? 99) - (SLOT_RANK[b.slotType] ?? 99) ||
+                a.sortOrder - b.sortOrder,
+            )
             .map((slot, idx) => (
               <SlotRow
                 key={slot.id}
