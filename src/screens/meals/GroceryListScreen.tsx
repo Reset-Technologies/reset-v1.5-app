@@ -316,15 +316,15 @@ function GroceryRow({
    * "needs review" would be our word for our problem — these say what the
    * member is actually looking at.
    *
-   * ✅ "Amounts shown separately" is Bryan's, 2026-10-20.
-   * ⚠️ "Amount unavailable" is still mine — the no-amount case was not in the
-   * list he ruled on, so it has not been through him.
+   * ✅ Both strings are Bryan's: "Amounts shown separately" 2026-10-20, and
+   * "Quantity not provided" 2026-10-21 — he ruled on the no-amount case after
+   * I flagged that the placeholder there had been mine, not his.
    */
   const flag = !item.needsReview
     ? null
     : amount
       ? "Amounts shown separately"
-      : "Amount unavailable";
+      : "Quantity not provided";
   return (
     <Pressable
       onPress={onToggle}
@@ -553,11 +553,17 @@ function DeleteConfirm({
 }
 
 const styles = StyleSheet.create({
-  /** Quiet, not alarming: this is a data gap, not something they did wrong. */
+  /**
+   * Quiet, not alarming: this is a data gap, not something they did wrong.
+   *
+   * 🔑 NOT italic. DM Sans ships no italic face, so `fontStyle: "italic"`
+   * made Android synthesise an oblique while iOS rendered it upright — the
+   * same string leaning on one platform and not the other. Bryan ruled
+   * upright on both, 2026-10-21.
+   */
   rowFlag: {
     marginTop: 2,
     fontFamily: fonts.dmSans,
-    fontStyle: "italic",
     fontSize: 12,
     letterSpacing: -0.12,
     color: "rgba(243,239,227,0.55)",
