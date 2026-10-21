@@ -300,6 +300,29 @@ export function MyPlanScreen({ navigation }: Props) {
   const [confirmRebuild, setConfirmRebuild] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  /**
+   * An ACTION failed. Say so and leave the week alone.
+   *
+   * 🔴🔴 These used to call `setError`, which returns a full-screen error view
+   * instead of the plan — and because the Meals tab keeps this screen mounted,
+   * nothing ever cleared it. One failed move and My Plan was replaced by a
+   * title and a sentence **for the rest of the app session**; switching tabs
+   * and coming back did not help, only a force-quit did. Found by Cole on his
+   * S24 on 2026-10-21, moving a meal to the next day.
+   *
+   * 🔑 The distinction that was missing: `error` means *we have no plan to
+   * show*. A failed action is not that — the week on screen is still valid and
+   * still theirs, so the failure belongs in the transient notice bar.
+   *
+   * 📌 It also LOGS. The old catches took no argument, so the real reason was
+   * discarded at the only point we had it, and "that meal could not be moved"
+   * was all anyone — member or engineer — ever got.
+   */
+  const actionFailed = useCallback((message: string, cause?: unknown) => {
+    if (cause) console.warn(`[MyPlan] ${message}`, cause);
+    setNotice(message);
+  }, []);
+
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   /**
    * The saved meals themselves, for the swap picker.
@@ -409,8 +432,8 @@ export function MyPlanScreen({ navigation }: Props) {
         );
         const i = (fresh?.days ?? []).findIndex((d) => d.date === toLocalDate);
         if (i >= 0) setSelected(i);
-      } catch {
-        setError("That meal could not be moved.");
+      } catch (e) {
+        actionFailed("That meal could not be moved.", e);
       } finally {
         setBusy(false);
       }
@@ -459,8 +482,8 @@ export function MyPlanScreen({ navigation }: Props) {
       // behind the member are deliberately untouched (r6), so the notice must
       // not claim the whole week was redrawn.
       setNotice("The rest of your week is ready.");
-    } catch {
-      setError("Your week could not be rebuilt.");
+    } catch (e) {
+      actionFailed("Your week could not be rebuilt.", e);
     } finally {
       setBusy(false);
     }
@@ -504,8 +527,8 @@ export function MyPlanScreen({ navigation }: Props) {
               }
             : null,
         );
-      } catch {
-        setError("That meal could not be swapped in.");
+      } catch (e) {
+        actionFailed("That meal could not be swapped in.", e);
       } finally {
         setBusy(false);
       }
@@ -607,8 +630,8 @@ export function MyPlanScreen({ navigation }: Props) {
         const i = (fresh?.days ?? []).findIndex((d) => d.date === target.toDate);
         if (i >= 0) setSelected(i);
       }
-    } catch {
-      setError("That change could not be undone.");
+    } catch (e) {
+      actionFailed("That change could not be undone.", e);
     } finally {
       setBusy(false);
     }
@@ -766,11 +789,34 @@ export function MyPlanScreen({ navigation }: Props) {
     return `${shortDate(first)}–${dayOfMonth(last)}`;
   }, [plan]);
 
+  /**
+   * No plan to show. This is now the ONLY thing that reaches here — a failed
+   * action uses `actionFailed`, because the week it was acting on is still on
+   * screen and still valid.
+   *
+   * 🔴 It needs a way out. The Meals tab keeps this screen mounted, so without
+   * one the member is stuck here until they force-quit: switching tabs and
+   * coming back returns to the same dead end (observed on device).
+   * 🔴 The title also sat flush against the screen edge — `container` carries
+   * no padding because the padding lives on `scroll`, which this branch never
+   * renders.
+   */
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, styles.errorPad]}>
         <Text style={styles.title}>My Plan</Text>
         <Text style={styles.error}>{error}</Text>
+        <Pressable
+          style={styles.retry}
+          onPress={() => {
+            setError(null);
+            void reloadPlan();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+        >
+          <Text style={styles.retryText}>Try again</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -1434,13 +1480,28 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: 2,
   },
+  /** The error branch renders outside `scroll`, so it carries its own gutter. */
+  errorPad: { paddingHorizontal: 20, paddingTop: 8 },
+  retry: {
+    alignSelf: "flex-start",
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+  },
+  retryText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    color: K.bone,
+  },
   error: {
     fontFamily: fonts.dmSans,
     fontSize: 16,
     color: K.bone,
     opacity: 0.8,
     marginTop: 16,
-    paddingHorizontal: 20,
   },
   daysRow: {
     flexDirection: "row",
