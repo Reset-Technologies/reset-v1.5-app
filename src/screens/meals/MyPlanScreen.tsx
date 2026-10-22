@@ -301,7 +301,7 @@ export function MyPlanScreen({ navigation }: Props) {
   const [reasons, setReasons] = useState<RejectionReasonOption[]>([]);
   const [rejecting, setRejecting] = useState(false);
   /** Which picker is open, once the member has chosen a verb. */
-  const [picker, setPicker] = useState<"move" | "swap" | "reject" | null>(null);
+  const [picker, setPicker] = useState<"move" | "swap" | "reject" | "add" | null>(null);
   const [busy, setBusy] = useState(false);
   /**
    * 🔴 UNDO IS REQUIRED, not a nicety — r10 lists it in the member's column
@@ -640,6 +640,45 @@ export function MyPlanScreen({ navigation }: Props) {
       }
     },
     [plan, busy, reloadPlan],
+  );
+
+  /**
+   * Fill an empty slot from the saved-meals picker (Bryan, 2026-10-22).
+   *
+   * 🔑 "Uses the existing meal-selection flow" literally — the SAME sheet the
+   * swap verb opens, the same saved-meals list, the same unusable-without-a-
+   * version guard. Only the call at the end differs: `addMealToPlan` puts a
+   * meal into a slot that holds none, where `swapPlannedMeal` replaces one.
+   *
+   * 📌 NO UNDO, deliberately. Undo is owed when something LEAVES the screen —
+   * a remove, a move. Adding a meal only makes one appear, and the member is
+   * looking straight at it; a toast offering to take it away again would be
+   * noise. A notice confirms it landed, like every other verb.
+   */
+  const doAdd = useCallback(
+    async (slot: MyPlanSlot, onDate: string, fav: MealFavorite) => {
+      if (!plan || busy || !fav.currentVersionId) return;
+      setBusy(true);
+      setActing(null);
+      setPicker(null);
+      setUndo(null);
+      try {
+        await addMealToPlan({
+          mealPlanId: plan.mealPlanId,
+          localDate: onDate,
+          slotType: slot.slotType,
+          recipeVersionId: fav.currentVersionId,
+          servings: 1,
+        });
+        await reloadPlan();
+        setNotice(`Added ${fav.name}`);
+      } catch (e) {
+        actionFailed("That meal could not be added.", e);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [plan, busy, reloadPlan, actionFailed],
   );
 
   /**
@@ -1027,6 +1066,16 @@ export function MyPlanScreen({ navigation }: Props) {
                     ? () => setActing({ slot, onDate: day.date })
                     : undefined
                 }
+                onAdd={
+                  // Same rule as editing: a past day is history. An empty slot
+                  // there is a record of what did not happen, not an invitation.
+                  !slot.recipe && day && day.date >= localToday()
+                    ? () => {
+                        setActing({ slot, onDate: day.date });
+                        setPicker("add");
+                      }
+                    : undefined
+                }
                 saved={slot.recipe ? savedIds.has(slot.recipe.id) : false}
                 onToggleSave={
                   slot.recipe ? () => toggleSaved(slot.recipe!) : undefined
@@ -1259,8 +1308,12 @@ export function MyPlanScreen({ navigation }: Props) {
 
       {/* Swap (r9). 🔴 NO "why did you swap?" step — "A passive swap alone is
           not a rejection", and asking here would corrupt the Fit signal. */}
+      {/* 🔑 ONE sheet, two verbs. Bryan asked for Add to use "the existing
+          meal-selection flow", and this IS that flow — same list, same
+          unusable guard, same rows. Splitting it into a near-identical second
+          sheet is how two screens start to drift apart. */}
       <Modal
-        visible={picker === "swap"}
+        visible={picker === "swap" || picker === "add"}
         transparent
         animationType="slide"
         onRequestClose={() => setPicker(null)}
@@ -1270,10 +1323,16 @@ export function MyPlanScreen({ navigation }: Props) {
           onPress={() => { setPicker(null); setActing(null); }}
         />
         <View style={styles.moveSheet}>
-          <Text style={styles.moveTitle}>Swap for a saved meal</Text>
+          <Text style={styles.moveTitle}>
+            {picker === "add"
+              ? `Add a saved meal${acting ? ` to ${SLOT_LABEL[acting.slot.slotType].toLowerCase()}` : ""}`
+              : "Swap for a saved meal"}
+          </Text>
           <Text style={styles.moveSub}>
             {savedMeals.length
-              ? "Keeps the same day and slot."
+              ? picker === "add"
+                ? "Goes into the empty slot on this day."
+                : "Keeps the same day and slot."
               : "Save a recipe first and it will show up here."}
           </Text>
           <ScrollView style={styles.swapList}>
@@ -1286,11 +1345,18 @@ export function MyPlanScreen({ navigation }: Props) {
                 <Pressable
                   key={f.id}
                   disabled={!usable || busy}
-                  onPress={() => acting && doSwap(acting.slot, acting.onDate, f)}
+                  onPress={() =>
+                    acting &&
+                    (picker === "add"
+                      ? doAdd(acting.slot, acting.onDate, f)
+                      : doSwap(acting.slot, acting.onDate, f))
+                  }
                   style={[styles.moveRow, !usable && styles.moveRowDisabled]}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !usable }}
-                  accessibilityLabel={`Swap in ${f.name}`}
+                  accessibilityLabel={
+                    picker === "add" ? `Add ${f.name}` : `Swap in ${f.name}`
+                  }
                 >
                   <Text
                     style={[styles.moveRowText, !usable && styles.moveRowTextDisabled]}
@@ -1397,6 +1463,7 @@ function SlotRow({
   emptyCopy,
   onPress,
   onLongPress,
+  onAdd,
   saved,
   onToggleSave,
 }: {
@@ -1410,19 +1477,32 @@ function SlotRow({
    * rather than implementing it. Long-press keeps her row untouched.
    */
   onLongPress?: () => void;
+  /**
+   * Fill a slot the day is supposed to have and currently does not.
+   *
+   * 🔑 Bryan, 2026-10-22: *"Keep the empty slot visible with 'Nothing planned'
+   * and an Add action that uses the existing meal-selection flow."* Passed
+   * only for an empty slot on a day the member can still edit; the server
+   * decides which slots those are (`withEmptySlots`), never this screen.
+   */
+  onAdd?: () => void;
   saved: boolean;
   onToggleSave?: () => void;
 }) {
   const label = SLOT_LABEL[slot.slotType];
   const recipe = slot.recipe;
+  // An empty row's whole job is to be filled, so the row itself is the target
+  // as well as the pill — a member who taps the words should not have to find
+  // the control.
+  const press = recipe ? onPress : (onAdd ?? onPress);
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={press}
       onLongPress={onLongPress}
-      disabled={!onPress && !onLongPress}
+      disabled={!press && !onLongPress}
       style={[styles.slotRow, !first && styles.slotDivider]}
-      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityRole={press ? "button" : undefined}
       accessibilityLabel={recipe ? `${label}: ${recipe.title}` : `${label}: empty`}
       accessibilityHint={onLongPress ? "Press and hold to move this meal to another day" : undefined}
     >
@@ -1516,7 +1596,16 @@ function SlotRow({
           <Text style={styles.rowMenuGlyph}>{"···"}</Text>
         </Pressable>
       ) : null}
-      {onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
+      {/* 🔑 INTERIM like the "···" above, and for the same reason: Lang's
+          frame has no empty-slot state, because until Remove shipped a slot
+          could not BE empty. Minimal on purpose — a word, in the corner the
+          chevron would occupy, so her row keeps its shape. */}
+      {!recipe && onAdd ? (
+        <View style={styles.addPill} pointerEvents="none">
+          <Text style={styles.addPillText}>Add</Text>
+        </View>
+      ) : null}
+      {recipe && onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
     </Pressable>
   );
 }
@@ -1670,6 +1759,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chevron: { fontSize: 26, color: K.bone, opacity: 0.5 },
+  /**
+   * The empty slot's Add control. Sits where the chevron would, so an empty
+   * row keeps the same silhouette as a filled one.
+   *
+   * 📌 `pointerEvents: "none"` — the ROW is the tap target, not this. It reads
+   * as a button and behaves as a label, which is what keeps the whole row
+   * forgiving to a thumb instead of making the member hit a small pill.
+   */
+  addPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+  },
+  addPillText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    color: K.bone,
+  },
   /**
    * The interim edit affordance. Quieter than the chevron on purpose, so the
    * row still reads "tap to open the recipe" first.
