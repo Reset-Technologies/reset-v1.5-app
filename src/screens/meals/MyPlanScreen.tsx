@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
@@ -102,6 +102,27 @@ const SLOT_LABEL: Record<MealSlotType, string> = {
   snack: "Snack",
 };
 
+/**
+ * The order a day READS in, which is not the order rows were written in.
+ *
+ * 🔴 `sortOrder` is an insertion counter: both `addMeal` and `moveMeal` set it
+ * to `max(sortOrder) + 1`, so anything added to a day lands LAST. Sorting the
+ * view by it alone put a restored lunch under dinner — caught walking the tab
+ * 2026-10-21 after an Undo, and it is not an Undo bug: adding a breakfast from
+ * "Add to plan" shows it below dinner the same way.
+ *
+ * 📌 `sortOrder` still breaks ties INSIDE a slot, which is the one thing it is
+ * genuinely good for — two dinners on one day keep the order they were added.
+ * MY PLAN r16 keeps the model semantic, so this ranking lives in the view
+ * beside `SLOT_LABEL` rather than becoming a column.
+ */
+const SLOT_RANK: Record<MealSlotType, number> = {
+  first_meal: 0,
+  midday: 1,
+  evening: 2,
+  snack: 3,
+};
+
 const DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
 
 /**
@@ -166,6 +187,18 @@ function friendlyTime(hhmm: string): string {
 export function MyPlanScreen({ navigation }: Props) {
   const [plan, setPlan] = useState<MyPlanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The current plan, readable from inside a callback without re-creating it.
+   *
+   * 🔑 `reloadPlan` has to know whether a week is already on screen, and it is
+   * memoised with an empty dep list on purpose (every action calls it, and
+   * re-creating it would churn `doMove`/`doSwap`/`doRemove` on every render).
+   * A ref is how it reads `plan` without taking it as a dependency.
+   */
+  const planRef = useRef<MyPlanResponse | null>(null);
+  useEffect(() => {
+    planRef.current = plan;
+  }, [plan]);
   const [selected, setSelected] = useState(0);
   const { state: windowState } = useResetWindow();
 
@@ -188,6 +221,32 @@ export function MyPlanScreen({ navigation }: Props) {
     };
   }, []);
 
+  /** The transient failure bar. Declared here because `actionFailed` writes it. */
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * An ACTION failed. Say so and leave the week alone.
+   *
+   * 🔴🔴 These used to call `setError`, which returns a full-screen error view
+   * instead of the plan — and because the Meals tab keeps this screen mounted,
+   * nothing ever cleared it. One failed move and My Plan was replaced by a
+   * title and a sentence **for the rest of the app session**; switching tabs
+   * and coming back did not help, only a force-quit did. Found by Cole on his
+   * S24 on 2026-10-21, moving a meal to the next day.
+   *
+   * 🔑 The distinction that was missing: `error` means *we have no plan to
+   * show*. A failed action is not that — the week on screen is still valid and
+   * still theirs, so the failure belongs in the transient notice bar.
+   *
+   * 📌 It also LOGS. The old catches took no argument, so the real reason was
+   * discarded at the only point we had it, and "that meal could not be moved"
+   * was all anyone — member or engineer — ever got.
+   */
+  const actionFailed = useCallback((message: string, cause?: unknown) => {
+    if (cause) console.warn(`[MyPlan] ${message}`, cause);
+    setNotice(message);
+  }, []);
+
   /**
    * Re-read the plan after the MEMBER changed it.
    *
@@ -207,10 +266,24 @@ export function MyPlanScreen({ navigation }: Props) {
       setPlan(p);
       return p;
     } catch (e: any) {
-      setError(e?.message ?? "Could not refresh your plan.");
+      /**
+       * 🔴 A FAILED REFRESH IS NOT AN EMPTY SCREEN. This used to call
+       * `setError` unconditionally, so a lost response on the re-read after a
+       * move, swap, remove or rebuild replaced a perfectly good week with the
+       * error view — the same dead end `actionFailed` was written to stop,
+       * surviving one call deeper. The action itself may well have COMMITTED;
+       * blanking the plan is then both wrong and alarming.
+       *
+       * 🔑 `setError` is only right when there is nothing to show.
+       */
+      if (planRef.current) {
+        actionFailed("Could not refresh your plan.", e);
+      } else {
+        setError(e?.message ?? "Could not refresh your plan.");
+      }
       return null;
     }
-  }, []);
+  }, [actionFailed]);
 
   /**
    * REARRANGE (MY PLAN r10). The slot the member is moving, plus the day it
@@ -228,7 +301,7 @@ export function MyPlanScreen({ navigation }: Props) {
   const [reasons, setReasons] = useState<RejectionReasonOption[]>([]);
   const [rejecting, setRejecting] = useState(false);
   /** Which picker is open, once the member has chosen a verb. */
-  const [picker, setPicker] = useState<"move" | "swap" | "reject" | null>(null);
+  const [picker, setPicker] = useState<"move" | "swap" | "reject" | "add" | null>(null);
   const [busy, setBusy] = useState(false);
   /**
    * 🔴 UNDO IS REQUIRED, not a nicety — r10 lists it in the member's column
@@ -277,7 +350,6 @@ export function MyPlanScreen({ navigation }: Props) {
    * there is nothing to take back, and `notice` is a statement, not an offer.
    */
   const [confirmRebuild, setConfirmRebuild] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   /**
@@ -388,8 +460,8 @@ export function MyPlanScreen({ navigation }: Props) {
         );
         const i = (fresh?.days ?? []).findIndex((d) => d.date === toLocalDate);
         if (i >= 0) setSelected(i);
-      } catch {
-        setError("That meal could not be moved.");
+      } catch (e) {
+        actionFailed("That meal could not be moved.", e);
       } finally {
         setBusy(false);
       }
@@ -438,8 +510,8 @@ export function MyPlanScreen({ navigation }: Props) {
       // behind the member are deliberately untouched (r6), so the notice must
       // not claim the whole week was redrawn.
       setNotice("The rest of your week is ready.");
-    } catch {
-      setError("Your week could not be rebuilt.");
+    } catch (e) {
+      actionFailed("Your week could not be rebuilt.", e);
     } finally {
       setBusy(false);
     }
@@ -451,6 +523,29 @@ export function MyPlanScreen({ navigation }: Props) {
     const t = setTimeout(() => setNotice(null), 4000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  /**
+   * The undo offer expires too — it used to sit there forever.
+   *
+   * 🔴🔴 `notice` had a timer from the start and `undo` never did, so an undo
+   * bar stayed until the member tapped it or acted again. Observed on Cole's
+   * S24 on 2026-10-21: a bar armed at 21:52 was still on screen at 22:39 —
+   * 47 minutes, surviving a switch to another app and back, because the Meals
+   * tab keeps this screen mounted. Two ways that bites:
+   *   · it covers a row of the week for as long as it is up, and
+   *   · an hour later it is still live, so a stray tap silently reverses a
+   *     change the member had long since decided to keep. That happened to me
+   *     while testing this very screen.
+   *
+   * 🔑 Longer than the notice on purpose. There is no undo endpoint — both
+   * move and swap write a new revision — so once this bar goes the only way
+   * back is to redo the action by hand, and it should not vanish mid-reach.
+   */
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 10000);
+    return () => clearTimeout(t);
+  }, [undo]);
 
   /**
    * SWAP — replace this slot's recipe with a saved meal (MY PLAN r9).
@@ -483,8 +578,8 @@ export function MyPlanScreen({ navigation }: Props) {
               }
             : null,
         );
-      } catch {
-        setError("That meal could not be swapped in.");
+      } catch (e) {
+        actionFailed("That meal could not be swapped in.", e);
       } finally {
         setBusy(false);
       }
@@ -548,6 +643,45 @@ export function MyPlanScreen({ navigation }: Props) {
   );
 
   /**
+   * Fill an empty slot from the saved-meals picker (Bryan, 2026-10-22).
+   *
+   * 🔑 "Uses the existing meal-selection flow" literally — the SAME sheet the
+   * swap verb opens, the same saved-meals list, the same unusable-without-a-
+   * version guard. Only the call at the end differs: `addMealToPlan` puts a
+   * meal into a slot that holds none, where `swapPlannedMeal` replaces one.
+   *
+   * 📌 NO UNDO, deliberately. Undo is owed when something LEAVES the screen —
+   * a remove, a move. Adding a meal only makes one appear, and the member is
+   * looking straight at it; a toast offering to take it away again would be
+   * noise. A notice confirms it landed, like every other verb.
+   */
+  const doAdd = useCallback(
+    async (slot: MyPlanSlot, onDate: string, fav: MealFavorite) => {
+      if (!plan || busy || !fav.currentVersionId) return;
+      setBusy(true);
+      setActing(null);
+      setPicker(null);
+      setUndo(null);
+      try {
+        await addMealToPlan({
+          mealPlanId: plan.mealPlanId,
+          localDate: onDate,
+          slotType: slot.slotType,
+          recipeVersionId: fav.currentVersionId,
+          servings: 1,
+        });
+        await reloadPlan();
+        setNotice(`Added ${fav.name}`);
+      } catch (e) {
+        actionFailed("That meal could not be added.", e);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [plan, busy, reloadPlan, actionFailed],
+  );
+
+  /**
    * Undo — the inverse call, against the id the re-read gave us.
    *
    * 🔴 It cannot reuse the id the member acted on: every revision writes fresh
@@ -586,8 +720,8 @@ export function MyPlanScreen({ navigation }: Props) {
         const i = (fresh?.days ?? []).findIndex((d) => d.date === target.toDate);
         if (i >= 0) setSelected(i);
       }
-    } catch {
-      setError("That change could not be undone.");
+    } catch (e) {
+      actionFailed("That change could not be undone.", e);
     } finally {
       setBusy(false);
     }
@@ -708,6 +842,30 @@ export function MyPlanScreen({ navigation }: Props) {
           mealId: slot?.recipe?.id,
           slotType: slot?.slotType,
         });
+        /**
+         * Say it landed. Every other verb leaves a notice; this one closed
+         * onto an unchanged week, so it read as a dead button (Cole, S24,
+         * 2026-10-21).
+         *
+         * 🔴🔴 THE COPY MAY NOT PROMISE BETTER MEALS. A rejection is stored,
+         * Fit-classified and readable over its own GET — and that is all.
+         * `preferenceReasons`, the only reason signal generation consumes
+         * (`my-plan.service.ts:247`), is built from **`meal_feedback`**
+         * thumbs-down tags; `plan-generation.service.ts` never reads
+         * `meal_rejection` at all. "I'll pick better next time" would be a
+         * member-facing claim the engine does not honour.
+         *
+         * 🔑 So it says the two things that ARE true: we heard you, and the
+         * meal is still there — which is the question the silence raised.
+         *
+         * 📌 Only on success, unlike the optimistic close above. A failed
+         * record falling silent is the one case where we WANT the member to
+         * notice nothing happened, because re-picking re-records it.
+         *
+         * 📌 Bryan's wording, 2026-10-22: *"Keep the plan unchanged and show a
+         * simple 'Feedback saved' toast."*
+         */
+        setNotice("Feedback saved");
       } catch {
         // Deliberately silent — see above.
       } finally {
@@ -745,11 +903,34 @@ export function MyPlanScreen({ navigation }: Props) {
     return `${shortDate(first)}–${dayOfMonth(last)}`;
   }, [plan]);
 
+  /**
+   * No plan to show. This is now the ONLY thing that reaches here — a failed
+   * action uses `actionFailed`, because the week it was acting on is still on
+   * screen and still valid.
+   *
+   * 🔴 It needs a way out. The Meals tab keeps this screen mounted, so without
+   * one the member is stuck here until they force-quit: switching tabs and
+   * coming back returns to the same dead end (observed on device).
+   * 🔴 The title also sat flush against the screen edge — `container` carries
+   * no padding because the padding lives on `scroll`, which this branch never
+   * renders.
+   */
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, styles.errorPad]}>
         <Text style={styles.title}>My Plan</Text>
         <Text style={styles.error}>{error}</Text>
+        <Pressable
+          style={styles.retry}
+          onPress={() => {
+            setError(null);
+            void reloadPlan();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+        >
+          <Text style={styles.retryText}>Try again</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -856,7 +1037,11 @@ export function MyPlanScreen({ navigation }: Props) {
         <View style={styles.card}>
           {(day?.slots ?? [])
             .slice()
-            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .sort(
+              (a, b) =>
+                (SLOT_RANK[a.slotType] ?? 99) - (SLOT_RANK[b.slotType] ?? 99) ||
+                a.sortOrder - b.sortOrder,
+            )
             .map((slot, idx) => (
               <SlotRow
                 key={slot.id}
@@ -879,6 +1064,16 @@ export function MyPlanScreen({ navigation }: Props) {
                   // is history, not a draft, so it stays read-only.
                   slot.recipe && day && day.date >= localToday()
                     ? () => setActing({ slot, onDate: day.date })
+                    : undefined
+                }
+                onAdd={
+                  // Same rule as editing: a past day is history. An empty slot
+                  // there is a record of what did not happen, not an invitation.
+                  !slot.recipe && day && day.date >= localToday()
+                    ? () => {
+                        setActing({ slot, onDate: day.date });
+                        setPicker("add");
+                      }
                     : undefined
                 }
                 saved={slot.recipe ? savedIds.has(slot.recipe.id) : false}
@@ -1047,20 +1242,6 @@ export function MyPlanScreen({ navigation }: Props) {
           also wants the meal gone uses the other two verbs.
 
           🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
-          "Member wording"). This renders `label` and never `meaning`, which is
-          internal shorthand like "Prep friction".
-
-          📌 Only the title is ours. The seven options are his. */}
-      {/* ── Why didn't this work? (P0 #11) ──────────────────────────────
-          EVENTS r11 — "member explicitly rejects planned meal". ONE DRAWER,
-          ONE TAP: the route's own doc says the spec forbids a questionnaire,
-          so there is no free-text step and no confirm.
-
-          🔴 CAPTURE ONLY. The plan is untouched — rejecting is not swapping,
-          and the sheet closes onto the same week it opened on. A member who
-          also wants the meal gone uses the other two verbs.
-
-          🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
           "Member wording"). `ReasonDrawer` renders `label` and never
           `meaning`, which is internal shorthand like "Prep friction".
 
@@ -1127,8 +1308,12 @@ export function MyPlanScreen({ navigation }: Props) {
 
       {/* Swap (r9). 🔴 NO "why did you swap?" step — "A passive swap alone is
           not a rejection", and asking here would corrupt the Fit signal. */}
+      {/* 🔑 ONE sheet, two verbs. Bryan asked for Add to use "the existing
+          meal-selection flow", and this IS that flow — same list, same
+          unusable guard, same rows. Splitting it into a near-identical second
+          sheet is how two screens start to drift apart. */}
       <Modal
-        visible={picker === "swap"}
+        visible={picker === "swap" || picker === "add"}
         transparent
         animationType="slide"
         onRequestClose={() => setPicker(null)}
@@ -1138,10 +1323,16 @@ export function MyPlanScreen({ navigation }: Props) {
           onPress={() => { setPicker(null); setActing(null); }}
         />
         <View style={styles.moveSheet}>
-          <Text style={styles.moveTitle}>Swap for a saved meal</Text>
+          <Text style={styles.moveTitle}>
+            {picker === "add"
+              ? `Add a saved meal${acting ? ` to ${SLOT_LABEL[acting.slot.slotType].toLowerCase()}` : ""}`
+              : "Swap for a saved meal"}
+          </Text>
           <Text style={styles.moveSub}>
             {savedMeals.length
-              ? "Keeps the same day and slot."
+              ? picker === "add"
+                ? "Goes into the empty slot on this day."
+                : "Keeps the same day and slot."
               : "Save a recipe first and it will show up here."}
           </Text>
           <ScrollView style={styles.swapList}>
@@ -1154,11 +1345,18 @@ export function MyPlanScreen({ navigation }: Props) {
                 <Pressable
                   key={f.id}
                   disabled={!usable || busy}
-                  onPress={() => acting && doSwap(acting.slot, acting.onDate, f)}
+                  onPress={() =>
+                    acting &&
+                    (picker === "add"
+                      ? doAdd(acting.slot, acting.onDate, f)
+                      : doSwap(acting.slot, acting.onDate, f))
+                  }
                   style={[styles.moveRow, !usable && styles.moveRowDisabled]}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !usable }}
-                  accessibilityLabel={`Swap in ${f.name}`}
+                  accessibilityLabel={
+                    picker === "add" ? `Add ${f.name}` : `Swap in ${f.name}`
+                  }
                 >
                   <Text
                     style={[styles.moveRowText, !usable && styles.moveRowTextDisabled]}
@@ -1265,6 +1463,7 @@ function SlotRow({
   emptyCopy,
   onPress,
   onLongPress,
+  onAdd,
   saved,
   onToggleSave,
 }: {
@@ -1278,20 +1477,48 @@ function SlotRow({
    * rather than implementing it. Long-press keeps her row untouched.
    */
   onLongPress?: () => void;
+  /**
+   * Fill a slot the day is supposed to have and currently does not.
+   *
+   * 🔑 Bryan, 2026-10-22: *"Keep the empty slot visible with 'Nothing planned'
+   * and an Add action that uses the existing meal-selection flow."* Passed
+   * only for an empty slot on a day the member can still edit; the server
+   * decides which slots those are (`withEmptySlots`), never this screen.
+   */
+  onAdd?: () => void;
   saved: boolean;
   onToggleSave?: () => void;
 }) {
   const label = SLOT_LABEL[slot.slotType];
   const recipe = slot.recipe;
+  // An empty row's whole job is to be filled, so the row itself is the target
+  // as well as the pill — a member who taps the words should not have to find
+  // the control.
+  const press = recipe ? onPress : (onAdd ?? onPress);
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={press}
       onLongPress={onLongPress}
-      disabled={!onPress && !onLongPress}
+      disabled={!press && !onLongPress}
       style={[styles.slotRow, !first && styles.slotDivider]}
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={recipe ? `${label}: ${recipe.title}` : `${label}: empty`}
+      accessibilityRole={press ? "button" : undefined}
+      /**
+       * 🔑 An EMPTY row that can be filled says so. It used to announce
+       * "Lunch: empty, button" — true, but it tells a VoiceOver member
+       * nothing about what pressing it does, and the "Add" pill cannot speak
+       * for itself because it is `pointerEvents: "none"` and the ROW is the
+       * control. Caught on the iOS sim, 2026-10-22: the pill is drawn into
+       * the row's own accessibility element rather than exposed beside it,
+       * so without this the affordance is sighted-only.
+       */
+      accessibilityLabel={
+        recipe
+          ? `${label}: ${recipe.title}`
+          : onAdd
+            ? `Add a meal to ${label.toLowerCase()}`
+            : `${label}: empty`
+      }
       accessibilityHint={onLongPress ? "Press and hold to move this meal to another day" : undefined}
     >
       {/* 🔑 The saved badge sits INSIDE the thumbnail, bottom-right, per Lang's
@@ -1359,7 +1586,41 @@ function SlotRow({
           as the back arrow left behind when Opening was deleted: it rendered,
           it was tappable, and it did nothing. It comes back on its own once
           `onPress` is wired. */}
-      {onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
+      {/**
+       * 🔑 INTERIM, and deliberately easy to delete. Lang's My Plan frame
+       * (`5039:29721`) carries no edit affordance, so the four actions Bryan's
+       * spec gives a planned meal — swap, move, remove, "didn't work for me" —
+       * were reachable only by long-pressing the row, which nobody discovers.
+       * Cole chose a "…" button on 2026-10-21 while Lang decides between this,
+       * swipe-to-reveal, and moving the actions to Recipe Details.
+       *
+       * 📌 It opens the SAME sheet as the long press, which stays: the gesture
+       * costs nothing, and VoiceOver already announces it. When Lang rules,
+       * only this block and its two styles should need to change.
+       */}
+      {onLongPress ? (
+        <Pressable
+          onPress={onLongPress}
+          hitSlop={10}
+          style={styles.rowMenu}
+          accessibilityRole="button"
+          accessibilityLabel={
+            recipe ? `Edit ${recipe.title}` : `Edit ${label.toLowerCase()}`
+          }
+        >
+          <Text style={styles.rowMenuGlyph}>{"···"}</Text>
+        </Pressable>
+      ) : null}
+      {/* 🔑 INTERIM like the "···" above, and for the same reason: Lang's
+          frame has no empty-slot state, because until Remove shipped a slot
+          could not BE empty. Minimal on purpose — a word, in the corner the
+          chevron would occupy, so her row keeps its shape. */}
+      {!recipe && onAdd ? (
+        <View style={styles.addPill} pointerEvents="none">
+          <Text style={styles.addPillText}>Add</Text>
+        </View>
+      ) : null}
+      {recipe && onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
     </Pressable>
   );
 }
@@ -1409,13 +1670,28 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: 2,
   },
+  /** The error branch renders outside `scroll`, so it carries its own gutter. */
+  errorPad: { paddingHorizontal: 20, paddingTop: 8 },
+  retry: {
+    alignSelf: "flex-start",
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+  },
+  retryText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 15,
+    color: K.bone,
+  },
   error: {
     fontFamily: fonts.dmSans,
     fontSize: 16,
     color: K.bone,
     opacity: 0.8,
     marginTop: 16,
-    paddingHorizontal: 20,
   },
   daysRow: {
     flexDirection: "row",
@@ -1498,6 +1774,58 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chevron: { fontSize: 26, color: K.bone, opacity: 0.5 },
+  /**
+   * The empty slot's Add control. Sits where the chevron would, so an empty
+   * row keeps the same silhouette as a filled one.
+   *
+   * 📌 `pointerEvents: "none"` — the ROW is the tap target, not this. It reads
+   * as a button and behaves as a label, which is what keeps the whole row
+   * forgiving to a thumb instead of making the member hit a small pill.
+   */
+  addPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(243,239,227,0.35)",
+  },
+  addPillText: {
+    fontFamily: fonts.dmSans,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    color: K.bone,
+  },
+  /**
+   * The interim edit affordance. Quieter than the chevron on purpose, so the
+   * row still reads "tap to open the recipe" first.
+   *
+   * 🔴 ANCHORED to the row's top-right, never placed in the flow. In the flow
+   * it took ~70pt of width from the title and the row went from
+   * "Cheesy Frittata with Spinach, Asparagus and Mushrooms" to
+   * "Cheesy Frittata with Spinach, Asp…", pushing the tags onto a second line
+   * and making the row taller — i.e. redrawing Lang's row, the exact thing
+   * reaching for a long-press was meant to avoid. The slot label leaves that
+   * corner empty, so anchored it costs no layout at all.
+   *
+   * 🔴 NOT the "…" character (U+2026). Three spaced middle dots are drawn from
+   * the text font; an ellipsis is one glyph the font may letterspace
+   * differently per platform, and a dot-leader character is exactly the shape
+   * that went wrong with ▶ on iOS.
+   */
+  rowMenu: {
+    position: "absolute",
+    top: 2,
+    right: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  rowMenuGlyph: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    letterSpacing: 1,
+    color: K.bone,
+    opacity: 0.55,
+  },
   // Pills wrap rather than truncate: on the S24's narrow screen three tags do
   // not fit on one line beside a 64pt thumbnail, and clipping a cuisine name
   // reads as a rendering fault.

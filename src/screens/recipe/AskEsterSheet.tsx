@@ -240,7 +240,24 @@ export function AskEsterSheet({
             ref={scroller}
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
-            onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
+            /**
+             * 🔴 ONLY once there is a thread to follow. This called
+             * `scrollToEnd` on every content-size change, including the first
+             * one — so the sheet opened scrolled PAST the top of Ester's
+             * opening message and the first thing a member read was a clipped
+             * half-sentence ("…and your sleep quality being good,"). Seen on
+             * Cole's S24, 2026-10-22.
+             *
+             * 🔑 Anchoring to the bottom is right for a CONVERSATION and
+             * wrong for its first screen. With no bubbles yet the opening
+             * message is the whole content, and it reads from the top like
+             * any other block of prose; from the member's first question on,
+             * the newest line is what they want in view.
+             */
+            onContentSizeChange={() => {
+              if (bubbles.length === 0) return;
+              scroller.current?.scrollToEnd({ animated: true });
+            }}
             keyboardShouldPersistTaps="handled"
           >
             {/* The explanation the screen already had — the sheet opens with
