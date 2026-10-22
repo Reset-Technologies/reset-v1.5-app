@@ -823,9 +823,10 @@ export function MyPlanScreen({ navigation }: Props) {
          * record falling silent is the one case where we WANT the member to
          * notice nothing happened, because re-picking re-records it.
          *
-         * ⚠️ Placeholder wording. Copy is Bryan's; asked 2026-10-21.
+         * 📌 Bryan's wording, 2026-10-22: *"Keep the plan unchanged and show a
+         * simple 'Feedback saved' toast."*
          */
-        setNotice("Noted. The meal stays on your plan.");
+        setNotice("Feedback saved");
       } catch {
         // Deliberately silent — see above.
       } finally {
