@@ -578,6 +578,9 @@ export function RecipeDetailScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  /** The recipe's own yield — the divisor that turns a multiplier into servings of food. */
+  const servingsBase = detail?.servingsMin ?? 1;
+
   /**
    * Open the swap drawer for one ingredient and fetch its options.
    *
@@ -596,7 +599,29 @@ export function RecipeDetailScreen() {
           plannedMealId: plannedMeal.id,
           mealPlanId: plannedMeal.mealPlanId,
           fromIngredientId: ing.ingredientId,
-          amount: `${ing.quantity} ${ing.measurement}`.trim(),
+          /**
+           * 🔴 THE MEMBER'S AMOUNT, not the recipe's. This sent
+           * `ing.quantity` raw, so the drawer asked Ester for substitutes for
+           * "3 pounds" of short ribs while the row right behind it read
+           * "⅜ lbs" — the recipe's full 8-serving yield against the one
+           * serving actually planned. Every suggestion came back captioned
+           * "3 lbs", 8× what the member would buy. Found on Cole's S24,
+           * 2026-10-22.
+           *
+           * 🔑 Same expression as the row (`ing.quantity * multiplier /
+           * servingsBase`), and it has to stay that way for the reason the
+           * row already states: the screen, the grocery list and now the swap
+           * drawer must agree, or cooking from the recipe does not match what
+           * was bought.
+           *
+           * 📌 It is not only a caption. This string is the PROMPT — Ester
+           * reasons about the amount she is given, so the wrong scale skews
+           * the substitutes themselves, not just the number under them.
+           */
+          amount: `${formatAmount(
+            (ing.quantity * multiplier) / (servingsBase || 1),
+            ing.measurement,
+          )} ${abbreviateMeasurement(ing.measurement)}`.trim(),
           recipeTitle: meal.name,
         });
         setSuggestions(opts);
@@ -612,7 +637,7 @@ export function RecipeDetailScreen() {
         setSuggestions([]);
       }
     },
-    [plannedMeal, meal.name],
+    [plannedMeal, meal.name, multiplier, servingsBase],
   );
 
   /**
@@ -775,7 +800,6 @@ export function RecipeDetailScreen() {
   const steps = parseInstructions(detail?.instructions ?? null);
   const prepTime = detail?.prepTime ?? meal.prepTime;
   const esterMessage = esterText ?? (esterLoading ? null : meal.whyLine);
-  const servingsBase = detail?.servingsMin ?? 1;
   // 🔑 Through the shared `dietLabel` so this screen and the My Plan rows
   // word the same diet identically. This used to render the raw lower-case
   // name ("gluten free") while My Plan rendered "Gluten-free".
