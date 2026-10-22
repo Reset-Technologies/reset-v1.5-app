@@ -1503,7 +1503,22 @@ function SlotRow({
       disabled={!press && !onLongPress}
       style={[styles.slotRow, !first && styles.slotDivider]}
       accessibilityRole={press ? "button" : undefined}
-      accessibilityLabel={recipe ? `${label}: ${recipe.title}` : `${label}: empty`}
+      /**
+       * 🔑 An EMPTY row that can be filled says so. It used to announce
+       * "Lunch: empty, button" — true, but it tells a VoiceOver member
+       * nothing about what pressing it does, and the "Add" pill cannot speak
+       * for itself because it is `pointerEvents: "none"` and the ROW is the
+       * control. Caught on the iOS sim, 2026-10-22: the pill is drawn into
+       * the row's own accessibility element rather than exposed beside it,
+       * so without this the affordance is sighted-only.
+       */
+      accessibilityLabel={
+        recipe
+          ? `${label}: ${recipe.title}`
+          : onAdd
+            ? `Add a meal to ${label.toLowerCase()}`
+            : `${label}: empty`
+      }
       accessibilityHint={onLongPress ? "Press and hold to move this meal to another day" : undefined}
     >
       {/* 🔑 The saved badge sits INSIDE the thumbnail, bottom-right, per Lang's
