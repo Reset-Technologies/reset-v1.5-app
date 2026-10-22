@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
@@ -187,6 +187,18 @@ function friendlyTime(hhmm: string): string {
 export function MyPlanScreen({ navigation }: Props) {
   const [plan, setPlan] = useState<MyPlanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The current plan, readable from inside a callback without re-creating it.
+   *
+   * 🔑 `reloadPlan` has to know whether a week is already on screen, and it is
+   * memoised with an empty dep list on purpose (every action calls it, and
+   * re-creating it would churn `doMove`/`doSwap`/`doRemove` on every render).
+   * A ref is how it reads `plan` without taking it as a dependency.
+   */
+  const planRef = useRef<MyPlanResponse | null>(null);
+  useEffect(() => {
+    planRef.current = plan;
+  }, [plan]);
   const [selected, setSelected] = useState(0);
   const { state: windowState } = useResetWindow();
 
@@ -209,6 +221,32 @@ export function MyPlanScreen({ navigation }: Props) {
     };
   }, []);
 
+  /** The transient failure bar. Declared here because `actionFailed` writes it. */
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * An ACTION failed. Say so and leave the week alone.
+   *
+   * 🔴🔴 These used to call `setError`, which returns a full-screen error view
+   * instead of the plan — and because the Meals tab keeps this screen mounted,
+   * nothing ever cleared it. One failed move and My Plan was replaced by a
+   * title and a sentence **for the rest of the app session**; switching tabs
+   * and coming back did not help, only a force-quit did. Found by Cole on his
+   * S24 on 2026-10-21, moving a meal to the next day.
+   *
+   * 🔑 The distinction that was missing: `error` means *we have no plan to
+   * show*. A failed action is not that — the week on screen is still valid and
+   * still theirs, so the failure belongs in the transient notice bar.
+   *
+   * 📌 It also LOGS. The old catches took no argument, so the real reason was
+   * discarded at the only point we had it, and "that meal could not be moved"
+   * was all anyone — member or engineer — ever got.
+   */
+  const actionFailed = useCallback((message: string, cause?: unknown) => {
+    if (cause) console.warn(`[MyPlan] ${message}`, cause);
+    setNotice(message);
+  }, []);
+
   /**
    * Re-read the plan after the MEMBER changed it.
    *
@@ -228,10 +266,24 @@ export function MyPlanScreen({ navigation }: Props) {
       setPlan(p);
       return p;
     } catch (e: any) {
-      setError(e?.message ?? "Could not refresh your plan.");
+      /**
+       * 🔴 A FAILED REFRESH IS NOT AN EMPTY SCREEN. This used to call
+       * `setError` unconditionally, so a lost response on the re-read after a
+       * move, swap, remove or rebuild replaced a perfectly good week with the
+       * error view — the same dead end `actionFailed` was written to stop,
+       * surviving one call deeper. The action itself may well have COMMITTED;
+       * blanking the plan is then both wrong and alarming.
+       *
+       * 🔑 `setError` is only right when there is nothing to show.
+       */
+      if (planRef.current) {
+        actionFailed("Could not refresh your plan.", e);
+      } else {
+        setError(e?.message ?? "Could not refresh your plan.");
+      }
       return null;
     }
-  }, []);
+  }, [actionFailed]);
 
   /**
    * REARRANGE (MY PLAN r10). The slot the member is moving, plus the day it
@@ -298,30 +350,6 @@ export function MyPlanScreen({ navigation }: Props) {
    * there is nothing to take back, and `notice` is a statement, not an offer.
    */
   const [confirmRebuild, setConfirmRebuild] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  /**
-   * An ACTION failed. Say so and leave the week alone.
-   *
-   * 🔴🔴 These used to call `setError`, which returns a full-screen error view
-   * instead of the plan — and because the Meals tab keeps this screen mounted,
-   * nothing ever cleared it. One failed move and My Plan was replaced by a
-   * title and a sentence **for the rest of the app session**; switching tabs
-   * and coming back did not help, only a force-quit did. Found by Cole on his
-   * S24 on 2026-10-21, moving a meal to the next day.
-   *
-   * 🔑 The distinction that was missing: `error` means *we have no plan to
-   * show*. A failed action is not that — the week on screen is still valid and
-   * still theirs, so the failure belongs in the transient notice bar.
-   *
-   * 📌 It also LOGS. The old catches took no argument, so the real reason was
-   * discarded at the only point we had it, and "that meal could not be moved"
-   * was all anyone — member or engineer — ever got.
-   */
-  const actionFailed = useCallback((message: string, cause?: unknown) => {
-    if (cause) console.warn(`[MyPlan] ${message}`, cause);
-    setNotice(message);
-  }, []);
 
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   /**
@@ -495,6 +523,29 @@ export function MyPlanScreen({ navigation }: Props) {
     const t = setTimeout(() => setNotice(null), 4000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  /**
+   * The undo offer expires too — it used to sit there forever.
+   *
+   * 🔴🔴 `notice` had a timer from the start and `undo` never did, so an undo
+   * bar stayed until the member tapped it or acted again. Observed on Cole's
+   * S24 on 2026-10-21: a bar armed at 21:52 was still on screen at 22:39 —
+   * 47 minutes, surviving a switch to another app and back, because the Meals
+   * tab keeps this screen mounted. Two ways that bites:
+   *   · it covers a row of the week for as long as it is up, and
+   *   · an hour later it is still live, so a stray tap silently reverses a
+   *     change the member had long since decided to keep. That happened to me
+   *     while testing this very screen.
+   *
+   * 🔑 Longer than the notice on purpose. There is no undo endpoint — both
+   * move and swap write a new revision — so once this bar goes the only way
+   * back is to redo the action by hand, and it should not vanish mid-reach.
+   */
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 10000);
+    return () => clearTimeout(t);
+  }, [undo]);
 
   /**
    * SWAP — replace this slot's recipe with a saved meal (MY PLAN r9).
@@ -752,6 +803,29 @@ export function MyPlanScreen({ navigation }: Props) {
           mealId: slot?.recipe?.id,
           slotType: slot?.slotType,
         });
+        /**
+         * Say it landed. Every other verb leaves a notice; this one closed
+         * onto an unchanged week, so it read as a dead button (Cole, S24,
+         * 2026-10-21).
+         *
+         * 🔴🔴 THE COPY MAY NOT PROMISE BETTER MEALS. A rejection is stored,
+         * Fit-classified and readable over its own GET — and that is all.
+         * `preferenceReasons`, the only reason signal generation consumes
+         * (`my-plan.service.ts:247`), is built from **`meal_feedback`**
+         * thumbs-down tags; `plan-generation.service.ts` never reads
+         * `meal_rejection` at all. "I'll pick better next time" would be a
+         * member-facing claim the engine does not honour.
+         *
+         * 🔑 So it says the two things that ARE true: we heard you, and the
+         * meal is still there — which is the question the silence raised.
+         *
+         * 📌 Only on success, unlike the optimistic close above. A failed
+         * record falling silent is the one case where we WANT the member to
+         * notice nothing happened, because re-picking re-records it.
+         *
+         * ⚠️ Placeholder wording. Copy is Bryan's; asked 2026-10-21.
+         */
+        setNotice("Noted. The meal stays on your plan.");
       } catch {
         // Deliberately silent — see above.
       } finally {
@@ -1118,20 +1192,6 @@ export function MyPlanScreen({ navigation }: Props) {
           also wants the meal gone uses the other two verbs.
 
           🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
-          "Member wording"). This renders `label` and never `meaning`, which is
-          internal shorthand like "Prep friction".
-
-          📌 Only the title is ours. The seven options are his. */}
-      {/* ── Why didn't this work? (P0 #11) ──────────────────────────────
-          EVENTS r11 — "member explicitly rejects planned meal". ONE DRAWER,
-          ONE TAP: the route's own doc says the spec forbids a questionnaire,
-          so there is no free-text step and no confirm.
-
-          🔴 CAPTURE ONLY. The plan is untouched — rejecting is not swapping,
-          and the sheet closes onto the same week it opened on. A member who
-          also wants the meal gone uses the other two verbs.
-
-          🔴 THE LABELS ARE BRYAN'S, served by the API (SWAPS + EDITS r18–r24
           "Member wording"). `ReasonDrawer` renders `label` and never
           `meaning`, which is internal shorthand like "Prep friction".
 
@@ -1430,6 +1490,31 @@ function SlotRow({
           as the back arrow left behind when Opening was deleted: it rendered,
           it was tappable, and it did nothing. It comes back on its own once
           `onPress` is wired. */}
+      {/**
+       * 🔑 INTERIM, and deliberately easy to delete. Lang's My Plan frame
+       * (`5039:29721`) carries no edit affordance, so the four actions Bryan's
+       * spec gives a planned meal — swap, move, remove, "didn't work for me" —
+       * were reachable only by long-pressing the row, which nobody discovers.
+       * Cole chose a "…" button on 2026-10-21 while Lang decides between this,
+       * swipe-to-reveal, and moving the actions to Recipe Details.
+       *
+       * 📌 It opens the SAME sheet as the long press, which stays: the gesture
+       * costs nothing, and VoiceOver already announces it. When Lang rules,
+       * only this block and its two styles should need to change.
+       */}
+      {onLongPress ? (
+        <Pressable
+          onPress={onLongPress}
+          hitSlop={10}
+          style={styles.rowMenu}
+          accessibilityRole="button"
+          accessibilityLabel={
+            recipe ? `Edit ${recipe.title}` : `Edit ${label.toLowerCase()}`
+          }
+        >
+          <Text style={styles.rowMenuGlyph}>{"···"}</Text>
+        </Pressable>
+      ) : null}
       {onPress ? <Text style={styles.chevron}>{"›"}</Text> : null}
     </Pressable>
   );
@@ -1584,6 +1669,37 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chevron: { fontSize: 26, color: K.bone, opacity: 0.5 },
+  /**
+   * The interim edit affordance. Quieter than the chevron on purpose, so the
+   * row still reads "tap to open the recipe" first.
+   *
+   * 🔴 ANCHORED to the row's top-right, never placed in the flow. In the flow
+   * it took ~70pt of width from the title and the row went from
+   * "Cheesy Frittata with Spinach, Asparagus and Mushrooms" to
+   * "Cheesy Frittata with Spinach, Asp…", pushing the tags onto a second line
+   * and making the row taller — i.e. redrawing Lang's row, the exact thing
+   * reaching for a long-press was meant to avoid. The slot label leaves that
+   * corner empty, so anchored it costs no layout at all.
+   *
+   * 🔴 NOT the "…" character (U+2026). Three spaced middle dots are drawn from
+   * the text font; an ellipsis is one glyph the font may letterspace
+   * differently per platform, and a dot-leader character is exactly the shape
+   * that went wrong with ▶ on iOS.
+   */
+  rowMenu: {
+    position: "absolute",
+    top: 2,
+    right: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  rowMenuGlyph: {
+    fontFamily: fonts.dmSans,
+    fontSize: 17,
+    letterSpacing: 1,
+    color: K.bone,
+    opacity: 0.55,
+  },
   // Pills wrap rather than truncate: on the S24's narrow screen three tags do
   // not fit on one line beside a 64pt thumbnail, and clipping a cuisine name
   // reads as a rendering fault.
