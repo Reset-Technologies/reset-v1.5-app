@@ -158,8 +158,40 @@ export function amountLabel(item: GroceryItem): string | null {
   if (item.manual) return item.quantityText?.trim() || null;
   if (!item.components?.length) return null;
   return item.components
-    .map((c) => `${formatQuantity(c.quantity, c.unit)}${c.unit ? ` ${c.unit}` : ""}`)
+    .map(
+      (c) =>
+        `${formatQuantity(c.quantity, c.unit)}${c.unit ? ` ${displayUnit(c.unit)}` : ""}`,
+    )
     .join(" + ");
+}
+
+/**
+ * Canonical unit name → the spelling a US member expects.
+ *
+ * 🔴 The backend canonicalises the AMERICAN spellings into the BRITISH ones —
+ * `units.ts` maps `milliliter`/`milliliters` → `millilitre` and
+ * `liter`/`liters` → `litre` — and that canonical string is what this label
+ * prints, so the grocery list read **"apple cider vinegar · 1.67 millilitre"**
+ * to a US audience. Spotted by Cole on his S24, 2026-10-22.
+ *
+ * 🔑 Fixed HERE, not in `units.ts`. The canonical name is written into
+ * `grocery_list_line.components` as jsonb and `groceryDelta` compares
+ * `quantity:unit` pairs, so changing it server-side would make every stored ml
+ * line look edited exactly once — churn for a spelling. The stored name stays
+ * the join key; this is only how we say it out loud.
+ *
+ * 📌 Deliberately NOT abbreviating to "ml"/"L" as well. That is a copy call
+ * and it is Bryan's; this change only corrects the locale.
+ */
+const US_UNIT_SPELLING: Record<string, string> = {
+  millilitre: "milliliter",
+  millilitres: "milliliters",
+  litre: "liter",
+  litres: "liters",
+};
+
+function displayUnit(unit: string): string {
+  return US_UNIT_SPELLING[unit.toLowerCase()] ?? unit;
 }
 
 /**
@@ -169,7 +201,7 @@ export function amountLabel(item: GroceryItem): string | null {
  * recipe's amount routinely lands on a fraction — the list showed "0.5 small"
  * avocado, which is correct arithmetic and not a thing anyone can buy. Rounding
  * up is the only safe direction: a little spare is a worse outcome than getting
- * home without enough to cook. Grams and millilitres stay fractional, because
+ * home without enough to cook. Grams and milliliters stay fractional, because
  * 150.75 g is perfectly shoppable.
  */
 function formatQuantity(q: number, unit?: string): string {
