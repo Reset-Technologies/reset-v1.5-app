@@ -1839,17 +1839,34 @@ const styles = StyleSheet.create({
   ingredientsList: {
     gap: 0,
   },
+  /**
+   * 🔴 Two separate things used to push every row's contents upward, and they
+   * cancelled out on the FIRST row only — which is how Cole spotted it on his
+   * S24 (2026-10-22): row one looked right, every row under it did not.
+   *
+   *   · the swap control is 28dp tall against a 24dp text line, so IT sets the
+   *     row height — and `alignItems: "flex-start"` pinned the text to the top
+   *     of it rather than centring the two against each other;
+   *   · `paddingTop: 0` with `paddingBottom: 12` then tipped the whole block
+   *     up again, leaving all the slack underneath.
+   *
+   * Measured before the fix: row 117px, text 63px, 0px above it and 54px
+   * below. `ingredientRowFirst`'s `paddingTop: 10` was the only thing putting
+   * any air above a row, which is why row one alone read as centred.
+   *
+   * 📌 Rows are ~12dp taller now. The first row no longer needs its own top
+   * padding — it keeps only the top border, which is all it was ever for.
+   */
   ingredientRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 8,
+    paddingTop: 12,
     paddingBottom: 12,
-    paddingTop: 0,
     borderBottomWidth: 1,
     borderBottomColor: K.border,
   },
   ingredientRowFirst: {
-    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: K.border,
   },
