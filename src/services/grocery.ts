@@ -1,5 +1,5 @@
 import { apiClient } from "./apiClient";
-import { isCountableUnit } from "../utils/countableUnits";
+import { abbreviateMeasurement, formatAmount } from "../utils/amount";
 
 /**
  * Client for the grocery list (`/api/meals/my-plan/grocery`).
@@ -160,52 +160,10 @@ export function amountLabel(item: GroceryItem): string | null {
   return item.components
     .map(
       (c) =>
-        `${formatQuantity(c.quantity, c.unit)}${c.unit ? ` ${displayUnit(c.unit)}` : ""}`,
+        `${formatAmount(c.quantity, c.unit, { roundUp: true })}${
+          c.unit ? ` ${abbreviateMeasurement(c.unit)}` : ""
+        }`,
     )
     .join(" + ");
 }
 
-/**
- * Canonical unit name → the spelling a US member expects.
- *
- * 🔴 The backend canonicalises the AMERICAN spellings into the BRITISH ones —
- * `units.ts` maps `milliliter`/`milliliters` → `millilitre` and
- * `liter`/`liters` → `litre` — and that canonical string is what this label
- * prints, so the grocery list read **"apple cider vinegar · 1.67 millilitre"**
- * to a US audience. Spotted by Cole on his S24, 2026-10-22.
- *
- * 🔑 Fixed HERE, not in `units.ts`. The canonical name is written into
- * `grocery_list_line.components` as jsonb and `groceryDelta` compares
- * `quantity:unit` pairs, so changing it server-side would make every stored ml
- * line look edited exactly once — churn for a spelling. The stored name stays
- * the join key; this is only how we say it out loud.
- *
- * 📌 Deliberately NOT abbreviating to "ml"/"L" as well. That is a copy call
- * and it is Bryan's; this change only corrects the locale.
- */
-const US_UNIT_SPELLING: Record<string, string> = {
-  millilitre: "milliliter",
-  millilitres: "milliliters",
-  litre: "liter",
-  litres: "liters",
-};
-
-function displayUnit(unit: string): string {
-  return US_UNIT_SPELLING[unit.toLowerCase()] ?? unit;
-}
-
-/**
- * 1.25 -> "1.25", 2.0 -> "2". Trailing zeros read as false precision.
- *
- * 🔴 A COUNTABLE unit rounds UP. Since Standard became one serving, dividing a
- * recipe's amount routinely lands on a fraction — the list showed "0.5 small"
- * avocado, which is correct arithmetic and not a thing anyone can buy. Rounding
- * up is the only safe direction: a little spare is a worse outcome than getting
- * home without enough to cook. Grams and milliliters stay fractional, because
- * 150.75 g is perfectly shoppable.
- */
-function formatQuantity(q: number, unit?: string): string {
-  if (!Number.isFinite(q)) return "";
-  const n = isCountableUnit(unit) ? Math.max(1, Math.ceil(q)) : q;
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
-}

@@ -52,7 +52,7 @@ import {
   DailyPlanMeal,
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
-import { COUNTABLE_UNITS } from "../../utils/countableUnits";
+import { abbreviateMeasurement, formatAmount } from "../../utils/amount";
 import {
   MealSlotType,
   MyPlanResponse,
@@ -218,81 +218,6 @@ function CardGradient({
       ) : null}
     </View>
   );
-}
-
-const UNIT_ABBREVIATIONS: Record<string, string> = {
-  tablespoon: "tbsp",
-  tablespoons: "tbsp",
-  teaspoon: "tsp",
-  teaspoons: "tsp",
-  ounce: "oz",
-  ounces: "oz",
-  "fluid ounce": "fl oz",
-  "fluid ounces": "fl oz",
-  pound: "lb",
-  pounds: "lbs",
-  gram: "g",
-  grams: "g",
-  kilogram: "kg",
-  kilograms: "kg",
-  milliliter: "ml",
-  milliliters: "ml",
-  liter: "L",
-  liters: "L",
-};
-
-function abbreviateMeasurement(measurement: string): string {
-  if (!measurement) return "";
-  const lower = measurement.trim().toLowerCase();
-  return UNIT_ABBREVIATIONS[lower] ?? measurement;
-}
-
-
-const FRACTION_STOPS: Array<{ value: number; glyph: string }> = [
-  { value: 0, glyph: "" },
-  { value: 1 / 8, glyph: "⅛" },
-  { value: 1 / 4, glyph: "¼" },
-  { value: 1 / 3, glyph: "⅓" },
-  { value: 3 / 8, glyph: "⅜" },
-  { value: 1 / 2, glyph: "½" },
-  { value: 5 / 8, glyph: "⅝" },
-  { value: 2 / 3, glyph: "⅔" },
-  { value: 3 / 4, glyph: "¾" },
-  { value: 7 / 8, glyph: "⅞" },
-  { value: 1, glyph: "" },
-];
-
-function formatQty(qty: number, measurement: string): string {
-  if (!isFinite(qty) || qty <= 0) return "0";
-  const unit = (measurement || "").trim().toLowerCase();
-  if (COUNTABLE_UNITS.has(unit)) {
-    return Math.max(1, Math.round(qty)).toString();
-  }
-  if (qty >= 10) return Math.round(qty).toString();
-
-  const intPart = Math.floor(qty);
-  const fracPart = qty - intPart;
-  let best = FRACTION_STOPS[0];
-  let bestDelta = 1;
-  for (const stop of FRACTION_STOPS) {
-    const delta = Math.abs(fracPart - stop.value);
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      best = stop;
-    }
-  }
-  if (best.value === 1) return (intPart + 1).toString();
-  if (best.value === 0) {
-    if (intPart > 0) return intPart.toString();
-    // 🔴 A real amount must never print as "0". This branch was unreachable
-    // until Standard became one serving and quantities started being divided:
-    // 1/4 tsp of cayenne in a 4-serving recipe is 1/16, whose nearest stop is
-    // zero, and the screen told the member to use NONE of it. "< 1/8" is the
-    // honest reading — smaller than the finest fraction we show, but present.
-    return `< ${FRACTION_STOPS[1].glyph}`;
-  }
-  if (intPart === 0) return best.glyph;
-  return `${intPart} ${best.glyph}`;
 }
 
 function renderBoldSegments(text: string): React.ReactNode[] {
@@ -1159,7 +1084,7 @@ export function RecipeDetailScreen() {
                   // list buys half a can, cooking from the recipe would not
                   // match what was bought.
                   const qty = (ing.quantity * multiplier) / (servingsBase || 1);
-                  const qtyDisplay = formatQty(qty, ing.measurement);
+                  const qtyDisplay = formatAmount(qty, ing.measurement);
                   // 🔑 Tappable ONLY with a planned meal behind the screen —
                   // a substitution changes a planned recipe instance, so from
                   // Home or Saved Meals there is nothing to change. Same
