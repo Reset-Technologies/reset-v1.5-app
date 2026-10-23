@@ -68,6 +68,22 @@ const CARD = 154;
 const WIDE_W = 277;
 const WIDE_H = 192;
 
+/**
+ * Room around the card for its drop shadow to be drawn into.
+ *
+ * 🔴 The shadow is DRAWN, not cast. `box-shadow` renders nothing on Android
+ * on this screen (proved with an opaque red shadow and a 30px blur: zero
+ * pixels), and `elevation` did not bring it back either — not with a
+ * background colour, not with the clip moved off the card, not with room
+ * padded into the scroll container. So her
+ * `0 25px 50px -12px rgba(0,0,0,0.25)` is painted as a blurred rounded rect
+ * behind the card: offset 25 down, shrunk 12 a side for the negative spread,
+ * `stdDeviation` 25 because an SVG blur is half the CSS blur radius.
+ */
+const SHADOW_PAD = 60;
+const SHADOW_DY = 25;
+const SHADOW_SPREAD = 12;
+
 export function ExploreScreen() {
   const navigation = useNavigation<Nav>();
   const [sections, setSections] = useState<ExploreSection[]>([]);
@@ -385,17 +401,52 @@ export function ExploreScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.tileRow}
               >
-                {section.rows.map((row) => (
+                {section.rows.map((row) => {
+                  const tw = section.style === "wide" ? WIDE_W : TILE;
+                  const th = section.style === "wide" ? WIDE_H : TILE;
+                  return (
                   <Pressable
                     key={row.key}
-                    style={[
-                      styles.tile,
-                      section.style === "wide" && { width: WIDE_W, height: WIDE_H },
-                    ]}
+                    style={[styles.tile, { width: tw, height: th }]}
                     onPress={() => openRow(row)}
                     accessibilityRole="button"
                     accessibilityLabel={`${row.title}, ${row.count} recipes`}
                   >
+                    <Svg
+                      pointerEvents="none"
+                      style={{
+                        position: "absolute",
+                        left: -SHADOW_PAD,
+                        top: -SHADOW_PAD,
+                      }}
+                      width={tw + SHADOW_PAD * 2}
+                      height={th + SHADOW_PAD * 2}
+                    >
+                      <Defs>
+                        <LinearGradient id="cardShadow" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor="#000000" stopOpacity={0.25} />
+                          <Stop offset="1" stopColor="#000000" stopOpacity={0} />
+                        </LinearGradient>
+                      </Defs>
+                      {/*
+                        🔴 A GRADIENT, not a blur. `<Filter><FeGaussianBlur>`
+                        type-checks and silently drops the element on Android
+                        here — the same rect rendered as a sharp red block
+                        with the filter removed, and nothing at all with it.
+                        So the falloff is painted instead: her shadow's
+                        visible part is the band under the card, and a
+                        vertical fade is a faithful stand-in for a 50px blur
+                        offset 25 down.
+                      */}
+                      <Rect
+                        x={SHADOW_PAD + SHADOW_SPREAD}
+                        y={SHADOW_PAD + th - 6}
+                        width={tw - SHADOW_SPREAD * 2}
+                        height={SHADOW_DY + 21}
+                        rx={4}
+                        fill="url(#cardShadow)"
+                      />
+                    </Svg>
                     {/*
                       🔴 The photo and its washes are clipped by THIS view, not
                       by the Pressable. A shadow and `overflow: "hidden"` on the
@@ -403,12 +454,7 @@ export function ExploreScreen() {
                       shadow with it. Shadow on the outside, clipping on the
                       inside.
                     */}
-                    <View
-                      style={[
-                        styles.tileClip,
-                        section.style === "wide" && { width: WIDE_W, height: WIDE_H },
-                      ]}
-                    >
+                    <View style={[styles.tileClip, { width: tw, height: th }]}>
                     {row.imageUrl ? (
                       <Image source={{ uri: row.imageUrl }} style={styles.tileImage} />
                     ) : (
@@ -431,11 +477,9 @@ export function ExploreScreen() {
                     */}
                     <Svg
                       style={StyleSheet.absoluteFill}
-                      width={section.style === "wide" ? WIDE_W : TILE}
-                      height={section.style === "wide" ? WIDE_H : TILE}
-                      viewBox={`0 0 ${section.style === "wide" ? WIDE_W : TILE} ${
-                        section.style === "wide" ? WIDE_H : TILE
-                      }`}
+                      width={tw}
+                      height={th}
+                      viewBox={`0 0 ${tw} ${th}`}
                     >
                       <Defs>
                         <LinearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
@@ -454,15 +498,15 @@ export function ExploreScreen() {
                       <Rect
                         x={0}
                         y={0}
-                        width={section.style === "wide" ? WIDE_W : TILE}
-                        height={section.style === "wide" ? WIDE_H : TILE}
+                        width={tw}
+                        height={th}
                         fill="url(#tileBase)"
                       />
                       <Rect
                         x={0}
                         y={0}
-                        width={section.style === "wide" ? WIDE_W : TILE}
-                        height={section.style === "wide" ? WIDE_H : TILE}
+                        width={tw}
+                        height={th}
                         fill="url(#tileAccent)"
                       />
                     </Svg>
@@ -472,7 +516,8 @@ export function ExploreScreen() {
                     </Text>
                     <Text style={styles.tileCount}>{row.count} recipes</Text>
                   </Pressable>
-                ))}
+                  );
+                })}
               </ScrollView>
             </View>
           ))}
