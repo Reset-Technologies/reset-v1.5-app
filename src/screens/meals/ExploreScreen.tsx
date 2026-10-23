@@ -396,6 +396,19 @@ export function ExploreScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${row.title}, ${row.count} recipes`}
                   >
+                    {/*
+                      🔴 The photo and its washes are clipped by THIS view, not
+                      by the Pressable. A shadow and `overflow: "hidden"` on the
+                      same view cancel out on Android — the clip takes the
+                      shadow with it. Shadow on the outside, clipping on the
+                      inside.
+                    */}
+                    <View
+                      style={[
+                        styles.tileClip,
+                        section.style === "wide" && { width: WIDE_W, height: WIDE_H },
+                      ]}
+                    >
                     {row.imageUrl ? (
                       <Image source={{ uri: row.imageUrl }} style={styles.tileImage} />
                     ) : (
@@ -403,12 +416,18 @@ export function ExploreScreen() {
                     )}
                     {/*
                       Her treatment (`5039:29760`), which is NOT a flat scrim:
-                      a soft darkening from the TOP that clears by 67%, a
-                      second wash coming UP from the bottom that reaches SOLID
+                      a wash coming UP from the bottom that reaches SOLID
                       brown by 92%, and a blue accent entering the swept
-                      corner. The middle of the photograph is left alone,
-                      which is why hers look rich and a flat scrim looks
-                      faded — Cole spotted exactly that.
+                      corner.
+
+                      🔴 There is a THIRD gradient in her file —
+                      `linear-gradient(180deg, rgba(54,20,22,0.48) 0%,
+                      transparent 66.87%)` — and it must NOT be drawn here. It
+                      is part of the card's `background` shorthand, where the
+                      image is listed FIRST and therefore paints ON TOP of it:
+                      behind an opaque cover photo it is invisible. I rendered
+                      it as an overlay and darkened the top of every image,
+                      which is what Cole kept seeing as "different".
                     */}
                     <Svg
                       style={StyleSheet.absoluteFill}
@@ -419,10 +438,6 @@ export function ExploreScreen() {
                       }`}
                     >
                       <Defs>
-                        <LinearGradient id="tileTop" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor="#361416" stopOpacity={0.48} />
-                          <Stop offset="0.669" stopColor="#361416" stopOpacity={0} />
-                        </LinearGradient>
                         <LinearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
                           <Stop offset="0.091" stopColor="#361416" stopOpacity={0} />
                           <Stop offset="0.921" stopColor="#361416" stopOpacity={1} />
@@ -441,13 +456,6 @@ export function ExploreScreen() {
                         y={0}
                         width={section.style === "wide" ? WIDE_W : TILE}
                         height={section.style === "wide" ? WIDE_H : TILE}
-                        fill="url(#tileTop)"
-                      />
-                      <Rect
-                        x={0}
-                        y={0}
-                        width={section.style === "wide" ? WIDE_W : TILE}
-                        height={section.style === "wide" ? WIDE_H : TILE}
                         fill="url(#tileBase)"
                       />
                       <Rect
@@ -458,6 +466,7 @@ export function ExploreScreen() {
                         fill="url(#tileAccent)"
                       />
                     </Svg>
+                    </View>
                     <Text style={styles.tileTitle} numberOfLines={2}>
                       {row.title}
                     </Text>
@@ -561,7 +570,7 @@ const styles = StyleSheet.create({
   },
   browseScroll: { paddingBottom: spacing.xl, paddingTop: spacing.lg },
   sectionsSpinner: { marginTop: spacing.xl },
-  section: { marginBottom: spacing.xl },
+  section: { marginBottom: 0 },
   sectionTitle: {
     fontFamily: fonts.dmSans,
     fontSize: 20,
@@ -570,22 +579,61 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
-  tileRow: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  /**
+   * 🔴 The bottom padding is what lets the card's shadow EXIST. A horizontal
+   * `ScrollView` clips to its content box on Android, and her shadow sits 25
+   * below the card with a 50 blur — entirely outside a content box that is
+   * exactly one tile tall, so it was being clipped away to nothing. The
+   * section's own bottom margin is reduced by the same amount so the rhythm
+   * between sections does not change.
+   */
+  tileRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    paddingTop: 4,
+    paddingBottom: 44,
+  },
   // 144×144 with her asymmetric corner — small everywhere, large top-right.
+  /**
+   * Her `box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25)`.
+   *
+   * 🔴 NOT `boxShadow`. It renders nothing on this screen on Android —
+   * proved by forcing an opaque RED shadow with a 30px blur and finding zero
+   * pixels, with `overflow` removed and an opaque background both ruled out
+   * separately. `elevation` + the iOS shadow props do render.
+   * 📌 `backgroundColor` is required: Android casts an elevation shadow from
+   * the view's background, and this one is otherwise just an image.
+   * ⚖️ It is subtle on this page, and that is honest — her value is pure
+   * black at 25%, which over `#361416` cannot be anything else. It reads
+   * stronger in Figma because the canvas behind her card is lighter.
+   */
   tile: {
     width: TILE,
     height: TILE,
     borderRadius: 4,
     borderTopRightRadius: 24,
-    overflow: "hidden",
     justifyContent: "flex-end",
     padding: 12,
+    backgroundColor: "#361416",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 25 },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 14,
+  },
+  /** The photo + washes, clipped to her 4 / 24 / 4 / 4 corners. */
+  tileClip: {
+    ...StyleSheet.absoluteFillObject,
+    width: TILE,
+    height: TILE,
+    borderRadius: 4,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    // Measured off her render, not taken from the token fallback: the
-    // generated code offers `#f3efe3` (bone) for the border, but resolving the
-    // 0.5px edge against the card gives ~(82,55,55), which is this.
+    // `0.5px solid var(--page-surface-alt, #513436)` — her own CSS confirms
+    // the token; an earlier export offered `#f3efe3`, which measuring her
+    // render had already contradicted.
     borderColor: "#513436",
-    boxShadow: "0px 25px 50px -12px rgba(0,0,0,0.25)",
   },
   // 🔴 absoluteFillObject ALONE. Pairing it with width/height "100%" made the
   // photo render at a smaller size pinned top-left, leaving bare surface down
