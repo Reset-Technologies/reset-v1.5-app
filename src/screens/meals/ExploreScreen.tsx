@@ -96,6 +96,16 @@ export function ExploreScreen() {
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  /**
+   * The view whose results are on screen, or `null` while none have landed.
+   *
+   * 🔴 The empty state used to be `!searching && results.length === 0`, which
+   * is true for a window after every view change and NOT only when a search
+   * came back empty — Cole saw "No recipes in Dinner in 20 match that yet."
+   * flash on the way INTO the collection. "Nothing matched" is a claim about a
+   * finished request, so it has to be keyed to one.
+   */
+  const [settledKey, setSettledKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   /**
@@ -104,6 +114,7 @@ export function ExploreScreen() {
    * land last and show results for a query the member has moved past.
    */
   const requestId = useRef(0);
+  const lastRowKey = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +135,7 @@ export function ExploreScreen() {
   }, []);
 
   const runSearch = useCallback(
-    async (filters: ExploreFilters, append: boolean) => {
+    async (filters: ExploreFilters, append: boolean, key: string) => {
       const id = ++requestId.current;
       if (append) setLoadingMore(true);
       else setSearching(true);
@@ -143,11 +154,16 @@ export function ExploreScreen() {
         if (id === requestId.current) {
           setSearching(false);
           setLoadingMore(false);
+          // Settled either way: a failure has its own message to show.
+          if (!append) setSettledKey(key);
         }
       }
     },
     [],
   );
+
+  /** What is being asked for: the collection, if any, plus the typed text. */
+  const searchKey = useMemo(() => `${activeRow?.key ?? ""}|${query.trim()}`, [activeRow, query]);
 
   /**
    * Debounced search-as-you-type.
@@ -158,18 +174,33 @@ export function ExploreScreen() {
    */
   useEffect(() => {
     const text = query.trim();
+    const rowKey = activeRow?.key ?? null;
+    const rowChanged = rowKey !== lastRowKey.current;
+    lastRowKey.current = rowKey;
+
     if (!text && !activeRow) {
       setResults([]);
       setTotal(0);
       setNextOffset(null);
+      setSettledKey(null); // these results are gone; don't let them vouch for the next view
       requestId.current++; // abandon any in-flight response
       return;
     }
+
+    const filters = { ...(activeRow?.query as ExploreFilters), q: text || undefined };
+
+    // 📌 The 300ms belongs to TYPING. Opening or leaving a collection is one
+    // discrete tap, and making it wait is just 300ms of nothing happening.
+    if (rowChanged) {
+      runSearch(filters, false, searchKey);
+      return;
+    }
+
     const handle = setTimeout(() => {
-      runSearch({ ...(activeRow?.query as ExploreFilters), q: text || undefined }, false);
+      runSearch(filters, false, searchKey);
     }, 300);
     return () => clearTimeout(handle);
-  }, [query, activeRow, runSearch]);
+  }, [query, activeRow, runSearch, searchKey]);
 
   const openRow = useCallback((row: ExploreBrowseRow) => {
     Keyboard.dismiss();
@@ -232,8 +263,9 @@ export function ExploreScreen() {
         offset: nextOffset,
       },
       true,
+      searchKey,
     );
-  }, [nextOffset, loadingMore, searching, activeRow, query, runSearch]);
+  }, [nextOffset, loadingMore, searching, activeRow, query, runSearch, searchKey]);
 
   const openRecipe = useCallback(
     (item: ExploreResult) => {
@@ -268,14 +300,16 @@ export function ExploreScreen() {
 
   const browsing = activeRow !== null;
   const searchingSomething = query.trim().length > 0 || browsing;
+  /** True from the moment a view is asked for until ITS results land. */
+  const awaitingResults = searchingSomething && settledKey !== searchKey;
 
   const headerLabel = useMemo(() => {
     if (!searchingSomething) return null;
-    if (searching) return "Searching…";
+    if (awaitingResults) return "Searching…";
     if (failed) return "Couldn't load results";
     const noun = total === 1 ? "recipe" : "recipes";
     return `${total} ${noun}`;
-  }, [searchingSomething, searching, failed, total]);
+  }, [searchingSomething, awaitingResults, failed, total]);
 
   const renderResult = ({ item }: { item: ExploreResult }) => (
     <Pressable
@@ -397,7 +431,7 @@ export function ExploreScreen() {
             loadingMore ? <ActivityIndicator color={K.bone} style={styles.footerSpinner} /> : null
           }
           ListEmptyComponent={
-            searching ? null : (
+            awaitingResults ? null : (
               <Text style={styles.empty}>
                 {failed
                   ? "Something went wrong. Pull back and try again."
