@@ -642,15 +642,21 @@ const styles = StyleSheet.create({
   /**
    * Her `box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25)`.
    *
-   * 🔴 NOT `boxShadow`. It renders nothing on this screen on Android —
-   * proved by forcing an opaque RED shadow with a 30px blur and finding zero
-   * pixels, with `overflow` removed and an opaque background both ruled out
-   * separately. `elevation` + the iOS shadow props do render.
-   * 📌 `backgroundColor` is required: Android casts an elevation shadow from
-   * the view's background, and this one is otherwise just an image.
-   * ⚖️ It is subtle on this page, and that is honest — her value is pure
-   * black at 25%, which over `#361416` cannot be anything else. It reads
-   * stronger in Figma because the canvas behind her card is lighter.
+   * ⚠️ CORRECTED 2026-10-23. I had written here that `boxShadow` renders
+   * NOTHING on Android and had marked it proved. It was not: re-running the
+   * same opaque-red detector (30px blur) on this very style lit up 246k
+   * pixels. The first test screenshotted before Fast Refresh had applied, so
+   * I measured the OLD bundle and read the absence as a platform limit.
+   * 🔑 An unchanged screenshot is a claim about the bundle on the device.
+   *
+   * What is true is quieter: her value is pure black at 25%, and over
+   * `#361416` it measures ~3.7/255 at its strongest row — real, and very
+   * nearly invisible. That, not a broken prop, is why the falloff below is
+   * painted: the painted gradient AMPLIFIES her value rather than
+   * reproducing it. It reads stronger in Figma because the canvas behind her
+   * card is lighter.
+   * 📌 `backgroundColor` is still required for the `elevation` shadow, which
+   * has nothing else to cast from here — the view is otherwise just an image.
    */
   tile: {
     width: TILE,
@@ -667,13 +673,16 @@ const styles = StyleSheet.create({
     elevation: 14,
   },
   /**
-   * Her `box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25)`, painted.
+   * Her `box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25)`, painted — and
+   * deliberately stronger than she specified. See the note on `tile`: the
+   * faithful value does render on Android, it is simply almost invisible
+   * over this page's maroon. `<FeGaussianBlur>` is still out (it type-checks
+   * then silently drops the element).
    *
-   * Nothing will cast it on Android — `boxShadow` draws nothing here (proved
-   * with an opaque red shadow and a 30px blur), `elevation` gives only edge
-   * antialiasing, and `<FeGaussianBlur>` type-checks then silently drops the
-   * element. So the falloff is a gradient: inset 12 a side for her negative
-   * spread, fading out over the distance her 25 offset and 50 blur covered.
+   * ▶ So this is a JUDGEMENT, not a workaround, and it is the version Cole
+   * signed off on. Swapping it for her literal value would flatten the cards.
+   * Inset 12 a side for her negative spread, fading out over the distance her
+   * 25 offset and 50 blur covered.
    */
   tileShadow: {
     position: "absolute",
