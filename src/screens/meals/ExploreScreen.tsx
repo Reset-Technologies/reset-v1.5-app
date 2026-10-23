@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Image,
   Keyboard,
@@ -192,6 +193,36 @@ export function ExploreScreen() {
     setActiveRow(null);
   }, []);
 
+  /**
+   * Back out of a collection before backing out of the screen.
+   *
+   * 🔴 Opening a collection does not PUSH anything — it sets `activeRow` on
+   * this same screen — so the header arrow went straight back to My Plan and
+   * skipped the browse list the member had just come from. Cole hit it on
+   * the S24.
+   * 📌 Android's hardware back is wired to the same thing, or the two
+   * disagree: [[feedback_back_affordances]] — the hardware key hides a
+   * missing control, and here it would hide a wrong one.
+   */
+  const goBack = useCallback(() => {
+    if (activeRow) {
+      clearBrowse();
+      return;
+    }
+    navigation.goBack();
+  }, [activeRow, clearBrowse, navigation]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeRow) {
+        clearBrowse();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [activeRow, clearBrowse]);
+
   const loadMore = useCallback(() => {
     if (nextOffset === null || loadingMore || searching) return;
     runSearch(
@@ -280,10 +311,10 @@ export function ExploreScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={goBack}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={activeRow ? "Back to collections" : "Back"}
           style={styles.backButton}
         >
           <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
