@@ -209,16 +209,16 @@ export function ExploreScreen() {
   }, []);
 
   /**
-   * Drop the browse filter and KEEP what the member typed.
+   * Leave the collection and go back to browsing.
    *
-   * 🔴 Found on a device pass, 2026-10-19. This also did `setQuery("")`, so
-   * the control labelled "Clear filter" silently threw away the search as well.
-   * The trap it created: typing a query while a collection is active searches
-   * INSIDE that collection, so "Assam" inside "Dinner in 20" returns nothing —
-   * and the only affordance offered then destroyed the query too, leaving the
-   * member to retype it to discover the recipe does exist.
-   *
-   * 📌 The query has its own ✕ inside the field. Two controls, two jobs.
+   * ⚠️ This was "Clear filter", a control beside the collection name. Lang's
+   * `5039:29545` has no such button and no search field on a collection, so
+   * both are gone and only the back arrow calls this now.
+   * 📌 That also retires the trap the control existed to soften: typing while
+   * a collection was active searched INSIDE it, so "Assam" in "Dinner in 20"
+   * found nothing though the recipe exists. There is nothing to type into any
+   * more. Kept `setQuery` untouched so a search made BEFORE opening a
+   * collection is still there on the way back.
    */
   const clearBrowse = useCallback(() => {
     setActiveRow(null);
@@ -361,9 +361,10 @@ export function ExploreScreen() {
             />
           </Svg>
         </Pressable>
-        <Text style={styles.headerTitle}>Explore Meals</Text>
+        {browsing ? null : <Text style={styles.headerTitle}>Explore Meals</Text>}
       </View>
 
+      {browsing ? null : (
       <View style={styles.searchRow}>
         <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" style={styles.searchIcon}>
           <Path
@@ -400,19 +401,46 @@ export function ExploreScreen() {
           </Pressable>
         ) : null}
       </View>
+      )}
 
+      {/* ── A collection is its own screen ────────────────────────────────
+          Her `5039:29545`: breadcrumb, a 32pt title, the count, a rule, then
+          the grid. No search field and no "Clear" — the back arrow is the
+          only way out, which is also why it had to start working.
+          🔑 Dropping the field drops the trap the "Clear" was there to soften:
+          typing inside a collection searched WITHIN it, so "Assam" in
+          "Dinner in 20" found nothing though the recipe exists. */}
       {browsing ? (
-        <View style={styles.browseBar}>
-          <Text style={styles.browseLabel} numberOfLines={1}>
-            {activeRow?.title}
-          </Text>
-          <Pressable onPress={clearBrowse} hitSlop={10} accessibilityLabel="Clear filter">
-            <Text style={styles.browseClear}>Clear</Text>
-          </Pressable>
-        </View>
-      ) : null}
+        <>
+          <View style={styles.collectionHead}>
+            <View style={styles.collectionTitleGroup}>
+              <View style={styles.eyebrow}>
+                <View style={styles.eyebrowDot} />
+                <Text style={styles.eyebrowText}>Collections</Text>
+              </View>
+              <Text style={styles.collectionTitle}>{activeRow?.title}</Text>
+            </View>
+            {/* 🔴 NOT WRITTEN YET. Her frame shows a sentence under every
+                collection title and no collection has one: the row registry
+                (`explore-query.ts`) carries key/title/query/count/image and
+                nothing else. Bryan's EXPLORE tab says row definitions are
+                server-driven "so merchandising can change without app
+                release", so the copy belongs in that registry, and it is
+                HIS to write — Figma is not canonical for copy. Rendered the
+                moment a row carries one. */}
+            {activeRow?.description ? (
+              <Text style={styles.collectionDesc}>{activeRow.description}</Text>
+            ) : null}
+          </View>
 
-      {headerLabel ? <Text style={styles.resultCount}>{headerLabel}</Text> : null}
+          <View style={styles.countRow}>
+            <Text style={styles.countText}>{headerLabel}</Text>
+          </View>
+          <View style={styles.divider} />
+        </>
+      ) : headerLabel ? (
+        <Text style={styles.resultCount}>{headerLabel}</Text>
+      ) : null}
 
       {searchingSomething ? (
         <FlatList
@@ -421,7 +449,7 @@ export function ExploreScreen() {
           renderItem={renderResult}
           numColumns={2}
           columnWrapperStyle={styles.resultRow}
-          contentContainerStyle={styles.resultList}
+          contentContainerStyle={[styles.resultList, browsing ? styles.resultListBrowse : null]}
           keyboardShouldPersistTaps="handled"
           // r7: "pagination/infinite load; do not load full library
           // client-side". The server caps the page; this asks for the next one.
@@ -585,25 +613,81 @@ const styles = StyleSheet.create({
     // height matches iOS.
     paddingVertical: 0,
   },
-  browseBar: {
+  /**
+   * Her collection header, `5039:29549` — 24 below the back row, 16 between
+   * the title group and the description, 4 inside the group.
+   *
+   * 📌 Typefaces are hers and resolve through `get_variable_defs`, not through
+   * the `var()` fallbacks: Style/Sans serif = Catalogue, Style/Serif =
+   * Quadrant, Title 1 = 32, Caption = 12, Body 2 = 14. Both faces are already
+   * loaded and are what `MyPlanScreen` and `SavedMealsScreen` use — the rest
+   * of THIS screen is still DM Sans, which is the open sweep.
+   */
+  collectionHead: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    gap: spacing.md,
+  },
+  collectionTitleGroup: { gap: spacing.xs },
+  eyebrow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+  },
+  // Her `Dot` is a 6.781 circle filled Blue Surface — the same #92B4BD as
+  // `K.blue`, so it is drawn rather than carried as an asset.
+  eyebrowDot: {
+    width: 6.78,
+    height: 6.78,
+    borderRadius: 3.39,
+    backgroundColor: K.blue,
+  },
+  eyebrowText: {
+    fontFamily: fonts.quadrant,
+    fontSize: 12,
+    letterSpacing: -0.12,
+    color: "#fafdfe",
+  },
+  collectionTitle: {
+    fontFamily: fonts.catalogue,
+    fontSize: 32,
+    letterSpacing: -0.32,
+    color: "#fafdfe",
+  },
+  collectionDesc: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: "#b0a3a4",
+  },
+  /**
+   * 🔴 Her row also holds a **Sort by** button (`5039:29558`) and it is NOT
+   * here. The search is ordered by relevance with a fixed tiebreak
+   * (`explore-query.ts`) and takes no sort parameter, pagination is
+   * server-side so a page cannot honestly be re-sorted on the client, and
+   * neither her frames here nor Bryan's EXPLORE tab say what the options are.
+   * A button that does nothing is worse than its absence. Needs both.
+   */
+  countRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
   },
-  browseLabel: {
-    fontFamily: fonts.dmSans,
-    fontSize: 20,
-    letterSpacing: -0.2,
-    color: K.bone,
-    flex: 1,
-  },
-  browseClear: {
-    fontFamily: fonts.dmSans,
+  countText: {
+    fontFamily: fonts.quadrant,
     fontSize: 14,
     letterSpacing: -0.14,
-    color: K.textMuted,
+    color: "#fafdfe",
+  },
+  // `Divider Line` #7e6869, and it runs the full 402 — edge to edge, outside
+  // the page's own 24 of padding.
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#7e6869",
+    marginTop: spacing.lg,
   },
   resultCount: {
     fontFamily: fonts.dmSans,
@@ -756,6 +840,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   resultList: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
+  resultListBrowse: { paddingTop: spacing.lg },
   resultRow: { gap: spacing.md, marginBottom: spacing.lg },
   resultCard: { width: CARD },
   resultImageWrap: {

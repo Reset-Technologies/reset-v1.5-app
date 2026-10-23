@@ -685,6 +685,14 @@ export interface ExploreSearchResponse {
 export interface ExploreBrowseRow {
   key: string;
   title: string;
+  /**
+   * The sentence under the title on a collection's own screen
+   * (Lang `5039:29555`). Optional because no row carries one yet: the copy is
+   * Bryan's and belongs in the server-side row registry, per his EXPLORE tab
+   * ("server-driven row definitions so merchandising can change without app
+   * release").
+   */
+  description?: string;
   query: Record<string, string | number | boolean | null>;
   /** The row's real size, from the row's own query. */
   count: number;
