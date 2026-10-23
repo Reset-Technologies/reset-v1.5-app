@@ -482,9 +482,26 @@ export function ExploreScreen() {
                       viewBox={`0 0 ${tw} ${th}`}
                     >
                       <Defs>
+                        {/*
+                          🔴 It must NOT reach full opacity. Her CSS reads
+                          `rgba(54,20,22,0) 9.14% → rgb(54,20,22) 92.13%`, and
+                          I took that literally: the bottom of every card went
+                          dead maroon with none of the photo coming through.
+                          Her gradient runs at 192.23deg, not straight down,
+                          so on a 277×192 box the full-opacity end lands past
+                          the corner and the bottom edge never gets there.
+                          📌 These stops are measured off her card instead of
+                          modelled from the angle. The photo's variation
+                          across a row survives the overlay in proportion to
+                          (1 - alpha), and hers still measures a standard
+                          deviation of 18-27 at 86-93% depth where an opaque
+                          wash would be flat — which puts her at ~0.70 behind
+                          the label and ~0.85 at the very bottom.
+                        */}
                         <LinearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
                           <Stop offset="0.091" stopColor="#361416" stopOpacity={0} />
-                          <Stop offset="0.921" stopColor="#361416" stopOpacity={1} />
+                          <Stop offset="0.93" stopColor="#361416" stopOpacity={0.7} />
+                          <Stop offset="1" stopColor="#361416" stopOpacity={0.85} />
                         </LinearGradient>
                         <LinearGradient id="tileAccent" x1="0" y1="1" x2="1" y2="0">
                           <Stop offset="0.76" stopColor="#92B4BD" stopOpacity={0} />
