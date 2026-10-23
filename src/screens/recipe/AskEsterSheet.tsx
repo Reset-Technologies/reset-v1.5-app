@@ -130,15 +130,46 @@ export function AskEsterSheet({
     });
   }, [visible, context, sourceSurface]);
 
+  /**
+   * The object this conversation is about. Ester's sheet is per-MEAL, so the
+   * thread belongs to the meal, not to one viewing of it.
+   */
+  const threadKey = `${context.recipeVersionId ?? mealId}|${context.plannedMealId ?? ""}`;
+  const openThread = useRef<string | null>(null);
+
+  /**
+   * 🔴 Closing the sheet used to throw away the TRANSCRIPT and
+   * `sessionId.current` — the handle to the server session — so every reopen
+   * started a brand-new thread and Ester lost what she had just been told.
+   * Cole hit it on his S24: *"the conversation clears/restarts once I close
+   * the sheet and then reopen it."*
+   *
+   * 📌 The worry that justified it was stale context, and the code already
+   * answers that: `systemContext()` is rebuilt and sent on EVERY turn, so the
+   * recipe, the serving multiplier and any substitutions are always current
+   * no matter how old the session is. What actually needed guarding was
+   * carrying one meal's thread onto a DIFFERENT meal — so the thread is keyed
+   * to the meal and reset when that changes, rather than on every close.
+   *
+   * ⚠️ `announced.current` still resets, so reopening re-fires
+   * `ester_opened_from_*`. That is deliberate — an open is an open — but it
+   * does mean the r7/r8 entry counts include reopens.
+   */
   useEffect(() => {
-    if (!visible) {
-      announced.current = false;
-      setBubbles([]);
-      setDraft("");
-      setFailed(false);
-      sessionId.current = undefined;
+    if (visible) {
+      if (openThread.current !== threadKey) {
+        openThread.current = threadKey;
+        setBubbles([]);
+        sessionId.current = undefined;
+      }
+      return;
     }
-  }, [visible]);
+    // Only what belongs to THIS viewing: a half-typed question, a failed send,
+    // and the once-per-open analytics guard.
+    announced.current = false;
+    setDraft("");
+    setFailed(false);
+  }, [visible, threadKey]);
 
   /**
    * What Ester is told about the object on screen.
