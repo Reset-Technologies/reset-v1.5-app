@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts, spacing } from "../../constants/typography";
 import {
@@ -279,7 +279,7 @@ export function ExploreScreen() {
         <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" style={styles.searchIcon}>
           <Path
             d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"
-            stroke={K.textMuted}
+            stroke="#fafdfe"
             strokeWidth={2}
             strokeLinecap="round"
           />
@@ -287,7 +287,7 @@ export function ExploreScreen() {
         <TextInput
           style={styles.searchInput}
           placeholder="Search"
-          placeholderTextColor={K.textMuted}
+          placeholderTextColor="rgba(250,253,254,0.65)"
           value={query}
           onChangeText={setQuery}
           autoCorrect={false}
@@ -387,8 +387,43 @@ export function ExploreScreen() {
                     ) : (
                       <View style={[styles.tileImage, styles.imageFallback]} />
                     )}
-                    {/* A scrim, so a light photo cannot swallow the label. */}
-                    <View style={styles.tileScrim} />
+                    {/*
+                      Her treatment (`5039:29760`), which is NOT a flat scrim:
+                      a soft darkening from the TOP that clears by 67%, a
+                      second wash coming UP from the bottom that reaches SOLID
+                      brown by 92%, and a blue accent entering the swept
+                      corner. The middle of the photograph is left alone,
+                      which is why hers look rich and a flat scrim looks
+                      faded — Cole spotted exactly that.
+                    */}
+                    <Svg
+                      style={StyleSheet.absoluteFill}
+                      width={TILE}
+                      height={TILE}
+                      viewBox={`0 0 ${TILE} ${TILE}`}
+                    >
+                      <Defs>
+                        <LinearGradient id="tileTop" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor="#361416" stopOpacity={0.48} />
+                          <Stop offset="0.669" stopColor="#361416" stopOpacity={0} />
+                        </LinearGradient>
+                        <LinearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0.091" stopColor="#361416" stopOpacity={0} />
+                          <Stop offset="0.921" stopColor="#361416" stopOpacity={1} />
+                        </LinearGradient>
+                        <LinearGradient id="tileAccent" x1="0" y1="1" x2="1" y2="0">
+                          <Stop offset="0.76" stopColor="#92B4BD" stopOpacity={0} />
+                          <Stop offset="1" stopColor="#92B4BD" stopOpacity={0.53} />
+                        </LinearGradient>
+                      </Defs>
+                      {/* 🔴 Numeric, not "100%": inside a nested <Svg> the
+                          percentage did not resolve against the tile and the
+                          washes drew as a hard-edged block over part of the
+                          photo. */}
+                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileTop)" />
+                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileBase)" />
+                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileAccent)" />
+                    </Svg>
                     <Text style={styles.tileTitle} numberOfLines={2}>
                       {row.title}
                     </Text>
@@ -425,6 +460,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.24,
     color: K.bone,
   },
+  /**
+   * Her `Sidebar Search Field` (`5039:29750`). Cole: *"the search bar looks
+   * a little different."*
+   *
+   * 🔴 The fill was `rgba(243,239,227,0.12)` — bone at 12%, which reads flat
+   * and dark. Measured off her render it is the near-white ghost at **24%**,
+   * the same token as the Cook Mode toast's Done button. The generated code
+   * offers `rgba(54,20,22,0.12)` as the `--ghost-surface` fallback, which is
+   * the brown one and wrong here for the usual reason: a `var()` fallback is
+   * not the value.
+   * 📌 She also gives it a hairline and a soft drop shadow; without them the
+   * pill has no edge against the page.
+   */
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -433,7 +481,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(243,239,227,0.12)",
+    backgroundColor: "rgba(250,253,254,0.24)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#7e6869",
+    boxShadow: "0px 4px 8px 0px rgba(0,0,0,0.12)",
   },
   searchIcon: {},
   searchInput: {
@@ -441,7 +492,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.dmSans,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.bone,
+    color: "#fafdfe",
     // Android adds its own vertical padding to TextInput; zero it so the pill
     // height matches iOS.
     paddingVertical: 0,
@@ -504,10 +555,6 @@ const styles = StyleSheet.create({
   // a typecheck. The percentages resolve against the padded content box, not
   // the tile, so they fight the inset:0 the fill already sets.
   tileImage: { ...StyleSheet.absoluteFillObject },
-  tileScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(54,20,22,0.45)",
-  },
   /* Lang's tiles read 24px, but hers say "Breakfast" and "Lunch". A
      server-driven registry also serves "Mediterranean" and "Under 30 min",
      which clipped mid-word at that size on a 144pt tile. 17px over two lines
@@ -518,13 +565,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 20,
     letterSpacing: -0.17,
-    color: K.bone,
+    color: "#fafdfe",
   },
   tileCount: {
     fontFamily: fonts.dmSans,
     fontSize: 12,
     letterSpacing: -0.12,
-    color: "rgba(243,239,227,0.75)",
+    /**
+     * 🔑 Opaque. At 0.75 the glyphs blend toward the photo behind them, which
+     * costs about 1.2:1 of contrast and was the larger half of the failure —
+     * fixing only the scrim would have needed 0.75 opacity on it to
+     * compensate, and that buries the photograph.
+     */
+    color: "#fafdfe",
     marginTop: 2,
   },
   resultList: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
