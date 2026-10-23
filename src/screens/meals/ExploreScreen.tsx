@@ -80,9 +80,6 @@ const WIDE_H = 192;
  * behind the card: offset 25 down, shrunk 12 a side for the negative spread,
  * `stdDeviation` 25 because an SVG blur is half the CSS blur radius.
  */
-const SHADOW_PAD = 60;
-const SHADOW_DY = 25;
-const SHADOW_SPREAD = 12;
 
 export function ExploreScreen() {
   const navigation = useNavigation<Nav>();
@@ -412,48 +409,19 @@ export function ExploreScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${row.title}, ${row.count} recipes`}
                   >
-                    <Svg
-                      pointerEvents="none"
-                      style={{
-                        position: "absolute",
-                        left: -SHADOW_PAD,
-                        top: -SHADOW_PAD,
-                      }}
-                      width={tw + SHADOW_PAD * 2}
-                      height={th + SHADOW_PAD * 2}
-                    >
-                      <Defs>
-                        <LinearGradient id="cardShadow" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0" stopColor="#000000" stopOpacity={0.25} />
-                          <Stop offset="1" stopColor="#000000" stopOpacity={0} />
-                        </LinearGradient>
-                      </Defs>
-                      {/*
-                        🔴 A GRADIENT, not a blur. `<Filter><FeGaussianBlur>`
-                        type-checks and silently drops the element on Android
-                        here — the same rect rendered as a sharp red block
-                        with the filter removed, and nothing at all with it.
-                        So the falloff is painted instead: her shadow's
-                        visible part is the band under the card, and a
-                        vertical fade is a faithful stand-in for a 50px blur
-                        offset 25 down.
-                      */}
-                      <Rect
-                        x={SHADOW_PAD + SHADOW_SPREAD}
-                        y={SHADOW_PAD + th - 6}
-                        width={tw - SHADOW_SPREAD * 2}
-                        height={SHADOW_DY + 21}
-                        rx={4}
-                        fill="url(#cardShadow)"
-                      />
-                    </Svg>
                     {/*
-                      🔴 The photo and its washes are clipped by THIS view, not
-                      by the Pressable. A shadow and `overflow: "hidden"` on the
-                      same view cancel out on Android — the clip takes the
-                      shadow with it. Shadow on the outside, clipping on the
-                      inside.
+                      🔴 A plain View with a native gradient, NOT an <Svg>.
+                      Two SVG surfaces per tile across five rows put this
+                      screen at 100% janky frames, 250ms at the 50th
+                      percentile, with `Number Slow bitmap uploads` equal to
+                      the frame count — SVG rasterises to a texture and every
+                      one was being re-uploaded. `experimental_backgroundImage`
+                      is drawn natively and costs nothing like that.
                     */}
+                    <View
+                      pointerEvents="none"
+                      style={[styles.tileShadow, { top: th - 6 }]}
+                    />
                     <View style={[styles.tileClip, { width: tw, height: th }]}>
                     {row.imageUrl ? (
                       <Image source={{ uri: row.imageUrl }} style={styles.tileImage} />
@@ -475,58 +443,8 @@ export function ExploreScreen() {
                       it as an overlay and darkened the top of every image,
                       which is what Cole kept seeing as "different".
                     */}
-                    <Svg
-                      style={StyleSheet.absoluteFill}
-                      width={tw}
-                      height={th}
-                      viewBox={`0 0 ${tw} ${th}`}
-                    >
-                      <Defs>
-                        {/*
-                          🔴 It must NOT reach full opacity. Her CSS reads
-                          `rgba(54,20,22,0) 9.14% → rgb(54,20,22) 92.13%`, and
-                          I took that literally: the bottom of every card went
-                          dead maroon with none of the photo coming through.
-                          Her gradient runs at 192.23deg, not straight down,
-                          so on a 277×192 box the full-opacity end lands past
-                          the corner and the bottom edge never gets there.
-                          📌 These stops are measured off her card instead of
-                          modelled from the angle. The photo's variation
-                          across a row survives the overlay in proportion to
-                          (1 - alpha), and hers still measures a standard
-                          deviation of 18-27 at 86-93% depth where an opaque
-                          wash would be flat — which puts her at ~0.70 behind
-                          the label and ~0.85 at the very bottom.
-                        */}
-                        <LinearGradient id="tileBase" x1="0" y1="0" x2="0" y2="1">
-                          <Stop offset="0.091" stopColor="#361416" stopOpacity={0} />
-                          <Stop offset="0.93" stopColor="#361416" stopOpacity={0.7} />
-                          <Stop offset="1" stopColor="#361416" stopOpacity={0.85} />
-                        </LinearGradient>
-                        <LinearGradient id="tileAccent" x1="0" y1="1" x2="1" y2="0">
-                          <Stop offset="0.76" stopColor="#92B4BD" stopOpacity={0} />
-                          <Stop offset="1" stopColor="#92B4BD" stopOpacity={0.53} />
-                        </LinearGradient>
-                      </Defs>
-                      {/* 🔴 Numeric, not "100%": inside a nested <Svg> the
-                          percentage did not resolve against the tile and the
-                          washes drew as a hard-edged block over part of the
-                          photo. */}
-                      <Rect
-                        x={0}
-                        y={0}
-                        width={tw}
-                        height={th}
-                        fill="url(#tileBase)"
-                      />
-                      <Rect
-                        x={0}
-                        y={0}
-                        width={tw}
-                        height={th}
-                        fill="url(#tileAccent)"
-                      />
-                    </Svg>
+                    <View pointerEvents="none" style={styles.tileWashBase} />
+                    <View pointerEvents="none" style={styles.tileWashAccent} />
                     </View>
                     <Text style={styles.tileTitle} numberOfLines={2}>
                       {row.title}
@@ -682,6 +600,40 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 25,
     elevation: 14,
+  },
+  /**
+   * Her `box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25)`, painted.
+   *
+   * Nothing will cast it on Android — `boxShadow` draws nothing here (proved
+   * with an opaque red shadow and a 30px blur), `elevation` gives only edge
+   * antialiasing, and `<FeGaussianBlur>` type-checks then silently drops the
+   * element. So the falloff is a gradient: inset 12 a side for her negative
+   * spread, fading out over the distance her 25 offset and 50 blur covered.
+   */
+  tileShadow: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    height: 46,
+    borderRadius: 4,
+    experimental_backgroundImage:
+      "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 100%)",
+  },
+  /**
+   * The wash under her label. Stops measured off her exported card rather
+   * than read off the CSS angle — see the note where they were derived. It
+   * must NOT reach full opacity or the photo stops coming through.
+   */
+  tileWashBase: {
+    ...StyleSheet.absoluteFillObject,
+    experimental_backgroundImage:
+      "linear-gradient(180deg, rgba(54,20,22,0) 9.1%, rgba(54,20,22,0.7) 93%, rgba(54,20,22,0.85) 100%)",
+  },
+  /** Her blue accent entering the swept corner. */
+  tileWashAccent: {
+    ...StyleSheet.absoluteFillObject,
+    experimental_backgroundImage:
+      "linear-gradient(43.75deg, rgba(146,180,189,0) 76%, rgba(146,180,189,0.53) 100%)",
   },
   /** The photo + washes, clipped to her 4 / 24 / 4 / 4 corners. */
   tileClip: {
