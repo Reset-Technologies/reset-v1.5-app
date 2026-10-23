@@ -56,6 +56,17 @@ type Nav = NativeStackNavigationProp<MainStackParamList>;
 /** Tile sizes from her frame: 144×144 squares, 154-wide result cards. */
 const TILE = 144;
 const CARD = 154;
+/**
+ * Collections are LANDSCAPE on her frame — `Recipe Card Style 3` is 277×192
+ * (`5039:29760`), not a square.
+ *
+ * 🔑 The server has been saying so all along: `explore-query.ts` tags the
+ * collections row `style: 'wide'` and every other row `'square'`, and
+ * `ExploreSection.style` is already on the client type. We just never read it,
+ * so every row rendered as a 144 square.
+ */
+const WIDE_W = 277;
+const WIDE_H = 192;
 
 export function ExploreScreen() {
   const navigation = useNavigation<Nav>();
@@ -377,7 +388,10 @@ export function ExploreScreen() {
                 {section.rows.map((row) => (
                   <Pressable
                     key={row.key}
-                    style={styles.tile}
+                    style={[
+                      styles.tile,
+                      section.style === "wide" && { width: WIDE_W, height: WIDE_H },
+                    ]}
                     onPress={() => openRow(row)}
                     accessibilityRole="button"
                     accessibilityLabel={`${row.title}, ${row.count} recipes`}
@@ -398,9 +412,11 @@ export function ExploreScreen() {
                     */}
                     <Svg
                       style={StyleSheet.absoluteFill}
-                      width={TILE}
-                      height={TILE}
-                      viewBox={`0 0 ${TILE} ${TILE}`}
+                      width={section.style === "wide" ? WIDE_W : TILE}
+                      height={section.style === "wide" ? WIDE_H : TILE}
+                      viewBox={`0 0 ${section.style === "wide" ? WIDE_W : TILE} ${
+                        section.style === "wide" ? WIDE_H : TILE
+                      }`}
                     >
                       <Defs>
                         <LinearGradient id="tileTop" x1="0" y1="0" x2="0" y2="1">
@@ -420,9 +436,27 @@ export function ExploreScreen() {
                           percentage did not resolve against the tile and the
                           washes drew as a hard-edged block over part of the
                           photo. */}
-                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileTop)" />
-                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileBase)" />
-                      <Rect x={0} y={0} width={TILE} height={TILE} fill="url(#tileAccent)" />
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={section.style === "wide" ? WIDE_W : TILE}
+                        height={section.style === "wide" ? WIDE_H : TILE}
+                        fill="url(#tileTop)"
+                      />
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={section.style === "wide" ? WIDE_W : TILE}
+                        height={section.style === "wide" ? WIDE_H : TILE}
+                        fill="url(#tileBase)"
+                      />
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={section.style === "wide" ? WIDE_W : TILE}
+                        height={section.style === "wide" ? WIDE_H : TILE}
+                        fill="url(#tileAccent)"
+                      />
                     </Svg>
                     <Text style={styles.tileTitle} numberOfLines={2}>
                       {row.title}
@@ -547,7 +581,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     padding: 12,
     borderWidth: StyleSheet.hairlineWidth,
+    // Measured off her render, not taken from the token fallback: the
+    // generated code offers `#f3efe3` (bone) for the border, but resolving the
+    // 0.5px edge against the card gives ~(82,55,55), which is this.
     borderColor: "#513436",
+    boxShadow: "0px 25px 50px -12px rgba(0,0,0,0.25)",
   },
   // 🔴 absoluteFillObject ALONE. Pairing it with width/height "100%" made the
   // photo render at a smaller size pinned top-left, leaving bare surface down
@@ -578,7 +616,8 @@ const styles = StyleSheet.create({
      * compensate, and that buries the photograph.
      */
     color: "#fafdfe",
-    marginTop: 2,
+    // Her card puts `gap-[8px]` between the title and the count.
+    marginTop: 8,
   },
   resultList: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
   resultRow: { gap: spacing.md, marginBottom: spacing.lg },
