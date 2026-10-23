@@ -11,8 +11,8 @@ import {
   Modal,
   Dimensions,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { K, MetabolicType } from "../constants/colors";
 import { useToast } from "../context/ToastContext";
@@ -75,6 +75,20 @@ interface MealCardProps {
 export function MealCard({ meal, metabolicType, isFavorited = false, isEaten = false, initialFeedback = null, initialTags = [], onPress, onFeedback, onUndoFeedback, onChatPress, onRecipePress, onFavoriteToggle, onReplace, onToggleEaten }: MealCardProps) {
   const [feedback, setFeedback] = useState<"up" | "down" | null>(initialFeedback);
   const [showSheet, setShowSheet] = useState(false);
+
+  /**
+   * Whether the keypad is actually up. Gates the avoidance below so nothing
+   * is left behind when it goes away — see the comment on the sheet.
+   */
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardUp(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [freeText, setFreeText] = useState("");
   const [favorited, setFavorited] = useState(isFavorited);
@@ -248,7 +262,16 @@ export function MealCard({ meal, metabolicType, isFavorited = false, isEaten = f
       {/* Feedback bottom sheet */}
       <Modal visible={showSheet} transparent animationType="slide" onRequestClose={() => setShowSheet(false)}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowSheet(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          {/*
+            🔴 `behavior` was iOS-only, so Android got NO keyboard avoidance:
+            a `Modal` is its own window and is not resized for the keypad, so
+            the note field sat behind it.
+            🔴 And `enabled` is load-bearing — inside a Modal
+            `KeyboardAvoidingView` does not return its padding to zero on
+            dismiss, which leaves the sheet floating off the bottom of the
+            screen afterwards. Same pair of bugs as `AskEsterSheet`.
+          */}
+          <KeyboardAvoidingView behavior="padding" enabled={keyboardUp}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}}>
               <View style={styles.sheetContainer}>
                 <View style={styles.sheetHeader}>

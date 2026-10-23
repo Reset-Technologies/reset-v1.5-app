@@ -9,6 +9,8 @@ import {
   Alert,
   Linking,
   Platform,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -90,6 +92,17 @@ export function SettingsScreen() {
 
   // Account-deletion confirmation modal
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+
+  /** Gates the avoidance on the delete dialog; see the comment there. */
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardUp(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
@@ -632,8 +645,32 @@ export function SettingsScreen() {
         animationType="fade"
         onRequestClose={closeDeleteModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        {/*
+          🔴 This dialog asks the member to TYPE "DELETE", and had no keyboard
+          handling at all — a `Modal` is its own window and Android does not
+          resize it, so the field and the confirm button could sit behind the
+          keypad on a short screen. `enabled` matters too: inside a Modal
+          `KeyboardAvoidingView` does not return its padding to zero on
+          dismiss. Same pair as `AskEsterSheet` and `MealCard`.
+        */}
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior="padding"
+          enabled={keyboardUp}
+        >
+          {/*
+            🔴 Scrollable, because with the keypad up this card is taller than
+            what is left of the screen. Lifting it alone put the field and
+            "Delete Forever" in reach but pushed **Cancel** behind the keypad
+            and clipped the title off the top — the destructive control
+            reachable and the safe exit not, which is the wrong way round.
+          */}
+          <ScrollView
+            style={styles.modalCard}
+            contentContainerStyle={styles.modalCardContent}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
             <Text style={styles.modalTitle}>Delete account?</Text>
             <Text style={styles.modalBody}>
               This permanently deletes your account and all of your data —
@@ -695,8 +732,8 @@ export function SettingsScreen() {
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -905,6 +942,11 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: K.white,
     borderRadius: radius.xl,
+    // `flexGrow: 0` keeps the card hugging its content instead of filling the
+    // overlay; the ScrollView only engages when there is not room.
+    flexGrow: 0,
+  },
+  modalCardContent: {
     padding: spacing.lg,
   },
   modalTitle: {
