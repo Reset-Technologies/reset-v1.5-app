@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -92,6 +92,26 @@ export function AskEsterSheet({
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const sessionId = useRef<string | undefined>(undefined);
+
+  /**
+   * 🔴 Whether the keypad is actually up, which gates the avoidance below.
+   *
+   * `KeyboardAvoidingView` does not return its padding to zero inside a
+   * `Modal` on Android: once the keypad had been up and gone again it kept
+   * ~50dp of bottom padding, so the sheet floated off the bottom of the
+   * screen with the recipe showing through underneath. Cole saw it the
+   * moment he sent a message. Gating it on the real keyboard state keeps the
+   * avoidance while typing and guarantees nothing is left behind after.
+   */
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardUp(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const scroller = useRef<ScrollView | null>(null);
   const announced = useRef(false);
 
@@ -245,8 +265,18 @@ export function AskEsterSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
+      {/*
+        🔴 `behavior` was iOS-only, leaving Android with NO avoidance at all —
+        the usual reasoning being that `adjustResize` takes care of it. It
+        does not here: a `Modal` is its own window and is not resized for the
+        keyboard, so on an S24 the input and the send button both sat BEHIND
+        the keypad. You could type, but not see what you typed and not reach
+        Send; only the keyboard's own Send key worked. Same cause as the Cook
+        Mode timer sheet.
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
+        enabled={keyboardUp}
         style={styles.sheetWrap}
         pointerEvents="box-none"
       >
