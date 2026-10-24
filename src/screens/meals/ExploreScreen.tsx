@@ -99,11 +99,25 @@ const SORT_LABELS: Record<ExploreSort, string> = {
   quickest: "Quickest",
 };
 
-const SORT_OPTIONS: Array<{ value: ExploreSort | null; label: string }> = [
-  { value: null, label: "Recommended" },
+/**
+ * 🔴 Exactly Lang's two. An earlier pass offered a third, "Recommended",
+ * for the server's default order — and it was a NO-OP that shipped as a
+ * visible control. Inside a collection there is no search text, so the
+ * builder's `relevance` is the literal 0 for every row and the default
+ * order is `0 asc, v.title asc, m.id asc` — the same ordering "A-Z"
+ * produces. Two menu entries, one result, nothing happening on tap.
+ *
+ * There is no honest third option to offer: EXPLORE r8 permits a Type prior
+ * in ranking and `explore-query.ts` deliberately does not apply one, so the
+ * catalogue has no "recommended" order to sort by.
+ */
+const SORT_OPTIONS: Array<{ value: ExploreSort; label: string }> = [
   { value: "alphabetical", label: SORT_LABELS.alphabetical },
   { value: "quickest", label: SORT_LABELS.quickest },
 ];
+
+/** A-Z is what a collection already does, so it is the honest resting state. */
+const DEFAULT_SORT: ExploreSort = "alphabetical";
 
 export function ExploreScreen() {
   const navigation = useNavigation<Nav>();
@@ -134,9 +148,9 @@ export function ExploreScreen() {
    * 2026-10-24. `null` is the server's relevance order, which is what every
    * row did before this and stays the default.
    */
-  const [sort, setSort] = useState<ExploreSort | null>(null);
+  const [sort, setSort] = useState<ExploreSort>(DEFAULT_SORT);
   const [sortOpen, setSortOpen] = useState(false);
-  const lastSort = useRef<ExploreSort | null>(null);
+  const lastSort = useRef<ExploreSort>(DEFAULT_SORT);
   const [failed, setFailed] = useState(false);
 
   /**
@@ -228,7 +242,9 @@ export function ExploreScreen() {
     const filters = {
       ...(activeRow?.query as ExploreFilters),
       q: text || undefined,
-      sort: sort ?? undefined,
+      // Sent explicitly rather than leaning on the default being alphabetical:
+      // the label claims A-Z, so the request must ask for A-Z.
+      sort,
     };
 
     // 📌 The 300ms belongs to TYPING. Opening or leaving a collection is one
@@ -250,7 +266,7 @@ export function ExploreScreen() {
     setQuery("");
     // A sort belongs to the collection you chose it in; carrying "quickest"
     // into a row where almost nothing has a time would look broken.
-    setSort(null);
+    setSort(DEFAULT_SORT);
   }, []);
 
   /**
@@ -307,7 +323,7 @@ export function ExploreScreen() {
         q: query.trim() || undefined,
         // 🔴 Without this, page 2 arrives in RELEVANCE order and is appended
         // under an A-Z heading — the list silently stops being sorted.
-        sort: sort ?? undefined,
+        sort,
         offset: nextOffset,
       },
       true,
@@ -487,9 +503,7 @@ export function ExploreScreen() {
               onPress={() => setSortOpen(true)}
               style={styles.sortButton}
               accessibilityRole="button"
-              accessibilityLabel={
-                sort ? `Sort: ${SORT_LABELS[sort]}. Change sort` : "Sort by"
-              }
+              accessibilityLabel={`Sort: ${SORT_LABELS[sort]}. Change sort`}
             >
               {/* Her `swap_vert` glyph, 20pt, from `5039:29558`. */}
               <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
@@ -498,13 +512,12 @@ export function ExploreScreen() {
                   fill="#fafdfe"
                 />
               </Svg>
-              {/* ⚠️ Her label is always "Sort by". Showing the ACTIVE choice
-                  instead is a deliberate deviation: the button is the only
-                  place the applied order is visible, and "Sort by" while
-                  sorted A-Z states nothing. Flagged to her. */}
-              <Text style={styles.sortButtonText}>
-                {sort ? SORT_LABELS[sort] : "Sort by"}
-              </Text>
+              {/* ⚠️ Her label is always "Sort by". The button shows the
+                  ACTIVE order instead — a deliberate deviation, flagged to
+                  her. With only two options one is ALWAYS applied, so a
+                  resting "Sort by" would never be true, and the button is
+                  the only place the applied order is visible. */}
+              <Text style={styles.sortButtonText}>{SORT_LABELS[sort]}</Text>
             </Pressable>
           </View>
           <View style={styles.divider} />
@@ -643,7 +656,7 @@ export function ExploreScreen() {
               const active = sort === opt.value;
               return (
                 <Pressable
-                  key={opt.value ?? "default"}
+                  key={opt.value}
                   style={styles.sortOption}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
