@@ -185,10 +185,18 @@ const ON_BROWN = "#fafdfe";
 const MAX_TIMER = 359999;
 
 /**
- * 🔴 PLACEHOLDER — a plain two-note beep I synthesised, NOT a designed sound.
- * Lang's annotation asks for a ring; the repo had no audio asset of any kind
- * and a chime is a brand decision, so this stands in until she or Bryan
- * supplies one. Dropping a new file at this path is the whole swap.
+ * ✅ Lang's chime, her Option 1 — *"cheerful, warm… a 'ding ding' letting you
+ * know something's ready"* — picked by Bryan on 2026-10-23. It replaces the
+ * two-note beep I had synthesised to stand in.
+ *
+ * 📌 Her file is untouched in sound and level (mean -25.1 dB, max -6.0 dB,
+ * 1.672s): the ONLY change is that its 395ms of leading dead air was moved to
+ * the tail. The asset loops, so that silence was inaudible between rings but
+ * delayed the FIRST one by 395ms after the timer hit zero. Rotating it keeps
+ * the loop period, and therefore the cadence, exactly as she drew it —
+ * 1.237s of ring, then a 435ms rest.
+ * ▶ If she ever sends a replacement, rotate its lead the same way or the
+ * first ring lags; everything else is just dropping the file at this path.
  */
 const ALARM_SOUND = require("../../../assets/audio/timer-complete.wav");
 
