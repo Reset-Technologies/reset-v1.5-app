@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Keyboard,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,7 @@ import {
   ExploreFilters,
   ExploreResult,
   ExploreSection,
+  ExploreSort,
   getExploreSections,
   searchExplore,
 } from "../../services/meals";
@@ -82,6 +84,27 @@ const WIDE_H = 192;
  * `stdDeviation` 25 because an SVG blur is half the CSS blur radius.
  */
 
+/**
+ * Lang's two sort options (Slack 2026-10-24): *"Let's do alphabetical (A-2)
+ * and quickest"*. "A-2" is a typo for A-Z.
+ *
+ * ⚠️ `quickest` is honest but thin: Spoonacular's 45-minute placeholder means
+ * 407 of 522 published recipes have NO known time, and Bryan ruled those must
+ * not be presented as an estimate. The server sorts them last, together, so
+ * outside the time-boxed collections this orders about a fifth of a row and
+ * parks the rest. Raised with Lang; her call, not a client-side fix.
+ */
+const SORT_LABELS: Record<ExploreSort, string> = {
+  alphabetical: "A\u2013Z",
+  quickest: "Quickest",
+};
+
+const SORT_OPTIONS: Array<{ value: ExploreSort | null; label: string }> = [
+  { value: null, label: "Recommended" },
+  { value: "alphabetical", label: SORT_LABELS.alphabetical },
+  { value: "quickest", label: SORT_LABELS.quickest },
+];
+
 export function ExploreScreen() {
   const navigation = useNavigation<Nav>();
   const [sections, setSections] = useState<ExploreSection[]>([]);
@@ -106,6 +129,14 @@ export function ExploreScreen() {
    * finished request, so it has to be keyed to one.
    */
   const [settledKey, setSettledKey] = useState<string | null>(null);
+  /**
+   * Lang's Sort control (`5039:29558`), options from her Slack reply
+   * 2026-10-24. `null` is the server's relevance order, which is what every
+   * row did before this and stays the default.
+   */
+  const [sort, setSort] = useState<ExploreSort | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const lastSort = useRef<ExploreSort | null>(null);
   const [failed, setFailed] = useState(false);
 
   /**
@@ -163,7 +194,10 @@ export function ExploreScreen() {
   );
 
   /** What is being asked for: the collection, if any, plus the typed text. */
-  const searchKey = useMemo(() => `${activeRow?.key ?? ""}|${query.trim()}`, [activeRow, query]);
+  const searchKey = useMemo(
+    () => `${activeRow?.key ?? ""}|${query.trim()}|${sort ?? ""}`,
+    [activeRow, query, sort],
+  );
 
   /**
    * Debounced search-as-you-type.
@@ -177,6 +211,10 @@ export function ExploreScreen() {
     const rowKey = activeRow?.key ?? null;
     const rowChanged = rowKey !== lastRowKey.current;
     lastRowKey.current = rowKey;
+    // Picking a sort is one discrete tap, not typing — it must not sit out the
+    // typing debounce. Same reasoning as `rowChanged`.
+    const sortChanged = sort !== lastSort.current;
+    lastSort.current = sort;
 
     if (!text && !activeRow) {
       setResults([]);
@@ -187,11 +225,15 @@ export function ExploreScreen() {
       return;
     }
 
-    const filters = { ...(activeRow?.query as ExploreFilters), q: text || undefined };
+    const filters = {
+      ...(activeRow?.query as ExploreFilters),
+      q: text || undefined,
+      sort: sort ?? undefined,
+    };
 
     // 📌 The 300ms belongs to TYPING. Opening or leaving a collection is one
     // discrete tap, and making it wait is just 300ms of nothing happening.
-    if (rowChanged) {
+    if (rowChanged || sortChanged) {
       runSearch(filters, false, searchKey);
       return;
     }
@@ -200,12 +242,15 @@ export function ExploreScreen() {
       runSearch(filters, false, searchKey);
     }, 300);
     return () => clearTimeout(handle);
-  }, [query, activeRow, runSearch, searchKey]);
+  }, [query, activeRow, sort, runSearch, searchKey]);
 
   const openRow = useCallback((row: ExploreBrowseRow) => {
     Keyboard.dismiss();
     setActiveRow(row);
     setQuery("");
+    // A sort belongs to the collection you chose it in; carrying "quickest"
+    // into a row where almost nothing has a time would look broken.
+    setSort(null);
   }, []);
 
   /**
@@ -260,12 +305,15 @@ export function ExploreScreen() {
       {
         ...(activeRow?.query as ExploreFilters),
         q: query.trim() || undefined,
+        // 🔴 Without this, page 2 arrives in RELEVANCE order and is appended
+        // under an A-Z heading — the list silently stops being sorted.
+        sort: sort ?? undefined,
         offset: nextOffset,
       },
       true,
       searchKey,
     );
-  }, [nextOffset, loadingMore, searching, activeRow, query, runSearch, searchKey]);
+  }, [nextOffset, loadingMore, searching, activeRow, query, sort, runSearch, searchKey]);
 
   const openRecipe = useCallback(
     (item: ExploreResult) => {
@@ -435,6 +483,29 @@ export function ExploreScreen() {
 
           <View style={styles.countRow}>
             <Text style={styles.countText}>{headerLabel}</Text>
+            <Pressable
+              onPress={() => setSortOpen(true)}
+              style={styles.sortButton}
+              accessibilityRole="button"
+              accessibilityLabel={
+                sort ? `Sort: ${SORT_LABELS[sort]}. Change sort` : "Sort by"
+              }
+            >
+              {/* Her `swap_vert` glyph, 20pt, from `5039:29558`. */}
+              <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+                <Path
+                  d="M7.19062 10.3573C7.07104 10.2377 7.01125 10.0892 7.01125 9.91188V4.46958L5.08021 6.40062C4.96479 6.51604 4.82319 6.57375 4.65542 6.57375C4.48778 6.57375 4.33931 6.5134 4.21 6.39271C4.08069 6.2634 4.01604 6.11486 4.01604 5.94708C4.01604 5.77944 4.08069 5.63097 4.21 5.50167L7.10104 2.61062C7.17896 2.53257 7.26118 2.47757 7.34771 2.44563C7.43424 2.41354 7.52771 2.3975 7.62812 2.3975C7.72868 2.3975 7.82354 2.41354 7.91271 2.44563C8.00188 2.47757 8.08549 2.53257 8.16354 2.61062L11.0754 5.5225C11.1993 5.64639 11.2604 5.79007 11.2587 5.95354C11.2572 6.11701 11.1918 6.2634 11.0625 6.39271C10.9332 6.5134 10.7868 6.5759 10.6233 6.58021C10.4599 6.58437 10.3135 6.52187 10.1844 6.39271L8.26125 4.46958V9.91979C8.26125 10.0972 8.20139 10.2444 8.08167 10.3615C7.96208 10.4784 7.81361 10.5369 7.63625 10.5369C7.45889 10.5369 7.31035 10.477 7.19062 10.3573ZM12.0873 17.5465C11.9981 17.5144 11.9145 17.4594 11.8365 17.3815L8.92458 14.4696C8.80069 14.3456 8.73958 14.2019 8.74125 14.0385C8.74278 13.8751 8.80819 13.7287 8.9375 13.5994C9.06681 13.4787 9.21319 13.4162 9.37667 13.4119C9.54014 13.4076 9.68646 13.4701 9.81563 13.5994L11.7387 15.5225V10.0721C11.7387 9.89472 11.7986 9.74757 11.9183 9.63063C12.0379 9.51368 12.1864 9.45521 12.3637 9.45521C12.5411 9.45521 12.6897 9.515 12.8094 9.63458C12.929 9.75431 12.9887 9.90285 12.9887 10.0802V15.5225L14.9198 13.5913C15.0352 13.476 15.1768 13.4183 15.3446 13.4183C15.5122 13.4183 15.6607 13.4787 15.79 13.5994C15.9193 13.7287 15.984 13.8772 15.984 14.0448C15.984 14.2126 15.9193 14.3611 15.79 14.4904L12.899 17.3815C12.821 17.4594 12.7388 17.5144 12.6523 17.5465C12.5658 17.5785 12.4723 17.5946 12.3719 17.5946C12.2713 17.5946 12.1765 17.5785 12.0873 17.5465Z"
+                  fill="#fafdfe"
+                />
+              </Svg>
+              {/* ⚠️ Her label is always "Sort by". Showing the ACTIVE choice
+                  instead is a deliberate deviation: the button is the only
+                  place the applied order is visible, and "Sort by" while
+                  sorted A-Z states nothing. Flagged to her. */}
+              <Text style={styles.sortButtonText}>
+                {sort ? SORT_LABELS[sort] : "Sort by"}
+              </Text>
+            </Pressable>
           </View>
           <View style={styles.divider} />
         </>
@@ -554,6 +625,55 @@ export function ExploreScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      {/* No frame exists for this menu — Lang gave the OPTIONS in Slack, not a
+          design. Built from the app's existing sheet pattern (see
+          `resetWindow/WindowTimeSheet`) so it is at least consistent. */}
+      <Modal
+        visible={sortOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setSortOpen(false)}
+      >
+        <Pressable style={styles.sortBackdrop} onPress={() => setSortOpen(false)}>
+          <Pressable style={styles.sortSheet} onPress={() => {}}>
+            <Text style={styles.sortSheetTitle}>Sort by</Text>
+            {SORT_OPTIONS.map((opt) => {
+              const active = sort === opt.value;
+              return (
+                <Pressable
+                  key={opt.value ?? "default"}
+                  style={styles.sortOption}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => {
+                    setSort(opt.value);
+                    setSortOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[styles.sortOptionText, active && styles.sortOptionTextActive]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {active ? (
+                    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                      <Path
+                        d="M20 6L9 17l-5-5"
+                        stroke={K.blue}
+                        strokeWidth={2.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -681,6 +801,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.14,
     color: "#fafdfe",
+  },
+  // Her `Button` (`5039:29558`), 88x32. 🔴 The var() fallbacks in the Figma
+  // payload were WRONG on both colours — `get_variable_defs` gives
+  // ghost-surface #fafdfe3d and on-ghost-strong #fafdfe, where the fallbacks
+  // claimed rgba(54,20,22,0.12) and #361416.
+  sortButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: "#fafdfe3d",
+  },
+  sortButtonText: {
+    fontFamily: fonts.catalogue,
+    fontSize: 14,
+    color: "#fafdfe",
+  },
+  sortBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  sortSheet: {
+    // The screen's own surface; the 50% backdrop behind is what separates it.
+    backgroundColor: K.brown,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: spacing.xs,
+  },
+  sortSheetTitle: {
+    fontFamily: fonts.catalogue,
+    fontSize: 18,
+    color: "#fafdfe",
+    marginBottom: spacing.xs,
+  },
+  sortOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.md,
+  },
+  sortOptionText: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    color: "#fafdfe",
+  },
+  sortOptionTextActive: {
+    color: K.blue,
   },
   // `Divider Line` #7e6869, and it runs the full 402 — edge to edge, outside
   // the page's own 24 of padding.

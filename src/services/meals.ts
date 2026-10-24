@@ -707,6 +707,9 @@ export interface ExploreSection {
   rows: ExploreBrowseRow[];
 }
 
+/** The sort orders the server accepts. `relevance` is the unspoken default. */
+export type ExploreSort = "alphabetical" | "quickest";
+
 export interface ExploreFilters {
   q?: string;
   cuisine?: string;
@@ -714,6 +717,11 @@ export interface ExploreFilters {
   maxMinutes?: number;
   diet?: string;
   savedOnly?: boolean;
+  /**
+   * `alphabetical` | `quickest`. Omitted keeps the server's relevance order.
+   * Lang's two options (Slack 2026-10-24); the server rejects anything else.
+   */
+  sort?: ExploreSort;
   limit?: number;
   offset?: number;
 }
