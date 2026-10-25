@@ -11,6 +11,11 @@ export const K = {
   text: "#361416",       // Primary text color (brown)
   textLight: "#F3EFE3",  // Text on dark backgrounds (bone)
   textMuted: "#6B5E5F",  // Muted text (derived from brown)
+  // Muted text ON a dark surface. `textMuted` is derived from brown and so
+  // only works on bone/white; on the brown background it measures 2.67:1,
+  // under the 4.5:1 AA floor. This is Lang's `Text (alt)` token, 6.80:1 on
+  // brown. Use it for secondary text anywhere the surface is dark.
+  textMutedOnDark: "#B0A3A4",
   background: "#FAFDFE", // Primary background (white)
   backgroundWarm: "#F3EFE3", // Secondary background (bone)
   border: "#E8E2D8",     // Border color (derived from bone)

@@ -704,10 +704,10 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   headerTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
-    color: K.bone,
+    color: K.white,
   },
   /**
    * Her `Sidebar Search Field` (`5039:29750`). Cole: *"the search bar looks
@@ -738,10 +738,10 @@ const styles = StyleSheet.create({
   searchIcon: {},
   searchInput: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: "#fafdfe",
+    color: K.white,
     // Android adds its own vertical padding to TextInput; zero it so the pill
     // height matches iOS.
     paddingVertical: 0,
@@ -877,10 +877,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   resultCount: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.quadrant,
     fontSize: 14,
     letterSpacing: -0.14,
-    color: K.textMuted,
+    color: K.textMutedOnDark,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
   },
@@ -888,10 +888,10 @@ const styles = StyleSheet.create({
   sectionsSpinner: { marginTop: spacing.xl },
   section: { marginBottom: 0 },
   sectionTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
-    color: K.bone,
+    color: K.white,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
@@ -1006,14 +1006,14 @@ const styles = StyleSheet.create({
      holds every label the registry currently produces and still reads as the
      tile's title. */
   tileTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     lineHeight: 20,
     letterSpacing: -0.17,
-    color: "#fafdfe",
+    color: K.white,
   },
   tileCount: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.quadrant,
     fontSize: 12,
     letterSpacing: -0.12,
     /**
@@ -1022,7 +1022,7 @@ const styles = StyleSheet.create({
      * fixing only the scrim would have needed 0.75 opacity on it to
      * compensate, and that buries the photograph.
      */
-    color: "#fafdfe",
+    color: K.white,
     // Her card puts `gap-[8px]` between the title and the count.
     marginTop: 8,
   },
@@ -1049,25 +1049,25 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(81,52,54,0.6)",
   },
   resultTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.bone,
+    color: K.white,
     marginTop: spacing.sm,
   },
   resultMeta: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.quadrant,
     fontSize: 14,
     letterSpacing: -0.14,
-    color: K.textMuted,
+    color: K.textMutedOnDark,
     marginTop: 2,
   },
   footerSpinner: { marginVertical: spacing.lg },
   empty: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.textMuted,
+    color: K.textMutedOnDark,
     textAlign: "center",
     marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
