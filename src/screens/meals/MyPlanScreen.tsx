@@ -1658,15 +1658,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(243,239,227,0.12)",
   },
   title: {
-    fontFamily: fonts.playfair,
+    fontFamily: fonts.catalogue,
     fontSize: 34,
-    color: K.bone,
+    color: K.white,
     letterSpacing: -0.5,
   },
   range: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
-    color: K.bone,
+    color: K.white,
     opacity: 0.7,
     marginTop: 2,
   },
@@ -1682,12 +1682,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(243,239,227,0.35)",
   },
   retryText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 15,
     color: K.bone,
   },
   error: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: K.bone,
     opacity: 0.8,
@@ -1709,15 +1709,15 @@ const styles = StyleSheet.create({
   },
   dayChipActive: { borderColor: K.blue, borderWidth: 1.5 },
   dayLetter: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 13,
-    color: K.bone,
+    color: K.white,
     opacity: 0.6,
   },
   dayNum: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
-    color: K.bone,
+    color: K.white,
     opacity: 0.85,
     marginTop: 2,
   },
@@ -1754,20 +1754,20 @@ const styles = StyleSheet.create({
   },
   slotText: { flex: 1 },
   slotLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.quadrant,
     fontSize: 13,
-    color: K.bone,
+    color: K.white,
     opacity: 0.6,
   },
   slotTitle: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
-    color: K.bone,
+    color: K.white,
     marginTop: 2,
     letterSpacing: -0.17,
   },
   slotEmpty: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     color: K.bone,
     opacity: 0.5,
@@ -1790,7 +1790,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(243,239,227,0.35)",
   },
   addPillText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.bone,
@@ -1820,7 +1820,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   rowMenuGlyph: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     letterSpacing: 1,
     color: K.bone,
@@ -1837,13 +1837,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(250,253,254,0.12)",
   },
   tagText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.bone,
     opacity: 0.8,
   },
   emptyDay: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     color: K.bone,
     opacity: 0.6,
@@ -1873,7 +1873,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   moveSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: K.bone,
     opacity: 0.7,
@@ -1882,8 +1882,8 @@ const styles = StyleSheet.create({
   },
   moveRow: { paddingVertical: 14, borderTopWidth: 1, borderTopColor: "rgba(243,239,227,0.14)" },
   moveRowDisabled: { opacity: 0.35 },
-  moveRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
-  moveRowTextQuiet: { fontFamily: fonts.dmSans, fontSize: 16, color: "rgba(243,239,227,0.6)" },
+  moveRowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
+  moveRowTextQuiet: { fontFamily: fonts.catalogue, fontSize: 16, color: "rgba(243,239,227,0.6)" },
   moveRowTextDisabled: { color: K.bone },
   swapList: { maxHeight: 320 },
 
@@ -1903,7 +1903,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(243,239,227,0.18)",
   },
-  undoText: { flex: 1, fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  undoText: { flex: 1, fontFamily: fonts.catalogue, fontSize: 14, color: K.cream },
   /* ── Explore more meals (Lang 5039:29721, last element) ───────────────
      Full-width ghost button in her bone-on-brown register, matching the
      Saved Meals block's horizontal inset. */
@@ -1919,10 +1919,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   exploreMoreText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.bone,
+    color: K.white,
   },
   /* ── Saved Meals (Lang 5039:29742) ────────────────────────────────────
      🔴 Her node's text token resolves to #361416 in the LIGHT theme, which is
@@ -1940,16 +1940,16 @@ const styles = StyleSheet.create({
      Playfair that the screen's own h1 uses — this is a section head, a step
      below the page title. */
   savedTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
-    color: K.bone,
+    color: K.white,
     letterSpacing: -0.2,
   },
   /* Body 2 medium, 14px. A quiet text link, not a filled button. */
   savedSeeAll: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
-    color: K.bone,
+    color: K.white,
     opacity: 0.8,
   },
   savedRow: { gap: 16, paddingRight: 4 },
@@ -1971,9 +1971,9 @@ const styles = StyleSheet.create({
   savedThumbEmpty: { backgroundColor: "rgba(243,239,227,0.12)" },
   /* Body 1: 16px, tracking -0.16. */
   savedName: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
-    color: K.bone,
+    color: K.white,
     letterSpacing: -0.16,
   },
   /* 🔑 Body 2 QUADRANT — her time stamp is the SERIF face, not the sans the
@@ -1981,12 +1981,12 @@ const styles = StyleSheet.create({
   savedTime: {
     fontFamily: fonts.quadrant,
     fontSize: 14,
-    color: K.bone,
+    color: K.textMutedOnDark,
     opacity: 0.6,
     letterSpacing: -0.14,
   },
   undoAction: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     color: K.blue,
   },

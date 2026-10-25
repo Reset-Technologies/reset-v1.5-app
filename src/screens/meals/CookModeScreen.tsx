@@ -783,9 +783,9 @@ function CompletionPage({
  * Her "Timer complete" toast (`5062:58141`).
  *
  * 📌 Catalogue, not DM Sans — her node names `Style/Sans serif` = Catalogue,
- * and 35 other screens already use it. ⚠️ The REST of this screen is still
- * `fonts.dmSans`, which is a pre-existing miss against the same token on her
- * Step node (`5062:58199` is Catalogue at 32px too); flagged, not fixed here.
+ * and 35 other screens already use it. (An earlier version of this note said
+ * the rest of the screen was still DM Sans; that was fixed in the same timer
+ * work — this file is now Catalogue/Quadrant throughout.)
  */
 function TimerToast({ onDismiss }: { onDismiss: () => void }) {
   /**

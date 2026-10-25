@@ -457,7 +457,16 @@ export function ExploreScreen() {
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
               <Path
                 d="M6 6l12 12M18 6L6 18"
-                stroke={K.textMuted}
+                /**
+                 * 🔴 Was `K.textMuted` — `#6B5E5F` inside a pill that
+                 * composites to `#654c4e`, i.e. **1.26:1**, all but invisible.
+                 * WCAG 1.4.11 wants 3:1 for a control.
+                 * ⚠️ Her own `Ghost Surface/On Ghost Subtle` (`#9b8a8b`),
+                 * scoped to exactly this surface, only reaches 2.37:1 — so the
+                 * Figma does NOT resolve this one. `Text (alt)` is her token
+                 * that does: 3.20:1. Flagged for Lang.
+                 */
+                stroke={K.textMutedOnDark}
                 strokeWidth={2}
                 strokeLinecap="round"
               />
