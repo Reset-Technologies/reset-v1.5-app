@@ -72,5 +72,5 @@ const styles = StyleSheet.create({
   },
   text: { flex: 1 },
   eyebrow: { fontFamily: fonts.catalogue, fontSize: 12, marginBottom: 2 },
-  name: { fontFamily: fonts.dmSansMedium, fontSize: 15, lineHeight: 20 },
+  name: { fontFamily: fonts.catalogueMedium, fontSize: 15, lineHeight: 20 },
 });

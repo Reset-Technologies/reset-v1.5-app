@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
     color: K.brown,
@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   },
   thinking: { paddingVertical: 14, paddingHorizontal: 18 },
   esterText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     lineHeight: 22,
     letterSpacing: -0.15,
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(54,20,22,0.12)",
   },
   memberText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(54,20,22,0.12)",
   },
   suggestionText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     backgroundColor: "#fdfcf8",
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     color: K.brown,
   },

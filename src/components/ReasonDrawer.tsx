@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   sub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: K.bone,
     opacity: 0.7,
@@ -168,9 +168,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(243,239,227,0.14)",
   },
-  rowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  rowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   rowTextQuiet: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: "rgba(243,239,227,0.6)",
   },

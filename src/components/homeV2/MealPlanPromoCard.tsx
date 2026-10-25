@@ -64,14 +64,14 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   textEmphasis: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 17,
     lineHeight: 22,
     letterSpacing: -0.43,
     color: K.brown,
   },
   textMuted: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     lineHeight: 22,
     letterSpacing: -0.43,
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ctaLabel: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     color: K.brown,
   },

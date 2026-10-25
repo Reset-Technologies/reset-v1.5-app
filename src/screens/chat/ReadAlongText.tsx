@@ -104,13 +104,13 @@ export function ReadAlongText({
 const styles = StyleSheet.create({
   wrap: { gap: 2 },
   prev: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 19,
     color: "rgba(243, 239, 227, 0.4)",
     letterSpacing: -0.2,
   },
   curr: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 36,
     lineHeight: 41,
     fontWeight: "600",
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   next: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 25,
     lineHeight: 30,
     color: "rgba(243, 239, 227, 0.5)",

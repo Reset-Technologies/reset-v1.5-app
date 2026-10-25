@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   // member can reach Login look like the same affordance.
   signInBtn: { alignItems: "center", paddingVertical: 12 },
   signInText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
     opacity: 0.7,
     fontSize: 16,

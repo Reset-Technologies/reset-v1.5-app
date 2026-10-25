@@ -194,13 +194,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   confidenceLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   confidenceValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
@@ -210,13 +210,13 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   confidenceHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
   },
   confidenceSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.sub,

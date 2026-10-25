@@ -1126,14 +1126,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   shareBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: -0.2,
     color: MAROON,
   },
   swipeCaption: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     lineHeight: 16,
     letterSpacing: -0.12,
@@ -1144,7 +1144,7 @@ const styles = StyleSheet.create({
 
   // Front card
   headerText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: MAROON,
@@ -1192,7 +1192,7 @@ const styles = StyleSheet.create({
   },
   typeTextWrap: { gap: 8 },
   typeName: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     // the Type names — no descender today
     lineHeight: lineBox(32, 36),
@@ -1200,7 +1200,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.32,
   },
   typeTagline: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     color: SUBTLE,
@@ -1222,7 +1222,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   revealBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
     fontSize: 20,
     letterSpacing: -0.2,
@@ -1230,7 +1230,7 @@ const styles = StyleSheet.create({
 
   // Middle / back common text
   midGreeting: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: MAROON,
@@ -1240,7 +1240,7 @@ const styles = StyleSheet.create({
   // card — matches the supporting-line relationship on the rebuilt onboarding
   // screens rather than introducing a third size.
   bridgeBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     lineHeight: 23,
     color: MAROON,
@@ -1262,7 +1262,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#92B4BD",
   },
   eyebrowText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: SUBTLE,
     letterSpacing: -0.12,
@@ -1303,7 +1303,7 @@ const styles = StyleSheet.create({
     width: CARD_W,
   },
   mealTeaserTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     // "Show me" — no descender today
     lineHeight: lineBox(32, 36),
@@ -1323,7 +1323,7 @@ const styles = StyleSheet.create({
   },
 
   swipeHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: SUBTLE,
     letterSpacing: -0.12,
@@ -1370,7 +1370,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   insightBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     color: SUBTLE,

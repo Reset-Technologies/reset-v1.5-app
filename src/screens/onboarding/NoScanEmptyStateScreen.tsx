@@ -429,14 +429,14 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: "row", gap: 3 },
   dot: { width: 4, height: 4, borderRadius: 999, backgroundColor: ON_BLUE_SUBTLE },
   esterIntroBold: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 20,
     lineHeight: 24,
     color: K.brown,
     letterSpacing: -0.2,
   },
   esterIntroBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 18,
     lineHeight: 22,
     color: K.brown,
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   },
   bannerHeader: { gap: 8 },
   bannerTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     // "...sounds like your life" / "...for your body" — y, p
     lineHeight: lineBox(32, 36),
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.32,
   },
   bannerSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     color: ON_BLUE_SUBTLE,
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   gaugeCtaText: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     color: K.white,
   },
@@ -583,14 +583,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   featuredCtaText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     color: K.brown,
     letterSpacing: -0.2,
   },
   featuredCtaTextCompact: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 20,
     color: K.brown,

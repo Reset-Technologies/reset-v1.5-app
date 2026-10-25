@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   label: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -99,12 +99,12 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   hint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
   },
   sub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },

@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
    */
   rowFlag: {
     marginTop: 2,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: "rgba(243,239,227,0.55)",
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.bone,
   },
   toastText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,

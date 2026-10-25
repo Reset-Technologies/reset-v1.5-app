@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   label: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
   },
   prompt: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 36,
     letterSpacing: -0.32,

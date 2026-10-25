@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   question: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: -0.2,
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   pillLabel: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
   },
   sleepRow: {
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sleepLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   hourText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
   },
   esterRow: {
@@ -390,13 +390,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   esterAvatarLabel: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 13,
     color: K.brown,
   },
   esterMessage: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   skipText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
   },
   dismissButton: {

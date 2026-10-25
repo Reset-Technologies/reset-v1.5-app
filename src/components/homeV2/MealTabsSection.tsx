@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderColor: K.blue,
   },
   tabLabel: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 16,
     letterSpacing: -0.16,
   },

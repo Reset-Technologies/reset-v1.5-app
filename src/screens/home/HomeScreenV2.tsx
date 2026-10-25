@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   sectionHeading: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 32,
     letterSpacing: -0.32,

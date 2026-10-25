@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     minWidth: 140,
   },
   number: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 100,
     lineHeight: 110,
     letterSpacing: -6,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   unit: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.sub,

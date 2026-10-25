@@ -780,14 +780,14 @@ const styles = StyleSheet.create({
   headerIconGlyph: {
     fontSize: 18,
     color: K.brown,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
   },
   headerCenter: {
     flex: 1,
     alignItems: "center",
   },
   headerTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.ochre,
   },
   esterEyebrowText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   esterText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -857,7 +857,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   esterBeatLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.2,
@@ -871,7 +871,7 @@ const styles = StyleSheet.create({
     minHeight: 22,
   },
   esterLoadingText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.sub,
@@ -881,13 +881,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
     color: K.brown,
   },
   sectionBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -913,7 +913,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metricLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
@@ -924,7 +924,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   metricValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 32,
     letterSpacing: -0.32,
     color: K.brown,
@@ -934,7 +934,7 @@ const styles = StyleSheet.create({
   // Qualitative band words (Stress Balance) — smaller than the numeric value so
   // longer words fit on one line beside the trend arrow.
   metricValueWord: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 22,
     letterSpacing: -0.22,
     color: K.brown,
@@ -942,7 +942,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   surveyValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 22,
     letterSpacing: -0.22,
     color: K.brown,
@@ -950,7 +950,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metricUnit: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     letterSpacing: -0.14,
   },
@@ -961,13 +961,13 @@ const styles = StyleSheet.create({
     paddingBottom: 3,
   },
   metricTrendText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
   },
   metricTrendNeutral: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.sub,
@@ -981,14 +981,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyTitle: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
     textAlign: "center",
   },
   emptyBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     lineHeight: 20,
     letterSpacing: -0.14,
@@ -1010,7 +1010,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.white,
   },
   emptyBtnText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     color: K.brown,
   },

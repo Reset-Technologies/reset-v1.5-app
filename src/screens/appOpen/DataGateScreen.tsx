@@ -353,13 +353,13 @@ const styles = StyleSheet.create({
   },
   body: {
     // The Greeting screen's middle-text style (dmSans 16/22/-0.16), scaled +25%.
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 28,
     letterSpacing: -0.2,
   },
   bodyStrong: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
   },
   bannerRow: {
     flexDirection: "row",
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   bannerKicker: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },

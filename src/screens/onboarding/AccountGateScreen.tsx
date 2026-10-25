@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   errorText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: "#FF6B6B",
     fontSize: 14,
     textAlign: "center",
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   existingAccountText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: WHITE,
     opacity: 0.7,
     fontSize: 16,

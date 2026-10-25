@@ -1294,7 +1294,7 @@ const styles = StyleSheet.create({
     boxShadow: "0px 0px 13.1px 0px rgba(237,235,224,0.5)",
   },
   planTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: WHITE,
     letterSpacing: -0.2,
@@ -1304,19 +1304,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   planUnit: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: TEXT_ALT,
     letterSpacing: -0.14,
   },
   planPriceText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 24,
     color: WHITE,
     letterSpacing: -0.24,
   },
   planBilled: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: TEXT_ALT,
     letterSpacing: -0.12,
@@ -1349,7 +1349,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cancelHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: TEXT_ALT,
     letterSpacing: -0.14,
@@ -1390,7 +1390,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   footerText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: BONE,
     letterSpacing: -0.12,
@@ -1409,14 +1409,14 @@ const styles = StyleSheet.create({
   },
   accountText: {
     flexShrink: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: BONE,
     opacity: 0.7,
     letterSpacing: -0.12,
   },
   signOutText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: BONE,
     letterSpacing: -0.12,

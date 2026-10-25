@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     textAlign: "left",
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     letterSpacing: -0.24,

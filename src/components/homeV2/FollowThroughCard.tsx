@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   label: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
      open question and the type carries it; this one is a question plus three
      choices, and at 32pt the answers fall below the fold on a short screen. */
   prompt: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 22,
     lineHeight: 28,
     letterSpacing: -0.22,
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   answerText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
   },

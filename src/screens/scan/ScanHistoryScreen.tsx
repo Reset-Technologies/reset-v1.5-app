@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   emptyBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.18,
   },
   monthCount: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
   },
   card: {
@@ -490,11 +490,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   rowDate: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 15,
   },
   rowTime: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     marginTop: -2,
   },
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   chipText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   headlineLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0.5,

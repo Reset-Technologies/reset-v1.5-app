@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heading: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     letterSpacing: -0.24,
@@ -219,13 +219,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   scoreTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
   },
   scoreSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
@@ -241,14 +241,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyTitle: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
     textAlign: "center",
   },
   emptyBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     lineHeight: 20,
     letterSpacing: -0.14,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.white,
   },
   emptyBtnText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     color: K.brown,
   },
@@ -289,13 +289,13 @@ const styles = StyleSheet.create({
     color: K.ochre,
   },
   trendText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
     color: "#323E41",
   },
   trendCaption: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.sub,
@@ -316,13 +316,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   confidenceLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   confidenceValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
@@ -332,13 +332,13 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   confidenceHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
   },
   confidenceSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.sub,

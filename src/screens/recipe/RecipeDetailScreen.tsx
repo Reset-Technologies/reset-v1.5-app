@@ -227,7 +227,7 @@ function renderBoldSegments(text: string): React.ReactNode[] {
     .map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
-          <Text key={i} style={{ fontFamily: fonts.dmSansBold }}>
+          <Text key={i} style={{ fontFamily: fonts.catalogueBold }}>
             {part.slice(2, -2)}
           </Text>
         );
@@ -1694,7 +1694,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mealName: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 36,
     letterSpacing: -0.32,
@@ -1712,26 +1712,26 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tagText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   // Nutrition row
   macroLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   macroValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
   },
   macroUnit: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 13,
   },
   // %DV row
@@ -1752,7 +1752,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.ochre,
   },
   esterEyebrowText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
@@ -1779,7 +1779,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   esterText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -1805,7 +1805,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.brown,
   },
   cookModeText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.bone,
@@ -1829,7 +1829,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   sectionTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
     color: K.brown,
@@ -1843,7 +1843,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   countBadgeText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
@@ -1896,21 +1896,21 @@ const styles = StyleSheet.create({
   },
   ingredientQty: {
     width: 70,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
   },
   ingredientName: {
     flex: 1,
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
   },
   /** Lang marks the changed row beside the name, in italics. */
   ingredientSwapped: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontStyle: "italic",
     fontSize: 14,
     color: K.textMuted,
@@ -1941,14 +1941,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   revertLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: 0.2,
     color: K.textMuted,
     textAlign: "center",
   },
   revertName: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
@@ -1983,7 +1983,7 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.textLight,
@@ -2002,13 +2002,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   stepLabel: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.sub,
   },
   stepText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -2037,7 +2037,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   moreCtaText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: -0.2,
@@ -2055,12 +2055,12 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   moreCtaButtonLabel: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     color: K.brown,
   },
   moreCtaButtonGlyph: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: K.brown,
   },
@@ -2101,7 +2101,7 @@ const styles = StyleSheet.create({
   headerActionGlyph: {
     fontSize: 18,
     color: K.brown,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
   },
   // Loading
   /* ── Swap ingredient (Lang 5046:44621) ──────────────────────────────
@@ -2129,18 +2129,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  swapTitle: { fontFamily: fonts.dmSans, fontSize: 26, color: K.brown, letterSpacing: -0.3 },
-  swapClose: { fontFamily: fonts.dmSans, fontSize: 20, color: K.brown, opacity: 0.7 },
+  swapTitle: { fontFamily: fonts.catalogue, fontSize: 26, color: K.brown, letterSpacing: -0.3 },
+  swapClose: { fontFamily: fonts.catalogue, fontSize: 20, color: K.brown, opacity: 0.7 },
   swapLoading: { paddingVertical: 36, alignItems: "center" },
   swapEmpty: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     color: K.brown,
     opacity: 0.7,
     paddingVertical: 24,
   },
   swapEsterLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     color: K.brown,
     opacity: 0.6,
@@ -2151,8 +2151,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
   },
-  swapEsterText: { fontFamily: fonts.dmSans, fontSize: 15, color: K.brown, lineHeight: 21 },
-  swapEsterStrong: { fontFamily: fonts.dmSansBold },
+  swapEsterText: { fontFamily: fonts.catalogue, fontSize: 15, color: K.brown, lineHeight: 21 },
+  swapEsterStrong: { fontFamily: fonts.catalogueBold },
   swapList: { maxHeight: 330 },
   /* Her option card: name, reason, amount, radio on the right. */
   swapOption: {
@@ -2167,9 +2167,9 @@ const styles = StyleSheet.create({
   },
   swapOptionOn: { borderColor: K.brown, borderWidth: 1.5 },
   swapOptionBody: { flex: 1, gap: 4 },
-  swapOptionName: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.brown },
+  swapOptionName: { fontFamily: fonts.catalogueMedium, fontSize: 16, color: K.brown },
   swapOptionWhy: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     color: K.brown,
     opacity: 0.7,
@@ -2195,9 +2195,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   swapConfirmOff: { opacity: 0.45 },
-  swapConfirmText: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.bone },
+  swapConfirmText: { fontFamily: fonts.catalogueMedium, fontSize: 16, color: K.bone },
   swapKeep: { alignItems: "center", paddingVertical: 10 },
-  swapKeepText: { fontFamily: fonts.dmSansMedium, fontSize: 14, color: K.brown },
+  swapKeepText: { fontFamily: fonts.catalogueMedium, fontSize: 14, color: K.brown },
   // ── Persistent action bar + add sheet (2026-10-19) ───────────────────
   actionBar: {
     position: "absolute",
@@ -2222,13 +2222,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionPrimary: { backgroundColor: K.cream },
-  actionPrimaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.brown },
+  actionPrimaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.brown },
   actionSecondary: {
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: "rgba(243,239,227,0.35)",
   },
-  actionSecondaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  actionSecondaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   actionDisabled: { opacity: 0.4 },
   addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   addSheet: {
@@ -2245,7 +2245,7 @@ const styles = StyleSheet.create({
   },
   addTitle: { fontFamily: fonts.catalogue, fontSize: 20, color: K.cream, letterSpacing: -0.2 },
   addSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: K.bone,
     opacity: 0.7,
@@ -2262,7 +2262,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   dayChipOn: { backgroundColor: K.cream, borderColor: K.cream },
-  dayChipText: { fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  dayChipText: { fontFamily: fonts.catalogue, fontSize: 14, color: K.cream },
   dayChipTextOn: { color: K.brown },
   slotRow: {
     paddingVertical: 14,
@@ -2270,13 +2270,13 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(243,239,227,0.14)",
   },
   slotRowLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.bone,
     opacity: 0.7,
     marginBottom: 2,
   },
-  slotRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  slotRowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,

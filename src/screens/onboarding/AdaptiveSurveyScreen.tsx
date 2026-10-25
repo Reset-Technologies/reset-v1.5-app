@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   // off the solo-beat screenshot. The fixed survey's reflection step is still
   // 16pt — that one is in the live funnel, so it is a separate decision.
   beat: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: WHITE,
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   prompt: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: WHITE,
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
   bubbleDisabled: { opacity: 0.4 },
   bubbleSelected: { backgroundColor: BONE },
   bubbleText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 21,
     color: WHITE,
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
   },
   skip: { marginTop: 16, alignSelf: "flex-end" },
   skipText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: "rgba(250,253,254,0.6)",
     fontSize: 14,
   },
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
   },
   continueText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,

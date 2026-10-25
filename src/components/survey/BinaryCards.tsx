@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.blue,
   },
   label: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,

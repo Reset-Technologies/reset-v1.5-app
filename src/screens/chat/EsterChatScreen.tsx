@@ -2252,7 +2252,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroGreetingText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     fontWeight: "400",
     letterSpacing: -0.16,
