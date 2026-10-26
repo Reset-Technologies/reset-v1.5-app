@@ -1839,20 +1839,24 @@ const styles = StyleSheet.create({
   tagText: {
     fontFamily: fonts.catalogue,
     fontSize: 12,
-    // 📌 Deliberately NO lineHeight / textAlignVertical / includeFontPadding
-    // here. Measured on an S24 with the pill's own pixels: the ink sits 19px
-    // from the pill top and 15px from the bottom — a 4px imbalance in a 61px
-    // pill, and BOTH attempted fixes were measured and rejected:
-    //     no override             ABOVE 19  BELOW 15   (+4)
-    //     lineHeight: lineBox()   ABOVE 21  BELOW 13   (+8)  WORSE
-    //     textAlignVertical       ABOVE 19  BELOW 15   (+4)  no change
+    // 📌 Deliberately NO lineHeight / textAlignVertical / includeFontPadding.
+    // Measured on an S24 from the pill's own pixels — the text is ALREADY
+    // centred exactly, and the one override that changes anything breaks it:
+    //     as written            ABOVE 19  BELOW 19   (0)   ← correct
+    //     lineHeight: lineBox() ABOVE 21  BELOW 15   (+6)  WORSE
+    //     textAlignVertical     ABOVE 19  BELOW 19   (0)   no change
     // Android centres the glyphs in whatever line box it is given, so
     // shrinking the box moves the text DOWN rather than up.
-    // 🔑 The thing that actually catches the eye is not the 4px: labels with
-    // no descender ("Whole30", "Vegan", "Primal") end their ink at the
-    // baseline while "Dairy-free" beside them reaches lower, so identical
-    // boxes read as two different heights. That is typography, not a bug, and
-    // the only real lever would be Lang shortening the pill.
+    // 🔑 What reads as "off the line" is not the box: labels with no
+    // descender ("Whole30", "Vegan", "Primal") end their ink at the baseline
+    // while "Dairy-free" beside them reaches lower, so identical, perfectly
+    // centred boxes still show two apparent heights. That is typography, and
+    // the only lever is Lang shortening the pill or tightening its padding.
+    //
+    // ⚠️ The first version of this comment claimed a 4px imbalance. It was an
+    // artifact: the measuring crop was 62 rows for a 65px pill, so the pill
+    // touched the crop edge and the "gaps" were measured to the crop, not the
+    // pill. **A crop that clips the thing being measured reports the crop.**
     color: K.bone,
     opacity: 0.8,
   },
