@@ -84,7 +84,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   //     prod and were not gated by build type, so debug builds created real
   //     profiles in the production workspace. Release builds — TestFlight and
   //     internal track included — are unaffected and still test push.
-  version: "3.7.5",
+  version: "3.7.6",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
