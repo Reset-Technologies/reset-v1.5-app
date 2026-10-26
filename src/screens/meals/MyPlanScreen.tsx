@@ -1839,6 +1839,20 @@ const styles = StyleSheet.create({
   tagText: {
     fontFamily: fonts.catalogue,
     fontSize: 12,
+    // 📌 Deliberately NO lineHeight / textAlignVertical / includeFontPadding
+    // here. Measured on an S24 with the pill's own pixels: the ink sits 19px
+    // from the pill top and 15px from the bottom — a 4px imbalance in a 61px
+    // pill, and BOTH attempted fixes were measured and rejected:
+    //     no override             ABOVE 19  BELOW 15   (+4)
+    //     lineHeight: lineBox()   ABOVE 21  BELOW 13   (+8)  WORSE
+    //     textAlignVertical       ABOVE 19  BELOW 15   (+4)  no change
+    // Android centres the glyphs in whatever line box it is given, so
+    // shrinking the box moves the text DOWN rather than up.
+    // 🔑 The thing that actually catches the eye is not the 4px: labels with
+    // no descender ("Whole30", "Vegan", "Primal") end their ink at the
+    // baseline while "Dairy-free" beside them reaches lower, so identical
+    // boxes read as two different heights. That is typography, not a bug, and
+    // the only real lever would be Lang shortening the pill.
     color: K.bone,
     opacity: 0.8,
   },
