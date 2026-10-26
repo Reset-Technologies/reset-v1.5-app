@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   label: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 38,
     letterSpacing: -0.32,

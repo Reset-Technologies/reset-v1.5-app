@@ -501,13 +501,13 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,
   },
   toastUndo: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 15,
     color: K.brown,
     textDecorationLine: "underline",

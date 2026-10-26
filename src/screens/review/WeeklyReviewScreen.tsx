@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   bold: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
   },
   statsRow: {
     flexDirection: "row",
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statNumber: {
-    fontFamily: fonts.playfairBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 28,
     color: K.text,
   },
@@ -362,19 +362,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   trendUp: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     color: K.ok,
     marginLeft: 4,
   },
   trendDown: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     color: K.err,
     marginLeft: 4,
   },
   trendStable: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     color: K.faded,
     marginLeft: 4,
@@ -467,7 +467,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   scanPromptCta: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     color: K.ochre,
     marginTop: spacing.sm,

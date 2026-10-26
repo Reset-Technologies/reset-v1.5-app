@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -92,6 +92,26 @@ export function AskEsterSheet({
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const sessionId = useRef<string | undefined>(undefined);
+
+  /**
+   * 🔴 Whether the keypad is actually up, which gates the avoidance below.
+   *
+   * `KeyboardAvoidingView` does not return its padding to zero inside a
+   * `Modal` on Android: once the keypad had been up and gone again it kept
+   * ~50dp of bottom padding, so the sheet floated off the bottom of the
+   * screen with the recipe showing through underneath. Cole saw it the
+   * moment he sent a message. Gating it on the real keyboard state keeps the
+   * avoidance while typing and guarantees nothing is left behind after.
+   */
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardUp(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const scroller = useRef<ScrollView | null>(null);
   const announced = useRef(false);
 
@@ -130,15 +150,46 @@ export function AskEsterSheet({
     });
   }, [visible, context, sourceSurface]);
 
+  /**
+   * The object this conversation is about. Ester's sheet is per-MEAL, so the
+   * thread belongs to the meal, not to one viewing of it.
+   */
+  const threadKey = `${context.recipeVersionId ?? mealId}|${context.plannedMealId ?? ""}`;
+  const openThread = useRef<string | null>(null);
+
+  /**
+   * 🔴 Closing the sheet used to throw away the TRANSCRIPT and
+   * `sessionId.current` — the handle to the server session — so every reopen
+   * started a brand-new thread and Ester lost what she had just been told.
+   * Cole hit it on his S24: *"the conversation clears/restarts once I close
+   * the sheet and then reopen it."*
+   *
+   * 📌 The worry that justified it was stale context, and the code already
+   * answers that: `systemContext()` is rebuilt and sent on EVERY turn, so the
+   * recipe, the serving multiplier and any substitutions are always current
+   * no matter how old the session is. What actually needed guarding was
+   * carrying one meal's thread onto a DIFFERENT meal — so the thread is keyed
+   * to the meal and reset when that changes, rather than on every close.
+   *
+   * ⚠️ `announced.current` still resets, so reopening re-fires
+   * `ester_opened_from_*`. That is deliberate — an open is an open — but it
+   * does mean the r7/r8 entry counts include reopens.
+   */
   useEffect(() => {
-    if (!visible) {
-      announced.current = false;
-      setBubbles([]);
-      setDraft("");
-      setFailed(false);
-      sessionId.current = undefined;
+    if (visible) {
+      if (openThread.current !== threadKey) {
+        openThread.current = threadKey;
+        setBubbles([]);
+        sessionId.current = undefined;
+      }
+      return;
     }
-  }, [visible]);
+    // Only what belongs to THIS viewing: a half-typed question, a failed send,
+    // and the once-per-open analytics guard.
+    announced.current = false;
+    setDraft("");
+    setFailed(false);
+  }, [visible, threadKey]);
 
   /**
    * What Ester is told about the object on screen.
@@ -214,8 +265,18 @@ export function AskEsterSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
+      {/*
+        🔴 `behavior` was iOS-only, leaving Android with NO avoidance at all —
+        the usual reasoning being that `adjustResize` takes care of it. It
+        does not here: a `Modal` is its own window and is not resized for the
+        keyboard, so on an S24 the input and the send button both sat BEHIND
+        the keypad. You could type, but not see what you typed and not reach
+        Send; only the keyboard's own Send key worked. Same cause as the Cook
+        Mode timer sheet.
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
+        enabled={keyboardUp}
         style={styles.sheetWrap}
         pointerEvents="box-none"
       >
@@ -240,7 +301,24 @@ export function AskEsterSheet({
             ref={scroller}
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
-            onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
+            /**
+             * 🔴 ONLY once there is a thread to follow. This called
+             * `scrollToEnd` on every content-size change, including the first
+             * one — so the sheet opened scrolled PAST the top of Ester's
+             * opening message and the first thing a member read was a clipped
+             * half-sentence ("…and your sleep quality being good,"). Seen on
+             * Cole's S24, 2026-10-22.
+             *
+             * 🔑 Anchoring to the bottom is right for a CONVERSATION and
+             * wrong for its first screen. With no bubbles yet the opening
+             * message is the whole content, and it reads from the top like
+             * any other block of prose; from the member's first question on,
+             * the newest line is what they want in view.
+             */
+            onContentSizeChange={() => {
+              if (bubbles.length === 0) return;
+              scroller.current?.scrollToEnd({ animated: true });
+            }}
             keyboardShouldPersistTaps="handled"
           >
             {/* The explanation the screen already had — the sheet opens with
@@ -374,7 +452,7 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
     color: K.brown,
@@ -406,7 +484,7 @@ const styles = StyleSheet.create({
   },
   thinking: { paddingVertical: 14, paddingHorizontal: 18 },
   esterText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     lineHeight: 22,
     letterSpacing: -0.15,
@@ -423,7 +501,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(54,20,22,0.12)",
   },
   memberText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,
@@ -436,7 +514,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(54,20,22,0.12)",
   },
   suggestionText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.brown,
@@ -453,7 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     backgroundColor: "#fdfcf8",
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     color: K.brown,
   },

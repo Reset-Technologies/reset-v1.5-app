@@ -172,14 +172,14 @@ const styles = StyleSheet.create({
   },
   heading: { gap: 8 },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 40,
     lineHeight: 44,
     color: BONE,
     letterSpacing: -0.4,
   },
   subtitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 17,
     lineHeight: 23,
     color: TEXT_ALT,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   errorText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: ERROR_RED,
     textAlign: "center",
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   cellText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     color: BONE,
   },
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.5 },
   btnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,
@@ -250,17 +250,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   resendPrompt: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: TEXT_ALT,
   },
   resendLink: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     color: WHITE,
   },
   resendNote: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     color: TEXT_ALT,
     textAlign: "center",

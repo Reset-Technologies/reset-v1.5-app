@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   analyzingText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: WHITE,
     letterSpacing: -0.16,
@@ -722,14 +722,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   messageLine: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     color: WHITE,
     letterSpacing: -0.16,
   },
   question: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: WHITE,
@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
     backgroundColor: BONE,
   },
   bubbleText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 21,
     color: WHITE,
@@ -836,7 +836,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
   },
   continueText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,

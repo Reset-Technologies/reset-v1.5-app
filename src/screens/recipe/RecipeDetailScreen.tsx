@@ -52,7 +52,7 @@ import {
   DailyPlanMeal,
 } from "../../services/meals";
 import { getMealWhy } from "../../services/mealInsights";
-import { COUNTABLE_UNITS } from "../../utils/countableUnits";
+import { abbreviateMeasurement, formatAmount } from "../../utils/amount";
 import {
   MealSlotType,
   MyPlanResponse,
@@ -116,11 +116,27 @@ function parseInstructions(instructions: string | null): string[] {
 
   const normalized = instructions
     .replace(/\.(?=[A-Za-z])/g, ". ")
+    // 🔴 Line-start markers must be stripped BEFORE newlines are collapsed —
+    // afterwards `^` can only mean the start of the whole string, and a
+    // newline-delimited list ("1. Chop\n2. Fry") keeps its numbers.
+    .replace(/^\s*\d+\.\s*/gm, " ")
     .replace(/\s*\n\s*/g, " ")
     .replace(/^\s*Instructions\s*:?\s*/i, " ")
     .replace(/^\s*Instructions(?=[A-Z])/, " ")
-    .replace(/^\s*\d+\.\s*/gm, " ")
-    .replace(/(?:^|\s)\d+\.\s+/g, " ")
+    /**
+     * 🔴🔴 A number followed by a full stop is only a LIST MARKER where one
+     * can occur: at the start, or straight after a sentence ended. The old
+     * rule matched `\d+\.` after ANY whitespace, so
+     * *"Preheat oven to 325.In a 10-inch skillet…"* rendered as **"Preheat
+     * oven to In a 10-inch skillet"** — the oven temperature silently deleted
+     * from a cooking instruction. Found walking Recipe Details 2026-10-21;
+     * the source data was correct, we were destroying it on the way to the
+     * screen. "Bake for 45." lost its 45 the same way.
+     *
+     * 📌 Capped at two digits as a second guard: list markers are small, oven
+     * temperatures and quantities are not.
+     */
+    .replace(/(^|[.!?])\s*\d{1,2}\.\s+/g, "$1 ")
     .replace(/\bStep\s*\d+\s*:?\s*/gi, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -204,81 +220,6 @@ function CardGradient({
   );
 }
 
-const UNIT_ABBREVIATIONS: Record<string, string> = {
-  tablespoon: "tbsp",
-  tablespoons: "tbsp",
-  teaspoon: "tsp",
-  teaspoons: "tsp",
-  ounce: "oz",
-  ounces: "oz",
-  "fluid ounce": "fl oz",
-  "fluid ounces": "fl oz",
-  pound: "lb",
-  pounds: "lbs",
-  gram: "g",
-  grams: "g",
-  kilogram: "kg",
-  kilograms: "kg",
-  milliliter: "ml",
-  milliliters: "ml",
-  liter: "L",
-  liters: "L",
-};
-
-function abbreviateMeasurement(measurement: string): string {
-  if (!measurement) return "";
-  const lower = measurement.trim().toLowerCase();
-  return UNIT_ABBREVIATIONS[lower] ?? measurement;
-}
-
-
-const FRACTION_STOPS: Array<{ value: number; glyph: string }> = [
-  { value: 0, glyph: "" },
-  { value: 1 / 8, glyph: "⅛" },
-  { value: 1 / 4, glyph: "¼" },
-  { value: 1 / 3, glyph: "⅓" },
-  { value: 3 / 8, glyph: "⅜" },
-  { value: 1 / 2, glyph: "½" },
-  { value: 5 / 8, glyph: "⅝" },
-  { value: 2 / 3, glyph: "⅔" },
-  { value: 3 / 4, glyph: "¾" },
-  { value: 7 / 8, glyph: "⅞" },
-  { value: 1, glyph: "" },
-];
-
-function formatQty(qty: number, measurement: string): string {
-  if (!isFinite(qty) || qty <= 0) return "0";
-  const unit = (measurement || "").trim().toLowerCase();
-  if (COUNTABLE_UNITS.has(unit)) {
-    return Math.max(1, Math.round(qty)).toString();
-  }
-  if (qty >= 10) return Math.round(qty).toString();
-
-  const intPart = Math.floor(qty);
-  const fracPart = qty - intPart;
-  let best = FRACTION_STOPS[0];
-  let bestDelta = 1;
-  for (const stop of FRACTION_STOPS) {
-    const delta = Math.abs(fracPart - stop.value);
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      best = stop;
-    }
-  }
-  if (best.value === 1) return (intPart + 1).toString();
-  if (best.value === 0) {
-    if (intPart > 0) return intPart.toString();
-    // 🔴 A real amount must never print as "0". This branch was unreachable
-    // until Standard became one serving and quantities started being divided:
-    // 1/4 tsp of cayenne in a 4-serving recipe is 1/16, whose nearest stop is
-    // zero, and the screen told the member to use NONE of it. "< 1/8" is the
-    // honest reading — smaller than the finest fraction we show, but present.
-    return `< ${FRACTION_STOPS[1].glyph}`;
-  }
-  if (intPart === 0) return best.glyph;
-  return `${intPart} ${best.glyph}`;
-}
-
 function renderBoldSegments(text: string): React.ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts
@@ -286,7 +227,7 @@ function renderBoldSegments(text: string): React.ReactNode[] {
     .map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
-          <Text key={i} style={{ fontFamily: fonts.dmSansBold }}>
+          <Text key={i} style={{ fontFamily: fonts.catalogueBold }}>
             {part.slice(2, -2)}
           </Text>
         );
@@ -637,6 +578,9 @@ export function RecipeDetailScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  /** The recipe's own yield — the divisor that turns a multiplier into servings of food. */
+  const servingsBase = detail?.servingsMin ?? 1;
+
   /**
    * Open the swap drawer for one ingredient and fetch its options.
    *
@@ -655,7 +599,29 @@ export function RecipeDetailScreen() {
           plannedMealId: plannedMeal.id,
           mealPlanId: plannedMeal.mealPlanId,
           fromIngredientId: ing.ingredientId,
-          amount: `${ing.quantity} ${ing.measurement}`.trim(),
+          /**
+           * 🔴 THE MEMBER'S AMOUNT, not the recipe's. This sent
+           * `ing.quantity` raw, so the drawer asked Ester for substitutes for
+           * "3 pounds" of short ribs while the row right behind it read
+           * "⅜ lbs" — the recipe's full 8-serving yield against the one
+           * serving actually planned. Every suggestion came back captioned
+           * "3 lbs", 8× what the member would buy. Found on Cole's S24,
+           * 2026-10-22.
+           *
+           * 🔑 Same expression as the row (`ing.quantity * multiplier /
+           * servingsBase`), and it has to stay that way for the reason the
+           * row already states: the screen, the grocery list and now the swap
+           * drawer must agree, or cooking from the recipe does not match what
+           * was bought.
+           *
+           * 📌 It is not only a caption. This string is the PROMPT — Ester
+           * reasons about the amount she is given, so the wrong scale skews
+           * the substitutes themselves, not just the number under them.
+           */
+          amount: `${formatAmount(
+            (ing.quantity * multiplier) / (servingsBase || 1),
+            ing.measurement,
+          )} ${abbreviateMeasurement(ing.measurement)}`.trim(),
           recipeTitle: meal.name,
         });
         setSuggestions(opts);
@@ -671,7 +637,7 @@ export function RecipeDetailScreen() {
         setSuggestions([]);
       }
     },
-    [plannedMeal, meal.name],
+    [plannedMeal, meal.name, multiplier, servingsBase],
   );
 
   /**
@@ -834,7 +800,6 @@ export function RecipeDetailScreen() {
   const steps = parseInstructions(detail?.instructions ?? null);
   const prepTime = detail?.prepTime ?? meal.prepTime;
   const esterMessage = esterText ?? (esterLoading ? null : meal.whyLine);
-  const servingsBase = detail?.servingsMin ?? 1;
   // 🔑 Through the shared `dietLabel` so this screen and the My Plan rows
   // word the same diet identically. This used to render the raw lower-case
   // name ("gluten free") while My Plan rendered "Gluten-free".
@@ -1143,7 +1108,7 @@ export function RecipeDetailScreen() {
                   // list buys half a can, cooking from the recipe would not
                   // match what was bought.
                   const qty = (ing.quantity * multiplier) / (servingsBase || 1);
-                  const qtyDisplay = formatQty(qty, ing.measurement);
+                  const qtyDisplay = formatAmount(qty, ing.measurement);
                   // 🔑 Tappable ONLY with a planned meal behind the screen —
                   // a substitution changes a planned recipe instance, so from
                   // Home or Saved Meals there is nothing to change. Same
@@ -1729,7 +1694,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mealName: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 36,
     letterSpacing: -0.32,
@@ -1747,26 +1712,26 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tagText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   // Nutrition row
   macroLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
   },
   macroValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,
   },
   macroUnit: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 13,
   },
   // %DV row
@@ -1787,7 +1752,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.ochre,
   },
   esterEyebrowText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.brown,
@@ -1814,7 +1779,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   esterText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -1840,7 +1805,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.brown,
   },
   cookModeText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.bone,
@@ -1864,7 +1829,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   sectionTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     letterSpacing: -0.24,
     color: K.brown,
@@ -1878,7 +1843,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   countBadgeText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
@@ -1898,37 +1863,54 @@ const styles = StyleSheet.create({
   ingredientsList: {
     gap: 0,
   },
+  /**
+   * 🔴 Two separate things used to push every row's contents upward, and they
+   * cancelled out on the FIRST row only — which is how Cole spotted it on his
+   * S24 (2026-10-22): row one looked right, every row under it did not.
+   *
+   *   · the swap control is 28dp tall against a 24dp text line, so IT sets the
+   *     row height — and `alignItems: "flex-start"` pinned the text to the top
+   *     of it rather than centring the two against each other;
+   *   · `paddingTop: 0` with `paddingBottom: 12` then tipped the whole block
+   *     up again, leaving all the slack underneath.
+   *
+   * Measured before the fix: row 117px, text 63px, 0px above it and 54px
+   * below. `ingredientRowFirst`'s `paddingTop: 10` was the only thing putting
+   * any air above a row, which is why row one alone read as centred.
+   *
+   * 📌 Rows are ~12dp taller now. The first row no longer needs its own top
+   * padding — it keeps only the top border, which is all it was ever for.
+   */
   ingredientRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 8,
+    paddingTop: 12,
     paddingBottom: 12,
-    paddingTop: 0,
     borderBottomWidth: 1,
     borderBottomColor: K.border,
   },
   ingredientRowFirst: {
-    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: K.border,
   },
   ingredientQty: {
     width: 70,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
   },
   ingredientName: {
     flex: 1,
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
     color: K.brown,
   },
   /** Lang marks the changed row beside the name, in italics. */
   ingredientSwapped: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontStyle: "italic",
     fontSize: 14,
     color: K.textMuted,
@@ -1959,14 +1941,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   revertLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: 0.2,
     color: K.textMuted,
     textAlign: "center",
   },
   revertName: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     letterSpacing: -0.14,
     color: K.brown,
@@ -2001,7 +1983,7 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     letterSpacing: -0.15,
     color: K.textLight,
@@ -2020,13 +2002,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   stepLabel: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 12,
     letterSpacing: -0.12,
     color: K.sub,
   },
   stepText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
@@ -2055,7 +2037,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   moreCtaText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: -0.2,
@@ -2073,12 +2055,12 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   moreCtaButtonLabel: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     color: K.brown,
   },
   moreCtaButtonGlyph: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: K.brown,
   },
@@ -2119,7 +2101,7 @@ const styles = StyleSheet.create({
   headerActionGlyph: {
     fontSize: 18,
     color: K.brown,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
   },
   // Loading
   /* ── Swap ingredient (Lang 5046:44621) ──────────────────────────────
@@ -2147,18 +2129,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  swapTitle: { fontFamily: fonts.dmSans, fontSize: 26, color: K.brown, letterSpacing: -0.3 },
-  swapClose: { fontFamily: fonts.dmSans, fontSize: 20, color: K.brown, opacity: 0.7 },
+  swapTitle: { fontFamily: fonts.catalogue, fontSize: 26, color: K.brown, letterSpacing: -0.3 },
+  swapClose: { fontFamily: fonts.catalogue, fontSize: 20, color: K.brown, opacity: 0.7 },
   swapLoading: { paddingVertical: 36, alignItems: "center" },
   swapEmpty: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     color: K.brown,
     opacity: 0.7,
     paddingVertical: 24,
   },
   swapEsterLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     color: K.brown,
     opacity: 0.6,
@@ -2169,8 +2151,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
   },
-  swapEsterText: { fontFamily: fonts.dmSans, fontSize: 15, color: K.brown, lineHeight: 21 },
-  swapEsterStrong: { fontFamily: fonts.dmSansBold },
+  swapEsterText: { fontFamily: fonts.catalogue, fontSize: 15, color: K.brown, lineHeight: 21 },
+  swapEsterStrong: { fontFamily: fonts.catalogueBold },
   swapList: { maxHeight: 330 },
   /* Her option card: name, reason, amount, radio on the right. */
   swapOption: {
@@ -2185,9 +2167,9 @@ const styles = StyleSheet.create({
   },
   swapOptionOn: { borderColor: K.brown, borderWidth: 1.5 },
   swapOptionBody: { flex: 1, gap: 4 },
-  swapOptionName: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.brown },
+  swapOptionName: { fontFamily: fonts.catalogueMedium, fontSize: 16, color: K.brown },
   swapOptionWhy: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     color: K.brown,
     opacity: 0.7,
@@ -2213,9 +2195,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   swapConfirmOff: { opacity: 0.45 },
-  swapConfirmText: { fontFamily: fonts.dmSansMedium, fontSize: 16, color: K.bone },
+  swapConfirmText: { fontFamily: fonts.catalogueMedium, fontSize: 16, color: K.bone },
   swapKeep: { alignItems: "center", paddingVertical: 10 },
-  swapKeepText: { fontFamily: fonts.dmSansMedium, fontSize: 14, color: K.brown },
+  swapKeepText: { fontFamily: fonts.catalogueMedium, fontSize: 14, color: K.brown },
   // ── Persistent action bar + add sheet (2026-10-19) ───────────────────
   actionBar: {
     position: "absolute",
@@ -2240,13 +2222,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionPrimary: { backgroundColor: K.cream },
-  actionPrimaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.brown },
+  actionPrimaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.brown },
   actionSecondary: {
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: "rgba(243,239,227,0.35)",
   },
-  actionSecondaryText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  actionSecondaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   actionDisabled: { opacity: 0.4 },
   addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   addSheet: {
@@ -2263,7 +2245,7 @@ const styles = StyleSheet.create({
   },
   addTitle: { fontFamily: fonts.catalogue, fontSize: 20, color: K.cream, letterSpacing: -0.2 },
   addSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: K.bone,
     opacity: 0.7,
@@ -2280,7 +2262,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   dayChipOn: { backgroundColor: K.cream, borderColor: K.cream },
-  dayChipText: { fontFamily: fonts.dmSans, fontSize: 14, color: K.cream },
+  dayChipText: { fontFamily: fonts.catalogue, fontSize: 14, color: K.cream },
   dayChipTextOn: { color: K.brown },
   slotRow: {
     paddingVertical: 14,
@@ -2288,13 +2270,13 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(243,239,227,0.14)",
   },
   slotRowLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.bone,
     opacity: 0.7,
     marginBottom: 2,
   },
-  slotRowText: { fontFamily: fonts.dmSans, fontSize: 16, color: K.cream },
+  slotRowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,

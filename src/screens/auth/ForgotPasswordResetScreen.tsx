@@ -253,14 +253,14 @@ const styles = StyleSheet.create({
   },
   heading: { gap: 8 },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 40,
     lineHeight: 44,
     color: BONE,
     letterSpacing: -0.4,
   },
   subtitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 26,
     color: TEXT_ALT,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   form: { gap: 30 },
   fields: { gap: 16 },
   errorText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: ERROR_RED,
   },
@@ -285,13 +285,13 @@ const styles = StyleSheet.create({
   passwordInput: {
     flex: 1,
     paddingVertical: 14,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: BONE,
     letterSpacing: -0.16,
   },
   hint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     lineHeight: 18,
     color: TEXT_ALT,
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.5 },
   btnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,

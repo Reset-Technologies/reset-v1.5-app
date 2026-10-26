@@ -82,17 +82,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   metaDate: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     lineHeight: 19,
   },
   metaDay: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     lineHeight: 19,
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 32,
     lineHeight: 38,
     letterSpacing: -0.32,

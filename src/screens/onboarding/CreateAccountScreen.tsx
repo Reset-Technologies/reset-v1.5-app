@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   errorText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: "#FF6B6B",
     fontSize: 14,
     textAlign: "center",
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   checkboxHit: { marginTop: 1 },
   checkLabel: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     color: TEXT_ALT,
     fontSize: 13,
     lineHeight: 18,

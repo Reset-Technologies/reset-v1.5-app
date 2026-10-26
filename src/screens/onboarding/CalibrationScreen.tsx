@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
   },
   decisionText: {
     // Matches the Quick Scan (DataGate) `body` style.
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 28,
     color: BONE,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
   },
   decisionTextStrong: {
     // Matches the Quick Scan (DataGate) `bodyStrong` emphasis.
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
   },
   decisionCtas: { gap: 16 },
   primaryBtn: {
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   updateLink: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     lineHeight: 20,
     color: BONE,
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerCloseGlyph: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 22,
     lineHeight: 24,
     color: BONE,
@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
 
   header: { gap: 8 },
   headline: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 36,
     // "A few quick details" / "Update your weight" — q, p, y, g
     lineHeight: lineBox(36, 40),
@@ -620,7 +620,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   subhead: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     color: BONE,
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   fields: { gap: 20 },
   field: { gap: 8 },
   fieldLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: BONE,
     letterSpacing: -0.16,
@@ -649,13 +649,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     paddingVertical: 14,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 18,
     color: BONE,
     letterSpacing: -0.18,
   },
   unitLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: MUTED,
     letterSpacing: -0.14,
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     borderColor: WHITE,
   },
   sexOptionText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: BONE,
     letterSpacing: -0.16,
@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
   },
   continueBtnDisabled: { opacity: 0.5 },
   continueBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,

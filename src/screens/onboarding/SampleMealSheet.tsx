@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   eyebrow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 },
   eyebrowDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: K.brown },
   eyebrowText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.brown,
     letterSpacing: -0.12,
@@ -243,14 +243,14 @@ const styles = StyleSheet.create({
 
   // Headline
   headline: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 24,
     lineHeight: 30,
     color: ON_BONE_SUBTLE,
     letterSpacing: -0.24,
     marginTop: -18, // tuck under the eyebrow (eyebrow + headline are one group)
   },
-  headlineBold: { fontFamily: fonts.dmSansBold, color: K.brown },
+  headlineBold: { fontFamily: fonts.catalogueBold, color: K.brown },
 
   // Recipe card
   recipeCard: {
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   recipeTitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: K.white,
     letterSpacing: -0.2,
@@ -289,14 +289,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tagText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.white,
     letterSpacing: -0.12,
   },
   recipeMeta: { position: "absolute", left: 12, bottom: 12 },
   recipeMetaText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     color: K.white,
     letterSpacing: -0.12,
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     marginTop: -18, // tuck under the "Why this meal?" eyebrow
   },
   whyText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     color: ON_BONE_SUBTLE,
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scanBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: K.white,
     letterSpacing: -0.2,

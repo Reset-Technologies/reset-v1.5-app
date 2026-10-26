@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   swipeHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     lineHeight: 16,
     letterSpacing: -0.12,

@@ -281,19 +281,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 22,
     lineHeight: 28,
     letterSpacing: -0.22,
   },
   body: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
   },
   scoreLead: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     lineHeight: 20,
     marginTop: spacing.xs,
@@ -308,13 +308,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   scoreNumber: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 56,
     lineHeight: 64,
     letterSpacing: -1.5,
   },
   scoreLabel: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 12,
     letterSpacing: 1.2,
     textTransform: "uppercase",
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   confidenceLabel: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -342,13 +342,13 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   confidenceValue: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 13,
     minWidth: 36,
     textAlign: "right",
   },
   confidenceHint: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     marginTop: spacing.xs,
     letterSpacing: -0.12,
@@ -358,12 +358,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   updateTitle: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 22,
     letterSpacing: -0.22,
   },
   updateSub: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 13,
     textAlign: "center",
     paddingHorizontal: spacing.md,

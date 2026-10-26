@@ -122,14 +122,14 @@ const styles = StyleSheet.create({
     marginBottom: -8,
   },
   heading: {
-    fontFamily: fonts.playfairBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 32,
     lineHeight: 40,
     color: K.text,
     textAlign: "center",
   },
   body: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 24,
     color: K.textMuted,

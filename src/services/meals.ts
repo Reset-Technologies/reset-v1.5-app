@@ -685,6 +685,14 @@ export interface ExploreSearchResponse {
 export interface ExploreBrowseRow {
   key: string;
   title: string;
+  /**
+   * The sentence under the title on a collection's own screen
+   * (Lang `5039:29555`). Optional because no row carries one yet: the copy is
+   * Bryan's and belongs in the server-side row registry, per his EXPLORE tab
+   * ("server-driven row definitions so merchandising can change without app
+   * release").
+   */
+  description?: string;
   query: Record<string, string | number | boolean | null>;
   /** The row's real size, from the row's own query. */
   count: number;
@@ -699,6 +707,9 @@ export interface ExploreSection {
   rows: ExploreBrowseRow[];
 }
 
+/** The sort orders the server accepts. `relevance` is the unspoken default. */
+export type ExploreSort = "alphabetical" | "quickest";
+
 export interface ExploreFilters {
   q?: string;
   cuisine?: string;
@@ -706,6 +717,11 @@ export interface ExploreFilters {
   maxMinutes?: number;
   diet?: string;
   savedOnly?: boolean;
+  /**
+   * `alphabetical` | `quickest`. Omitted keeps the server's relevance order.
+   * Lang's two options (Slack 2026-10-24); the server rejects anything else.
+   */
+  sort?: ExploreSort;
   limit?: number;
   offset?: number;
 }

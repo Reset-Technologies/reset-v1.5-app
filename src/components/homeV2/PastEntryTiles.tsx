@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
   },
   label: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 13,
     lineHeight: 19,
     fontStyle: "italic",
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   body: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     lineHeight: 20,
     color: K.brown,

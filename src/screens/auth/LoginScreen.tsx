@@ -423,14 +423,14 @@ const styles = StyleSheet.create({
   },
   heading: { gap: 8 },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 40,
     lineHeight: 44,
     color: BONE,
     letterSpacing: -0.4,
   },
   subtitle: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     lineHeight: 26,
     color: TEXT_ALT,
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   // Form
   form: { gap: 30 },
   errorText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: "#FF8A8A",
   },
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 21,
     paddingHorizontal: 12,
     paddingVertical: 14,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: BONE,
     letterSpacing: -0.16,
@@ -467,7 +467,7 @@ const styles = StyleSheet.create({
   passwordInput: {
     flex: 1,
     paddingVertical: 14,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 16,
     color: BONE,
     letterSpacing: -0.16,
@@ -486,13 +486,13 @@ const styles = StyleSheet.create({
   },
   loginBtnDisabled: { opacity: 0.5 },
   loginBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: MAROON,
     letterSpacing: -0.2,
   },
   forgotText: {
-    fontFamily: fonts.dmSansMedium,
+    fontFamily: fonts.catalogueMedium,
     fontSize: 14,
     color: WHITE,
   },
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: { flex: 1, height: 1, backgroundColor: GHOST },
   dividerText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     color: WHITE,
     letterSpacing: -0.14,
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ghostBtnText: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     color: WHITE,
     letterSpacing: -0.2,

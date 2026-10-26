@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
     color: K.brown,

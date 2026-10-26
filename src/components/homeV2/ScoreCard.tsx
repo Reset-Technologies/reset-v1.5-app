@@ -242,12 +242,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   title: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 20,
     letterSpacing: -0.2,
   },
   mood: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   trendText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 16,
     letterSpacing: -0.16,
   },
@@ -275,13 +275,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   emptyTitle: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 20,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   emptyBody: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 14,
     lineHeight: 20,
     letterSpacing: -0.14,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     backgroundColor: K.white,
   },
   btnPrimaryText: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 14,
     color: K.brown,
   },
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   timestamp: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 12,
     letterSpacing: -0.12,
   },

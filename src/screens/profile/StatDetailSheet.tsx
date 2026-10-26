@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
     fontSize: 64,
     letterSpacing: -0.64,
   },
-  statUnit: { fontFamily: fonts.dmSans, fontSize: 12, opacity: 0.7 },
+  statUnit: { fontFamily: fonts.catalogue, fontSize: 12, opacity: 0.7 },
   statWord: {
     fontFamily: fonts.quadrant,
     fontSize: 56,

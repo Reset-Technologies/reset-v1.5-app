@@ -25,13 +25,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   nameGreeting: {
-    fontFamily: fonts.dmSansBold,
+    fontFamily: fonts.catalogueBold,
     fontSize: 18,
     lineHeight: 24,
     letterSpacing: -0.18,
   },
   message: {
-    fontFamily: fonts.dmSans,
+    fontFamily: fonts.catalogue,
     fontSize: 15,
     lineHeight: 22,
     letterSpacing: -0.15,
