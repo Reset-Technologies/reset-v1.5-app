@@ -61,6 +61,7 @@ import {
   setPlannedMealServings,
   swapPlannedMeal,
 } from "../../services/myPlan";
+import { addRecipeIngredientsToGroceryList } from "../../services/grocery";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
@@ -312,6 +313,21 @@ const ESTER_MARK = require("../../../assets/images/ester-avatar-silver.png");
  * button's text colour, so they stay correct on both the blue primary and the
  * ghost secondary without a second asset.
  */
+/**
+ * Lang's `shopping_cart` from `5046:43899`, her path data unchanged.
+ * 24pt, as the frame draws it beside "Add ingredients to Grocery List".
+ */
+function CartGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5.9145 21.047C5.57417 20.7067 5.404 20.2936 5.404 19.8078C5.404 19.3218 5.57417 18.9086 5.9145 18.5683C6.25483 18.2279 6.66792 18.0577 7.15375 18.0577C7.63975 18.0577 8.05292 18.2279 8.39325 18.5683C8.73358 18.9086 8.90375 19.3218 8.90375 19.8078C8.90375 20.2936 8.73358 20.7067 8.39325 21.047C8.05292 21.3875 7.63975 21.5578 7.15375 21.5578C6.66792 21.5578 6.25483 21.3875 5.9145 21.047ZM15.6068 21.047C15.2664 20.7067 15.0963 20.2936 15.0963 19.8078C15.0963 19.3218 15.2664 18.9086 15.6068 18.5683C15.9471 18.2279 16.3603 18.0577 16.8463 18.0577C17.3321 18.0577 17.7452 18.2279 18.0855 18.5683C18.4258 18.9086 18.596 19.3218 18.596 19.8078C18.596 20.2936 18.4258 20.7067 18.0855 21.047C17.7452 21.3875 17.3321 21.5578 16.8463 21.5578C16.3603 21.5578 15.9471 21.3875 15.6068 21.047ZM6.01525 5.75L8.55 11.0577H15.3673C15.4249 11.0577 15.4763 11.0433 15.5213 11.0145C15.5661 10.9857 15.6045 10.9456 15.6365 10.8943L18.3193 6.01925C18.3578 5.94875 18.3609 5.88625 18.3288 5.83175C18.2968 5.77725 18.2423 5.75 18.1653 5.75H6.01525ZM5.29625 4.25H19.1808C19.5898 4.25 19.899 4.42408 20.1085 4.77225C20.3182 5.12025 20.3282 5.47567 20.1385 5.8385L16.9345 11.6422C16.7705 11.9307 16.5536 12.1554 16.2838 12.3162C16.0137 12.4772 15.7179 12.5577 15.3963 12.5577H8.1L6.94225 14.673C6.89092 14.75 6.88933 14.8333 6.9375 14.923C6.9855 15.0128 7.05758 15.0577 7.15375 15.0577H17.8463C18.0589 15.0577 18.2371 15.1295 18.3808 15.273C18.5242 15.4167 18.596 15.5949 18.596 15.8077C18.596 16.0206 18.5242 16.1987 18.3808 16.3422C18.2371 16.4859 18.0589 16.5577 17.8463 16.5577H7.15375C6.48708 16.5577 5.98617 16.2703 5.651 15.6953C5.31567 15.1203 5.30383 14.5462 5.6155 13.973L7.04225 11.4077L3.404 3.75H2.25C2.03717 3.75 1.859 3.67817 1.7155 3.5345C1.57183 3.391 1.5 3.21283 1.5 3C1.5 2.78717 1.57183 2.609 1.7155 2.4655C1.859 2.32183 2.03717 2.25 2.25 2.25H3.77875C3.94942 2.25 4.10842 2.29517 4.25575 2.3855C4.40325 2.476 4.51542 2.60325 4.59225 2.76725L5.29625 4.25Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 function ChefHatGlyph({ color }: { color: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -453,6 +469,8 @@ export function RecipeDetailScreen() {
   const [reverting, setReverting] = useState(false);
   /** Lang's `5055:47291` toast. Cleared on a timer, and on unmount. */
   const [toast, setToast] = useState<string | null>(null);
+  /** In flight for Lang's `5046:43899` — the button under the ingredients. */
+  const [addingToGrocery, setAddingToGrocery] = useState(false);
 
   /**
    * Ask Ester (Lang `5062:56495`, ESTER CONTEXT r8 — the only entry Bryan
@@ -842,6 +860,60 @@ export function RecipeDetailScreen() {
     }
   };
 
+  /**
+   * Lang's `5046:43899` — "Add ingredients to Grocery List".
+   *
+   * 🔑 Sends the CURRENT multiplier, so what lands in the basket is what the
+   * rows above the button say. The server scales by the same rule.
+   *
+   * 🔴 The server dedupes against the whole list, so a recipe already on this
+   * week's plan adds nothing — its ingredients are derived already. Reporting
+   * "Added 9 items" there would be a lie, so the toast says what actually
+   * happened, including the mixed case.
+   */
+  const handleAddToGroceryList = async () => {
+    if (addingToGrocery) return;
+    setAddingToGrocery(true);
+    try {
+      const { added, skipped } = await addRecipeIngredientsToGroceryList({
+        mealId: meal.id,
+        servings: multiplier,
+      });
+      const n = added.length;
+      const plural = (count: number) =>
+        `${count} ingredient${count === 1 ? "" : "s"}`;
+      if (n === 0) {
+        setToast(
+          skipped === 1
+            ? "That ingredient is already on your Grocery List"
+            : "Already on your Grocery List",
+        );
+      } else if (skipped > 0) {
+        setToast(`${plural(n)} added · ${skipped} already there`);
+      } else {
+        setToast(`${plural(n)} added to your Grocery List`);
+      }
+      logEvent("home_recipe_detail_addToGroceryCTA", {
+        mealId: meal.id,
+        ...(meal.name ? { mealName: meal.name } : {}),
+        added: n,
+        skipped,
+      });
+    } catch (err: any) {
+      // 🔑 The one failure worth naming. The list is derived from the week's
+      // plan, so with no plan there is nothing to add to — and "Try again"
+      // would send the member round a loop that cannot succeed.
+      const noPlan = /no meal plan/i.test(String(err?.message ?? ""));
+      setToast(
+        noPlan
+          ? "Your plan for this week isn't ready yet"
+          : "That didn't go through. Try again.",
+      );
+    } finally {
+      setAddingToGrocery(false);
+    }
+  };
+
   const handleMoreRecipes = () => {
     if (siblings.length === 0) return;
     const [next, ...rest] = siblings;
@@ -1220,6 +1292,39 @@ export function RecipeDetailScreen() {
                   );
                 })}
               </View>
+
+              {/* ── Add ingredients to Grocery List ──────────────────────
+                  Lang `5046:43899`: full width, 44 tall, radius 4 (XSmall),
+                  her cart glyph at 24, gap 12, Catalogue Medium 14.
+
+                  🔑 Her ghost token resolves to `#fafdfe3d` on `#fafdfe`
+                  text, because she draws this on the BROWN Recipe Details
+                  page. We still ship a white sheet, where white-at-24% is
+                  invisible — so this uses the SAME token's light-surface
+                  values (`rgba(54,20,22,0.12)` with brown text), which is
+                  what her own light mode resolves to. Same button, the mode
+                  that fits the surface we actually have. Revisit when the
+                  page treatment is settled. */}
+              <TouchableOpacity
+                style={[
+                  styles.addToGrocery,
+                  addingToGrocery ? styles.addToGroceryBusy : null,
+                ]}
+                onPress={handleAddToGroceryList}
+                disabled={addingToGrocery}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: addingToGrocery }}
+                accessibilityLabel="Add ingredients to Grocery List"
+              >
+                {addingToGrocery ? (
+                  <ActivityIndicator size="small" color={K.brown} />
+                ) : (
+                  <CartGlyph color={K.brown} />
+                )}
+                <Text style={styles.addToGroceryText}>
+                  Add ingredients to Grocery List
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -1914,6 +2019,26 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: K.brown, borderRadius: 999 },
   segmentText: { fontFamily: fonts.catalogue, fontSize: 13, color: K.brown },
   segmentTextActive: { color: K.cream },
+  // Add ingredients to Grocery List (Lang 5046:43899)
+  addToGrocery: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    // 📌 Her gap is 12 and her radius is XSmall (4) — not the 999 the action
+    // bar uses. Those are different components in her file, so they are
+    // different here too.
+    gap: 12,
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: "rgba(54, 20, 22, 0.12)",
+  },
+  addToGroceryBusy: { opacity: 0.6 },
+  addToGroceryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.brown,
+  },
   // Ingredients list
   ingredientsList: {
     gap: 0,

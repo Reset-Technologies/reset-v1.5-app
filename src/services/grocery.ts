@@ -99,6 +99,24 @@ export async function addGroceryItem(input: {
 }
 
 /**
+ * Put one recipe's ingredients on the list — Lang's `5046:43899`.
+ *
+ * 🔑 The server dedupes. A recipe that is already on this week's plan has its
+ * ingredients on the list already, so the honest result is `added: []` with a
+ * `skipped` count, not a second copy of the shop. The screen says so rather
+ * than claiming it added anything.
+ */
+export async function addRecipeIngredientsToGroceryList(input: {
+  mealId: string;
+  servings?: number;
+}): Promise<{ groceryListId: string; added: GroceryItem[]; skipped: number }> {
+  return apiClient("/api/meals/my-plan/grocery/from-recipe", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
  * Remove a member-added line.
  *
  * 🔴 Manual lines ONLY — the server refuses a derived one. r9 removes those by
@@ -155,7 +173,11 @@ export function groupByCategory(
  * printing "0" or an empty unit would be worse than printing nothing.
  */
 export function amountLabel(item: GroceryItem): string | null {
-  if (item.manual) return item.quantityText?.trim() || null;
+  // 🔑 Keyed on what the line HAS, not on where it came from. A typed line
+  // carries `quantityText` and a derived line carries `components` — but a
+  // recipe-added line is manual AND normalised, so the old `if (item.manual)`
+  // short-circuit printed nothing at all for it.
+  if (item.quantityText?.trim()) return item.quantityText.trim();
   if (!item.components?.length) return null;
   return item.components
     .map(
