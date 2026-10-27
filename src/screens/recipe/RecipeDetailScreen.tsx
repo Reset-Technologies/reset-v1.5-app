@@ -293,8 +293,16 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
  * emoji data, and U+25B6 on the Cook Mode timer shipped as a BLUE EMOJI on
  * iOS for exactly that reason. A path cannot be re-presented by the platform.
  */
-/** Her Ester mark, the same asset the paywall and Fasting sheet already use. */
-const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
+/**
+ * Her Ester mark for the action bar.
+ *
+ * 📌 The SILVER variant, not the copper one. `EsterChatScreen` sets the
+ * convention in its own names — `ESTER_AVATAR_LIGHT` (ester-avatar) for light
+ * surfaces, `ESTER_AVATAR_DARK` (ester-avatar-silver) for dark — and this
+ * button is a dark ghost surface. Her frame shows a light mark here too; the
+ * copper one read as a muddy smudge at 18pt against `#fafdfe3d`.
+ */
+const ESTER_MARK = require("../../../assets/images/ester-avatar-silver.png");
 
 /**
  * Lang's action-bar icons (`5046:44118` / `5061:55849`).
