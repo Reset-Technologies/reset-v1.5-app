@@ -178,6 +178,57 @@ const DEFAULT_CARD_GRADIENT: [string, string, string] = [
   "#361416",
 ];
 
+/**
+ * The action bar's scrim — Lang's `5061:54966` has no slab behind the buttons,
+ * just a gradient that fades to nothing so they read as floating.
+ *
+ * 🔴 Measures itself with `onLayout` and hands the `Svg` NUMERIC width/height,
+ * exactly as `CardGradient` below does. A percentage (`width="100%"`) does NOT
+ * fill reliably in react-native-svg — the first attempt rendered a partial
+ * band, the recipe content showed straight through the buttons, and the
+ * labels collided with the text behind them.
+ *
+ * ⚠️ Android bands SVG gradients ~2.5× more coarsely than iOS, so this is
+ * judged on the S24 rather than a simulator.
+ */
+function ActionBarScrim() {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) =>
+        setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+      }
+    >
+      {size ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id="actionScrim"
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={size.h}
+            >
+              {/* 🔑 Fully opaque BEFORE the buttons begin. At 0.45 the fade
+                  was still only ~half-covered where the labels sit, and the
+                  recipe text behind them bled through — visible on device,
+                  invisible in the code. The buttons start at paddingTop/height
+                  ≈ 1/3 of the bar, so the scrim closes by 0.30. */}
+              <Stop offset="0" stopColor={K.brown} stopOpacity={0} />
+              <Stop offset="0.30" stopColor={K.brown} stopOpacity={1} />
+              <Stop offset="1" stopColor={K.brown} stopOpacity={1} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={size.w} height={size.h} fill="url(#actionScrim)" />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
 function CardGradient({
   colors = DEFAULT_CARD_GRADIENT,
 }: {
@@ -303,7 +354,15 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
  * button is a dark ghost surface. Her frame shows a light mark here too; the
  * copper one read as a muddy smudge at 18pt against `#fafdfe3d`.
  */
-const ESTER_MARK = require("../../../assets/images/ester-avatar-silver.png");
+/**
+ * 🔑 The Ester mark in the action bar is PER METABOLIC TYPE (Cole, 2026-10-28).
+ * It was a single fixed `ester-avatar-silver.png`.
+ *
+ * Uses `TYPE_LOGO`, which this screen ALREADY imports and renders for the
+ * type card, and which `EsterChatScreen` uses as its per-type Ester header —
+ * so the mark here is the same art the member sees when they actually open
+ * Ester. Adding a second registry would have been one more thing to drift.
+ */
 
 /**
  * Lang's action-bar icons (`5046:44118` / `5061:55849`).
@@ -328,29 +387,27 @@ function CartGlyph({ color }: { color: string }) {
   );
 }
 
-function ChefHatGlyph({ color }: { color: string }) {
+/**
+ * Lang's chef hat from `5061:54966`, her path data verbatim.
+ *
+ * 🔴 The previous version was one I drew by hand from two stroked arcs — it
+ * read as a chef hat but was not hers. This is a single filled path on an
+ * 18×19 viewBox, rendered at 24 to match the frame's icon size.
+ */
+function ChefHatGlyph({ color, size = 24 }: { color: string; size?: number }) {
   return (
-    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+    <Svg width={size} height={size} viewBox="0 0 18 19" fill="none">
       <Path
-        d="M6 18h12v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-2Z"
-        stroke={color}
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M6 18v-3.1A4.5 4.5 0 0 1 8.2 6.6a4 4 0 0 1 7.6 0 4.5 4.5 0 0 1 2.2 8.3V18"
-        stroke={color}
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M7.59225 11.0055C7.73592 10.8618 7.80775 10.6838 7.80775 10.4713V7.55775C7.80775 7.34525 7.73583 7.16708 7.592 7.02325C7.44817 6.87958 7.26992 6.80775 7.05725 6.80775C6.84475 6.80775 6.66667 6.87958 6.523 7.02325C6.3795 7.16708 6.30775 7.34525 6.30775 7.55775V10.4713C6.30775 10.6838 6.37967 10.8618 6.5235 11.0055C6.66733 11.1493 6.8455 11.2213 7.058 11.2213C7.27067 11.2213 7.44875 11.1493 7.59225 11.0055ZM2.4135 9.9135C1.68533 9.54933 1.101 9.02558 0.6605 8.34225C0.220167 7.65892 0 6.9115 0 6.1C0 4.959 0.3955 3.99042 1.1865 3.19425C1.9775 2.39808 2.94358 2 4.08475 2C4.28308 2 4.48558 2.01667 4.69225 2.05C4.89892 2.08333 5.1015 2.125 5.3 2.175L5.3865 2.19425L5.43475 2.11725C5.82575 1.47242 6.3305 0.958333 6.949 0.575C7.56767 0.191667 8.25133 0 9 0C9.74867 0 10.4323 0.191667 11.051 0.575C11.6695 0.958333 12.1775 1.47242 12.575 2.11725L12.623 2.19425L12.7 2.175C12.8953 2.125 13.0906 2.08333 13.2858 2.05C13.4811 2.01667 13.6846 2 13.8962 2C15.0436 2 16.0143 2.398 16.8085 3.194C17.6028 3.98983 18 4.96175 18 6.10975C18 6.92125 17.7814 7.667 17.3443 8.347C16.9071 9.02717 16.3212 9.54858 15.5865 9.91125V15.1152H2.4135V9.9135ZM11.4865 11.0055C11.6302 10.8618 11.702 10.6838 11.702 10.4713V7.55775C11.702 7.34525 11.6301 7.16708 11.4863 7.02325C11.3424 6.87958 11.1642 6.80775 10.9515 6.80775C10.739 6.80775 10.5609 6.87958 10.4173 7.02325C10.2738 7.16708 10.202 7.34525 10.202 7.55775V10.4713C10.202 10.6838 10.2739 10.8618 10.4178 11.0055C10.5614 11.1493 10.7396 11.2213 10.9523 11.2213C11.1649 11.2213 11.343 11.1493 11.4865 11.0055ZM3.9135 13.6155H14.0865V8.977L15.0423 8.50375C15.4949 8.28075 15.8527 7.959 16.1155 7.5385C16.3782 7.118 16.5095 6.65242 16.5095 6.14175C16.5095 5.40208 16.2528 4.77683 15.7395 4.266C15.226 3.75533 14.6052 3.5 13.877 3.5C13.7 3.5 13.5349 3.51508 13.3818 3.54525C13.2286 3.57542 13.0718 3.6155 12.9115 3.6655L11.9288 3.94225L11.298 2.88275C11.0455 2.46092 10.7189 2.125 10.3182 1.875C9.91758 1.625 9.47975 1.5 9.00475 1.5C8.52975 1.5 8.09192 1.625 7.69125 1.875C7.29058 2.125 6.964 2.46092 6.7115 2.88275L6.08075 3.94225L5.073 3.6655C4.91283 3.62567 4.75358 3.58817 4.59525 3.553C4.43692 3.51767 4.27442 3.5 4.10775 3.5C3.37958 3.5 2.76292 3.75467 2.25775 4.264C1.75258 4.77317 1.5 5.39658 1.5 6.13425C1.5 6.64342 1.631 7.10767 1.893 7.527C2.155 7.94633 2.51308 8.27192 2.96725 8.50375L3.9135 8.977V13.6155ZM2.4135 15.1152H3.9135V17.1923C3.9135 17.2821 3.94233 17.3558 4 17.4135C4.05767 17.4712 4.13142 17.5 4.22125 17.5H13.7788C13.8686 17.5 13.9423 17.4712 14 17.4135C14.0577 17.3558 14.0865 17.2821 14.0865 17.1923V15.1152H15.5865V17.1923C15.5865 17.6894 15.4095 18.115 15.0555 18.469C14.7015 18.823 14.2759 19 13.7788 19H4.22125C3.72408 19 3.2985 18.823 2.9445 18.469C2.5905 18.115 2.4135 17.6894 2.4135 17.1923V15.1152Z"
+        fill={color}
       />
     </Svg>
   );
 }
 
-function PlusGlyph({ color }: { color: string }) {
+function PlusGlyph({ color, size = 24 }: { color: string; size?: number }) {
   return (
-    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M12 5v14M5 12h14"
         stroke={color}
@@ -1405,10 +1462,20 @@ export function RecipeDetailScreen() {
           contract: all six `ester_opened_from_*` events declared, and this
           entry passes `recipe_version_id` plus the serving and substitution
           state r8 requires. The other five entries are still unbuilt. */}
-      <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
+      <View
+        style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}
+        pointerEvents="box-none"
+      >
+        {/* 🔑 Lang's bar has NO slab behind it — `5061:54966` is a gradient
+            scrim that fades to nothing, so the buttons read as floating over
+            the content. This was a solid `K.brown` fill with a hairline top
+            border, which is why it looked like a different component.
+            ⚠️ SVG gradients band ~2.5× coarser on Android than iOS, so this
+            is checked on the S24, not the simulator. */}
+        <ActionBarScrim />
         {canCook ? (
           <Pressable
-            style={[styles.actionButton, styles.actionPrimary]}
+            style={[styles.actionButton, styles.actionGrow, styles.actionPrimary]}
             onPress={() =>
               navigation.navigate("CookMode", {
                 recipeVersionId: detail!.recipeVersionId as string,
@@ -1420,8 +1487,10 @@ export function RecipeDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Start cook mode"
           >
-            <ChefHatGlyph color={K.brown} />
-            <Text style={styles.actionPrimaryText}>Cook</Text>
+            <ChefHatGlyph color={K.brown} size={24} />
+            <Text style={styles.actionPrimaryText} numberOfLines={1}>
+              Cook
+            </Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -1430,8 +1499,14 @@ export function RecipeDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Ask Ester"
         >
-          <Image source={ESTER_MARK} style={styles.actionEsterMark} resizeMode="contain" />
-          <Text style={styles.actionSecondaryText}>Ask Ester</Text>
+          <Image
+            source={TYPE_LOGO[metabolicType]}
+            style={styles.actionEsterMark}
+            resizeMode="contain"
+          />
+          <Text style={styles.actionSecondaryText} numberOfLines={1}>
+            Ask Ester
+          </Text>
         </Pressable>
         <Pressable
           style={[styles.actionButton, styles.actionSecondary, !canAdd && styles.actionDisabled]}
@@ -1440,8 +1515,8 @@ export function RecipeDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Add to plan"
         >
-          {adding || addedTo ? null : <PlusGlyph color={K.white} />}
-          <Text style={styles.actionSecondaryText}>
+          {adding || addedTo ? null : <PlusGlyph color={K.white} size={24} />}
+          <Text style={styles.actionSecondaryText} numberOfLines={1}>
             {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
           </Text>
         </Pressable>
@@ -2387,12 +2462,19 @@ const styles = StyleSheet.create({
     minHeight: ACTION_BAR_H,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    // 🔑 Her gap is 8 and her side padding 24 (`px-[24px]` on the container).
+    gap: 8,
+    // 📌 DEVIATION from Lang's `px-[24px]`, measured not guessed: at 24 the
+    //    three buttons need ~976px of an S24's 954px and Cook truncates.
+    //    Her frame is 402pt and may not have been checked with all three
+    //    present. 16 buys the ~22px and is the smallest change that fits;
+    //    worth putting to her rather than quietly keeping.
     paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: K.brown,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(243,239,227,0.14)",
+    // Taller than the old bar on purpose: the fade needs somewhere to happen.
+    paddingTop: 44,
+    // 🔴 NO backgroundColor and NO top border. The scrim is an SVG gradient
+    // rendered behind the buttons — see the JSX. A solid slab here is what
+    // made this read as the wrong component.
   },
   /**
    * Lang's bottom bar (`5046:44118`, and `5061:55849` for the planned-meal
@@ -2415,16 +2497,50 @@ const styles = StyleSheet.create({
    * 2026-10-26: match the styling for the state we have, leave the second
    * state for later.
    */
+  /**
+   * 🔴 CORRECTED 2026-10-28 against `5061:54966`, which is the bar Lang
+   * actually drew. I had built from `5061:55849` and got the SHAPE wrong:
+   *
+   *   radius   999 (a pill)      ->  XSmall = **4**, same as every other
+   *                                  button in her file
+   *   width    all three flex:1  ->  only **Cook** grows; the other two hug
+   *                                  their label (`shrink-0` in her frame)
+   *   gap      6                 ->  8
+   *   padding  centred           ->  pl 10 / pr 12 / py 8, min-height 44
+   *   icons    16                ->  **24**
+   */
   actionButton: {
-    flex: 1,
     flexDirection: "row",
-    height: 44,
-    borderRadius: 999,
+    minHeight: 44,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
+    paddingLeft: 10,
+    paddingRight: 12,
+    paddingVertical: 8,
   },
-  actionPrimary: { backgroundColor: K.blue },
+  /**
+   * Only Cook grows. Hers is `flex-[1_0_0]` — grow 1, **shrink 0**, basis 0.
+   *
+   * 🔴 Two RN traps in a row here, both only visible on a device:
+   *   `flex: 1`      = grow 1 / **shrink 1** / basis 0%  -> Cook gave way and
+   *                    the label wrapped to "Coo / k"
+   *   `flexBasis: 0` = base width ZERO, and flexShrink only protects against
+   *                    shrinking below the BASIS, not below content -> "Co…"
+   * `basis: "auto"` is what actually means "at least my content, grow if
+   * there is room".
+   */
+  actionGrow: { flexGrow: 1, flexShrink: 0, flexBasis: "auto" },
+  actionPrimary: {
+    backgroundColor: K.blue,
+    // Her Cook carries a drop shadow the ghost buttons do not.
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    shadowOffset: { width: 0, height: 25 },
+    elevation: 6,
+  },
   actionPrimaryText: {
     fontFamily: fonts.catalogueMedium,
     fontSize: 14,
@@ -2436,8 +2552,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: K.white,
   },
-  /** Her Ester mark in the button, sized to sit with a 16pt glyph. */
-  actionEsterMark: { width: 18, height: 18 },
+  /** 24 to match her icon size; the mark is per metabolic type. */
+  actionEsterMark: { width: 24, height: 24 },
   actionDisabled: { opacity: 0.4 },
   addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   addSheet: {
