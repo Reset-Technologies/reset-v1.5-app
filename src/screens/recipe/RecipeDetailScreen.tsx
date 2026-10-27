@@ -293,6 +293,50 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
  * emoji data, and U+25B6 on the Cook Mode timer shipped as a BLUE EMOJI on
  * iOS for exactly that reason. A path cannot be re-presented by the platform.
  */
+/** Her Ester mark, the same asset the paywall and Fasting sheet already use. */
+const ESTER_MARK = require("../../../assets/images/ester-avatar.png");
+
+/**
+ * Lang's action-bar icons (`5046:44118` / `5061:55849`).
+ *
+ * 📌 Drawn as paths rather than exported, matching this file's existing
+ * `SwapGlyph`/`RevertGlyph` convention. They are 16pt glyphs that inherit the
+ * button's text colour, so they stay correct on both the blue primary and the
+ * ghost secondary without a second asset.
+ */
+function ChefHatGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 18h12v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-2Z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M6 18v-3.1A4.5 4.5 0 0 1 8.2 6.6a4 4 0 0 1 7.6 0 4.5 4.5 0 0 1 2.2 8.3V18"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function PlusGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 5v14M5 12h14"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 function SwapGlyph() {
   return (
     <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
@@ -1251,7 +1295,7 @@ export function RecipeDetailScreen() {
       <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
         {canCook ? (
           <Pressable
-            style={[styles.actionButton, styles.actionSecondary]}
+            style={[styles.actionButton, styles.actionPrimary]}
             onPress={() =>
               navigation.navigate("CookMode", {
                 recipeVersionId: detail!.recipeVersionId as string,
@@ -1263,7 +1307,8 @@ export function RecipeDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Start cook mode"
           >
-            <Text style={styles.actionSecondaryText}>Cook</Text>
+            <ChefHatGlyph color={K.brown} />
+            <Text style={styles.actionPrimaryText}>Cook</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -1272,16 +1317,18 @@ export function RecipeDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Ask Ester"
         >
+          <Image source={ESTER_MARK} style={styles.actionEsterMark} resizeMode="contain" />
           <Text style={styles.actionSecondaryText}>Ask Ester</Text>
         </Pressable>
         <Pressable
-          style={[styles.actionButton, styles.actionPrimary, !canAdd && styles.actionDisabled]}
+          style={[styles.actionButton, styles.actionSecondary, !canAdd && styles.actionDisabled]}
           disabled={!canAdd || adding}
           onPress={openAddSheet}
           accessibilityRole="button"
           accessibilityLabel="Add to plan"
         >
-          <Text style={styles.actionPrimaryText}>
+          {adding || addedTo ? null : <PlusGlyph color={K.white} />}
+          <Text style={styles.actionSecondaryText}>
             {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
           </Text>
         </Pressable>
@@ -2214,21 +2261,50 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(243,239,227,0.14)",
   },
+  /**
+   * Lang's bottom bar (`5046:44118`, and `5061:55849` for the planned-meal
+   * variant). Her tokens, read from the frame rather than the render:
+   *
+   *   Blue Surface/Blue Surface    #92b4bd   ← the PRIMARY, and it is COOK
+   *   Blue Surface/ON Blue Strong  #361416
+   *   Ghost Surface/Ghost Surface  #fafdfe3d ← filled, NOT a transparent border
+   *   Ghost Surface/On Ghost Strong #fafdfe
+   *   Button  Catalogue Medium 14 / lineHeight 100 / letterSpacing 0
+   *
+   * 🔴 Four things were off before this: the primary was `K.cream` and sat on
+   * "Add to plan", the secondaries were a transparent 1px outline instead of a
+   * filled ghost, the type was regular 16 rather than Medium 14, and none of
+   * the three carried its icon.
+   *
+   * 📌 Still only the "Add to plan" variant. She also drew `5061:55849` with
+   * **Change meal** for a recipe already in the plan, and that state is NOT
+   * built — opening a planned meal still offers "Add to plan". Cole's call
+   * 2026-10-26: match the styling for the state we have, leave the second
+   * state for later.
+   */
   actionButton: {
     flex: 1,
+    flexDirection: "row",
     height: 44,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
-  actionPrimary: { backgroundColor: K.cream },
-  actionPrimaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.brown },
-  actionSecondary: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "rgba(243,239,227,0.35)",
+  actionPrimary: { backgroundColor: K.blue },
+  actionPrimaryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.brown,
   },
-  actionSecondaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
+  actionSecondary: { backgroundColor: "rgba(250,253,254,0.24)" },
+  actionSecondaryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.white,
+  },
+  /** Her Ester mark in the button, sized to sit with a 16pt glyph. */
+  actionEsterMark: { width: 18, height: 18 },
   actionDisabled: { opacity: 0.4 },
   addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   addSheet: {
