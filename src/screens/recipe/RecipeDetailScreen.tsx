@@ -106,6 +106,31 @@ const SHEET_PAD_TOP = 24;
  * image's bottom edge (hers: 569.6 - 543 = 26.6, scaled).
  */
 const HERO_TITLE_BOTTOM = 24;
+
+/**
+ * Lang's three surface tokens for this screen, from `5046:43885` — the dark
+ * values resolved with `get_variable_defs`, the light ones read off the CSS
+ * fallbacks in the same response (which ARE the light mode of each token).
+ *
+ * 🔴🔴 THEY DO NOT MAP ONTO `outerBg` / `innerBg` — the pair CROSSES.
+ *
+ *            her Page Surface      her Page Surface (alt)
+ *   dark     #361416  = outerBg    #513436  = innerBg
+ *   light    #fafdfe  = innerBg    #f3efe3  = outerBg
+ *                      ^^^^^^^^              ^^^^^^^^
+ * In her system the raised surface is LIGHTER than the page in dark mode and
+ * DARKER in light mode. `useAppPalette` does not model that, so "the page" is
+ * `outerBg` at night and `innerBg` by day. Reaching for one of them would
+ * have been right in one mode and wrong in the other — and switching the page
+ * to `outerBg` outright, which is what I did first, silently turned the
+ * DAYTIME page from #fafdfe to bone.
+ * ▶ Hence explicit tokens here rather than a palette lookup. Fixing
+ *   `useAppPalette` itself would re-level Home, Ester, Profile and Saved
+ *   Meals, which is not this change.
+ */
+const PAGE_SURFACE = { dark: "#361416", light: K.white };
+const PAGE_SURFACE_ALT = { dark: "#513436", light: K.bone };
+const DIVIDER_LINE = { dark: "#7e6869", light: "#c3b9ba" };
 /** Space the block needs, so the condensed header knows when it scrolls away. */
 const HERO_TITLE_RESERVE = 130;
 
@@ -517,16 +542,18 @@ function PlusGlyph({ color, size = 24 }: { color: string; size?: number }) {
   );
 }
 
-function SwapGlyph() {
+/**
+ * Lang's Material `swap_horiz` from `5046:43885`, her path verbatim.
+ *
+ * 🔴 The previous version was four stroked line segments I drew by hand. It
+ * read as a swap icon but was not hers — the same mistake as the chef hat,
+ * and it is why the control "looked different" without anything obviously
+ * being wrong. Hers is a single FILLED path on a 16 viewBox.
+ */
+function SwapGlyph({ color }: { color: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path
-        d="M2.5 5.5h9M9 3l2.5 2.5L9 8M13.5 10.5h-9M7 8l-2.5 2.5L7 13"
-        stroke={K.textMuted}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Path d="M3.582 10.391L5.1205 11.9295C5.21283 12.0218 5.26006 12.1362 5.26217 12.2725C5.26428 12.4087 5.21706 12.5286 5.1205 12.632C5.01706 12.7354 4.89828 12.7872 4.76417 12.7872C4.62994 12.7872 4.51111 12.7354 4.40767 12.632L2.0885 10.3128C2.02606 10.2504 1.98206 10.1846 1.9565 10.1153C1.93083 10.0461 1.918 9.97133 1.918 9.891C1.918 9.81067 1.93083 9.73589 1.9565 9.66667C1.98206 9.59744 2.02606 9.53161 2.0885 9.46917L4.418 7.13967C4.51711 7.04056 4.63311 6.99167 4.766 6.993C4.89889 6.99422 5.01706 7.04656 5.1205 7.15C5.21706 7.25344 5.26706 7.37056 5.2705 7.50133C5.27394 7.63211 5.22394 7.74917 5.1205 7.8525L3.582 9.391H7.93583C8.07772 9.391 8.19656 9.43889 8.29233 9.53467C8.388 9.63033 8.43583 9.74911 8.43583 9.891C8.43583 10.0329 8.388 10.1517 8.29233 10.2475C8.19656 10.3432 8.07772 10.391 7.93583 10.391H3.582ZM12.418 6.6025H8.06417C7.92228 6.6025 7.80344 6.55467 7.70767 6.459C7.612 6.36322 7.56417 6.24439 7.56417 6.1025C7.56417 5.96072 7.612 5.84194 7.70767 5.74617C7.80344 5.6505 7.92228 5.60267 8.06417 5.60267H12.418L10.8795 4.06417C10.7872 3.97183 10.7399 3.8575 10.7378 3.72117C10.7357 3.58483 10.7829 3.46494 10.8795 3.3615C10.9829 3.25817 11.1017 3.2065 11.2358 3.2065C11.3701 3.2065 11.4889 3.25817 11.5923 3.3615L13.9115 5.68083C13.9739 5.74317 14.0179 5.80894 14.0435 5.87817C14.0692 5.94739 14.082 6.02217 14.082 6.1025C14.082 6.18294 14.0692 6.25778 14.0435 6.327C14.0179 6.39622 13.9739 6.462 13.9115 6.52433L11.582 8.85383C11.4829 8.95294 11.3669 9.00189 11.234 9.00067C11.1011 8.99933 10.9829 8.947 10.8795 8.84367C10.7829 8.74022 10.7329 8.62311 10.7295 8.49233C10.7261 8.36156 10.7761 8.24444 10.8795 8.141L12.418 6.6025Z" fill={color} />
     </Svg>
   );
 }
@@ -575,15 +602,51 @@ export function RecipeDetailScreen() {
   const dyn = useMemo(() => {
     const dark = palette.evening;
     return StyleSheet.create({
-      // page surfaces
-      container: { backgroundColor: palette.innerBg },
-      sheet: { backgroundColor: palette.innerBg },
+      /**
+       * 🔴 CORRECTED 2026-10-28 — the page is `outerBg`, not `innerBg`.
+       *
+       * `get_variable_defs` on `5046:43885` resolves her two page tokens:
+       *     Page Surface        #361416   <- the PAGE
+       *     Page Surface (alt)  #513436   <- raised surfaces ON it
+       * which map 1:1 onto our `outerBg` / `innerBg`. This screen was
+       * painting `innerBg` as the page, i.e. rendering #513436 where she has
+       * #361416: one surface level too high, all the way down.
+       *
+       * 🔑 The tell was her swap button, whose fill is #513436 sitting ON the
+       * page — a hierarchy that only works if the page is a level below it.
+       * Cole spotted the colour directly; I had measured #513436 off the
+       * device earlier and read it as "the page colour".
+       * ▶ This is the standing rule, hit again: a colour token's NAME encodes
+       *   its SURFACE. `outer` / `inner` are not decoration.
+       */
+      container: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
+      sheet: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
       heroContainer: { backgroundColor: palette.nestedBg },
       stepCard: { backgroundColor: palette.nestedBg },
       tag: { backgroundColor: palette.nestedBg },
-      divider: { backgroundColor: palette.borderColor },
+      divider: { backgroundColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
       countBadge: { backgroundColor: palette.borderColor },
       moreCtaButton: { backgroundColor: palette.innerBg },
+      /**
+       * Her `Divider Line` (#7e6869). Dropping the page to `outerBg` made
+       * `palette.borderColor` — which is `K.brown`, i.e. #361416 — IDENTICAL
+       * to the page in evening, so every rule on the screen would have
+       * vanished into it.
+       * 📌 Kept local rather than added to `useAppPalette`: Home, Ester,
+       * Profile and Saved Meals all read `borderColor`, and changing it there
+       * would alter four screens I am not looking at.
+       */
+      dividerLine: { backgroundColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
+      dividerBorder: { borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
+      /**
+       * The row-level swap control, `I5046:43885;5055:46608`: a 24pt pill
+       * FILLED with `Page Surface (alt)` and hairlined in `Divider Line`.
+       * Ours was a 28pt transparent circle with a 1px `K.border` ring.
+       */
+      swapButton: {
+        backgroundColor: dark ? PAGE_SURFACE_ALT.dark : PAGE_SURFACE_ALT.light,
+        borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light,
+      },
       // 🔑 `5046:44136`, resolved with get_variable_defs (the CSS fallbacks
       //    were the LIGHT mode of a DARK frame — again):
       //      back          Ghost Surface/Fully Transparent Surface  #fafdfe00
@@ -610,6 +673,8 @@ export function RecipeDetailScreen() {
     });
   }, [palette]);
   const ghostGlyph = palette.evening ? K.white : K.brown;
+  /** The page's own fill — what the hero and the header scrim dissolve into. */
+  const pageSurface = palette.evening ? PAGE_SURFACE.dark : PAGE_SURFACE.light;
 
   /**
    * Condensed header (`5046:44136`, annotated *"Condensed header that shows
@@ -1308,7 +1373,7 @@ export function RecipeDetailScreen() {
               (`5046:43237`); ours ended at a hard sheet edge.
 
               ⚠️ This is a gradient that must NOT match its page to be
-              invisible — it must BECOME it. It ends on `palette.innerBg`,
+              invisible — it must BECOME it. It ends on `palette.outerBg`,
               which is exactly the sheet's own fill, so the image resolves
               into the page with no seam in either mode. Sized numerically
               rather than with `width="100%"`, which does not fill in
@@ -1327,9 +1392,9 @@ export function RecipeDetailScreen() {
                 x2={0}
                 y2={HERO_FADE_LEN}
               >
-                <Stop offset="0" stopColor={palette.innerBg} stopOpacity={0} />
-                <Stop offset="0.55" stopColor={palette.innerBg} stopOpacity={0.72} />
-                <Stop offset="1" stopColor={palette.innerBg} stopOpacity={1} />
+                <Stop offset="0" stopColor={pageSurface} stopOpacity={0} />
+                <Stop offset="0.55" stopColor={pageSurface} stopOpacity={0.72} />
+                <Stop offset="1" stopColor={pageSurface} stopOpacity={1} />
               </LinearGradient>
             </Defs>
             {/* The RECT runs to the hero's bottom edge while the GRADIENT is
@@ -1537,6 +1602,7 @@ export function RecipeDetailScreen() {
                       }
                       style={[
                         styles.ingredientRow,
+                        dyn.dividerBorder,
                         idx === 0 ? styles.ingredientRowFirst : null,
                       ]}
                       accessibilityRole={plannedMeal ? "button" : undefined}
@@ -1567,10 +1633,11 @@ export function RecipeDetailScreen() {
                         <View
                           style={[
                             styles.ingredientAction,
+                            dyn.swapButton,
                             sub ? styles.ingredientActionOn : null,
                           ]}
                         >
-                          {sub ? <RevertGlyph /> : <SwapGlyph />}
+                          {sub ? <RevertGlyph /> : <SwapGlyph color={ghostGlyph} />}
                         </View>
                       ) : null}
                     </Row>
@@ -1860,7 +1927,7 @@ export function RecipeDetailScreen() {
           ]}
           pointerEvents="none"
         >
-          <HeaderScrim color={palette.innerBg} />
+          <HeaderScrim color={pageSurface} />
         </Animated.View>
         <View style={styles.floatingHeaderRow}>
           {/* An arrow, not a ✕: this screen is PUSHED (see MainNavigator), and
@@ -2459,12 +2526,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 12,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: K.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   ingredientRowFirst: {
-    borderTopWidth: 1,
-    borderTopColor: K.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   ingredientQty: {
     width: 70,
@@ -2487,14 +2552,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: K.textMuted,
   },
+  /**
+   * Her `Rounded Icon button` on the ingredient row (`I5046:43885;5055:46608`):
+   * a 16pt icon in `p-[4px]` with `rounded-[999px]`, so **24x24** — not the
+   * 28pt ring this was. Filled `Page Surface (alt)` and hairlined `Divider
+   * Line` at **0.5**, both supplied by `dyn.swapButton`.
+   */
   ingredientAction: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: K.border,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: -2,
   },
   ingredientActionOn: {
