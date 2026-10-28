@@ -80,6 +80,25 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const ACTION_BAR_H = 64;
 
 /**
+ * Clear space Lang leaves BELOW the action bar.
+ *
+ * Measured off her own export of `5046:43237` (402x843, so 1:1 in points):
+ * the Cook button's fill runs y=739..782 and the frame's last row is 842, so
+ * she leaves **60pt** under the buttons. We were leaving `insets.bottom`
+ * alone — 15 on the S24 — which sat the bar roughly 26pt too low.
+ *
+ * Her frame draws a status bar but NO home indicator, so that 60 is measured
+ * to the physical screen edge. 34 of it is the iPhone indicator region the
+ * system already reserves and reports as `insets.bottom`; the remaining 26 is
+ * real breathing room, and that is what this constant is. On the S24
+ * `insets.bottom` is 15, so the gap lands at 41 rather than 60 — correct,
+ * because that device has no 34pt indicator to clear.
+ * 📌 For Lang, with the Android number: she may instead mean a flat 60 from
+ *    the screen edge on every device. Ask before assuming.
+ */
+const ACTION_BAR_LIFT = 26;
+
+/**
  * Slot display names for the add sheet.
  *
  * 🔑 MY PLAN r16 keeps the MODEL semantic (`first_meal · midday · evening ·
@@ -1097,7 +1116,7 @@ export function RecipeDetailScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           // Clears the persistent action bar.
-          { paddingBottom: insets.bottom + ACTION_BAR_H + 32 },
+          { paddingBottom: insets.bottom + ACTION_BAR_H + ACTION_BAR_LIFT + 32 },
         ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -1465,7 +1484,7 @@ export function RecipeDetailScreen() {
           // 🔑 Cook is the only button that grows, so without it the other two
           //    hug their labels and strand a gap on the right. Centre them.
           !canCook && styles.actionBarCentered,
-          { paddingBottom: insets.bottom || 12 },
+          { paddingBottom: (insets.bottom || 12) + ACTION_BAR_LIFT },
         ]}
         pointerEvents="box-none"
       >
