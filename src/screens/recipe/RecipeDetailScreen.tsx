@@ -107,6 +107,9 @@ const SHEET_PAD_TOP = 24;
  */
 const HERO_TITLE_BOTTOM = 24;
 
+/** The sheet's own rhythm between sections. */
+const SHEET_GAP = 30;
+
 /**
  * Lang's three surface tokens for this screen, from `5046:43885` — the dark
  * values resolved with `get_variable_defs`, the light ones read off the CSS
@@ -1737,7 +1740,7 @@ export function RecipeDetailScreen() {
 
           {/* Instructions */}
           {steps.length > 0 ? (
-            <View style={styles.section}>
+            <View style={styles.instructionsSection}>
               <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Instructions</Text>
               <View style={styles.stepsList}>
                 {steps.map((step, idx) => (
@@ -2330,7 +2333,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: SHEET_PAD_TOP,
     paddingBottom: 25,
-    gap: 30,
+    gap: SHEET_GAP,
   },
   /**
    * The title + chips, over the image. Bottom-anchored so the block grows
@@ -2464,8 +2467,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: K.bone,
   },
-  section: {
-    gap: 30,
+  /**
+   * Instructions. Her `Instructions` frame (`5046:43272`) puts the heading at
+   * y 0..24 with the first Step at 56 — **32** between them — and sits at
+   * y=1101 where `Ingredients` ended at 1061, so **40** above it.
+   *
+   * 📌 The 40 is expressed as a top-up over `SHEET_GAP` because `gap` already
+   * supplies 30 between every pair of the sheet's children and RN cannot
+   * exclude one pair. Written as arithmetic so it follows if `SHEET_GAP`
+   * ever moves, rather than sitting there as a bare 10.
+   */
+  instructionsSection: {
+    gap: 32,
+    marginTop: 40 - SHEET_GAP,
   },
   /**
    * 🔴 The Ingredients section runs on 16, not the shared `section`'s 30.
