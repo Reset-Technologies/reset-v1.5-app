@@ -627,7 +627,6 @@ export function RecipeDetailScreen() {
       heroContainer: { backgroundColor: palette.nestedBg },
       stepCard: { backgroundColor: palette.nestedBg },
       tag: { backgroundColor: palette.nestedBg },
-      divider: { backgroundColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
       /**
        * 🔴 Was `palette.borderColor` — K.brown in evening, i.e. THE PAGE, so
        * the badge disappeared and "17" floated loose beside the heading.
@@ -640,15 +639,14 @@ export function RecipeDetailScreen() {
       },
       moreCtaButton: { backgroundColor: palette.innerBg },
       /**
-       * Her `Divider Line` (#7e6869). Dropping the page to `outerBg` made
-       * `palette.borderColor` — which is `K.brown`, i.e. #361416 — IDENTICAL
-       * to the page in evening, so every rule on the screen would have
+       * Her `Divider Line`, for the ingredient table's rules. Dropping the
+       * page to `Page Surface` made `palette.borderColor` — `K.brown`, i.e.
+       * #361416 — IDENTICAL to the page in evening, so every rule would have
        * vanished into it.
        * 📌 Kept local rather than added to `useAppPalette`: Home, Ester,
        * Profile and Saved Meals all read `borderColor`, and changing it there
        * would alter four screens I am not looking at.
        */
-      dividerLine: { backgroundColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
       dividerBorder: { borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
       /**
        * The row-level swap control, `I5046:43885;5055:46608`: a 24pt pill
@@ -1551,9 +1549,6 @@ export function RecipeDetailScreen() {
             </View>
           ) : null}
 
-          {/* Divider */}
-          <View style={[styles.divider, dyn.divider, dyn.divider]} />
-
           {/* Ingredients */}
           {ingredients.length > 0 ? (
             <View style={styles.ingredientsSection}>
@@ -2447,10 +2442,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   // Section
-  divider: {
-    height: 1,
-    backgroundColor: K.border,
-  },
   /* Cook Mode entry. Recipe Details is the LIGHT surface (bone bg, dark
      text), unlike My Plan and Cook Mode itself — so this is a dark button on
      bone, the inverse of the "Done" button inside Cook Mode. */
