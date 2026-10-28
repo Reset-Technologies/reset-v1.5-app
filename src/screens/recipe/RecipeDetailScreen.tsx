@@ -179,57 +179,6 @@ const DEFAULT_CARD_GRADIENT: [string, string, string] = [
   "#361416",
 ];
 
-/**
- * The action bar's scrim — Lang's `5061:54966` has no slab behind the buttons,
- * just a gradient that fades to nothing so they read as floating.
- *
- * 🔴 Measures itself with `onLayout` and hands the `Svg` NUMERIC width/height,
- * exactly as `CardGradient` below does. A percentage (`width="100%"`) does NOT
- * fill reliably in react-native-svg — the first attempt rendered a partial
- * band, the recipe content showed straight through the buttons, and the
- * labels collided with the text behind them.
- *
- * ⚠️ Android bands SVG gradients ~2.5× more coarsely than iOS, so this is
- * judged on the S24 rather than a simulator.
- */
-function ActionBarScrim({ color }: { color: string }) {
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  return (
-    <View
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-      onLayout={(e) =>
-        setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
-      }
-    >
-      {size ? (
-        <Svg width={size.w} height={size.h}>
-          <Defs>
-            <LinearGradient
-              id="actionScrim"
-              gradientUnits="userSpaceOnUse"
-              x1={0}
-              y1={0}
-              x2={0}
-              y2={size.h}
-            >
-              {/* 🔑 Fully opaque BEFORE the buttons begin. At 0.45 the fade
-                  was still only ~half-covered where the labels sit, and the
-                  recipe text behind them bled through — visible on device,
-                  invisible in the code. The buttons start at paddingTop/height
-                  ≈ 1/3 of the bar, so the scrim closes by 0.30. */}
-              <Stop offset="0" stopColor={color} stopOpacity={0} />
-              <Stop offset="0.30" stopColor={color} stopOpacity={1} />
-              <Stop offset="1" stopColor={color} stopOpacity={1} />
-            </LinearGradient>
-          </Defs>
-          <Rect x={0} y={0} width={size.w} height={size.h} fill="url(#actionScrim)" />
-        </Svg>
-      ) : null}
-    </View>
-  );
-}
-
 function CardGradient({
   colors = DEFAULT_CARD_GRADIENT,
 }: {
@@ -1520,7 +1469,6 @@ export function RecipeDetailScreen() {
             border, which is why it looked like a different component.
             ⚠️ SVG gradients band ~2.5× coarser on Android than iOS, so this
             is checked on the S24, not the simulator. */}
-        <ActionBarScrim color={palette.innerBg} />
         {canCook ? (
           <Pressable
             style={[styles.actionButton, styles.actionGrow, styles.actionPrimary]}
@@ -2523,11 +2471,18 @@ const styles = StyleSheet.create({
     //    present. 16 buys the ~22px and is the smallest change that fits;
     //    worth putting to her rather than quietly keeping.
     paddingHorizontal: 16,
-    // Taller than the old bar on purpose: the fade needs somewhere to happen.
-    paddingTop: 44,
-    // 🔴 NO backgroundColor and NO top border. The scrim is an SVG gradient
-    // rendered behind the buttons — see the JSX. A solid slab here is what
-    // made this read as the wrong component.
+    paddingTop: 12,
+    // 🔴🔴 NO background of ANY kind — not a slab, not a border, and not a
+    // gradient scrim either. `5046:43237` shows the ingredient list running
+    // straight under the buttons ("Olive oil", "Garlic powder · 1 sp" are
+    // both legible around them): they genuinely float over the content.
+    //
+    // I had a brown→transparent scrim here, reasoning from `5061:54966`'s
+    // gradient container. That gradient is the same colour as HER page, so on
+    // her brown screen it is invisible — but ours is white by day, so the
+    // same construction read as a solid band that hid the recipe behind it.
+    // 🔑 A gradient that matches its page is not a background. Look at the
+    //    rendered frame, not just the CSS.
   },
   /**
    * Lang's bottom bar (`5046:44118`, and `5061:55849` for the planned-meal
