@@ -31,6 +31,7 @@ import { AiConsentNudge } from "../../components";
 import { AskEsterSheet } from "./AskEsterSheet";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { useResetWindow } from "../../hooks/useResetWindow";
+import { useAppPalette } from "../../hooks/useAppPalette";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
@@ -191,7 +192,7 @@ const DEFAULT_CARD_GRADIENT: [string, string, string] = [
  * ⚠️ Android bands SVG gradients ~2.5× more coarsely than iOS, so this is
  * judged on the S24 rather than a simulator.
  */
-function ActionBarScrim() {
+function ActionBarScrim({ color }: { color: string }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   return (
     <View
@@ -217,9 +218,9 @@ function ActionBarScrim() {
                   recipe text behind them bled through — visible on device,
                   invisible in the code. The buttons start at paddingTop/height
                   ≈ 1/3 of the bar, so the scrim closes by 0.30. */}
-              <Stop offset="0" stopColor={K.brown} stopOpacity={0} />
-              <Stop offset="0.30" stopColor={K.brown} stopOpacity={1} />
-              <Stop offset="1" stopColor={K.brown} stopOpacity={1} />
+              <Stop offset="0" stopColor={color} stopOpacity={0} />
+              <Stop offset="0.30" stopColor={color} stopOpacity={1} />
+              <Stop offset="1" stopColor={color} stopOpacity={1} />
             </LinearGradient>
           </Defs>
           <Rect x={0} y={0} width={size.w} height={size.h} fill="url(#actionScrim)" />
@@ -459,6 +460,52 @@ export function RecipeDetailScreen() {
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
+  /**
+   * 🔑 Recipe Details was the only Meals screen pinned to a light surface —
+   * `container`/`sheet` were hard `K.white` — so at 4pm it stayed bright while
+   * Home and the rest of the app went to the evening palette.
+   *
+   * ⚠️ "Dark mode" in this app is TIME OF DAY (`evening`, 16:00–06:00), not
+   * the OS colour scheme. `useAppPalette` owns that and reschedules itself
+   * across the boundary, so nothing here needs a timer.
+   *
+   * `dyn` holds ONLY the values that move. The static StyleSheet keeps
+   * everything else, which is why this is an override object rather than a
+   * rewrite of 730 lines of styles.
+   */
+  const palette = useAppPalette();
+  const dyn = useMemo(() => {
+    const dark = palette.evening;
+    return StyleSheet.create({
+      // page surfaces
+      container: { backgroundColor: palette.innerBg },
+      sheet: { backgroundColor: palette.innerBg },
+      heroContainer: { backgroundColor: palette.nestedBg },
+      stepCard: { backgroundColor: palette.nestedBg },
+      tag: { backgroundColor: palette.nestedBg },
+      divider: { backgroundColor: palette.borderColor },
+      countBadge: { backgroundColor: palette.borderColor },
+      moreCtaButton: { backgroundColor: palette.innerBg },
+      headerActionButton: { backgroundColor: palette.innerBg },
+      headerCloseButton: { backgroundColor: palette.nestedBg },
+      // text on those surfaces
+      text: { color: palette.textColor },
+      subtle: { color: palette.subtleText },
+      /**
+       * The ghost buttons — Ask Ester, Add to plan, and the Add-ingredients
+       * button — are Lang's `Ghost Surface` token, which resolves per mode:
+       *   dark   #fafdfe3d on #fafdfe   ← her frame (`5061:54966`)
+       *   light  rgba(54,20,22,0.12) on #361416
+       * The light pair is not invented: it is the SAME token's light-mode
+       * value, already shipping on the Add-ingredients button.
+       */
+      ghost: {
+        backgroundColor: dark ? "rgba(250,253,254,0.24)" : "rgba(54,20,22,0.12)",
+      },
+      ghostText: { color: dark ? K.white : K.brown },
+    });
+  }, [palette]);
+  const ghostGlyph = palette.evening ? K.white : K.brown;
   const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
   /**
    * TEST CASES **M34**: the planned-meal Ester entry's context must include
@@ -1095,7 +1142,7 @@ export function RecipeDetailScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, dyn.container, dyn.container]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -1107,7 +1154,7 @@ export function RecipeDetailScreen() {
         bounces={false}
       >
         {/* Hero */}
-        <View style={styles.heroContainer}>
+        <View style={[styles.heroContainer, dyn.heroContainer, dyn.heroContainer]}>
           {heroSource ? (
             <Image
               source={heroSource}
@@ -1137,27 +1184,27 @@ export function RecipeDetailScreen() {
         </View>
 
         {/* Content sheet (overlaps hero) */}
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, dyn.sheet, dyn.sheet]}>
           {/* Title + tag chips */}
           <View style={styles.titleBlock}>
-            <Text style={styles.mealName}>{meal.name}</Text>
+            <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
             <View style={styles.tagRow}>
               {prepTime ? (
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>{formatPrepTime(prepTime, "minutes")}</Text>
+                <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>{formatPrepTime(prepTime, "minutes")}</Text>
                 </View>
               ) : null}
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{capitalizeSlot(meal.time)}</Text>
+              <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                <Text style={[styles.tagText, dyn.text, dyn.text]}>{capitalizeSlot(meal.time)}</Text>
               </View>
               {dietTags.map((d) => (
-                <View key={d} style={styles.tag}>
-                  <Text style={styles.tagText}>{d}</Text>
+                <View key={d} style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>{d}</Text>
                 </View>
               ))}
               {servingsBase ? (
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>
+                <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>
                     {servingsBase}{" "}
                     {servingsBase === 1 ? "serving" : "servings"}
                   </Text>
@@ -1189,7 +1236,7 @@ export function RecipeDetailScreen() {
             <View style={styles.esterBlock}>
               <View style={styles.esterEyebrowRow}>
                 <View style={styles.esterEyebrowDot} />
-                <Text style={styles.esterEyebrowText}>Message from Ester</Text>
+                <Text style={[styles.esterEyebrowText, dyn.text, dyn.text]}>Message from Ester</Text>
               </View>
               <AiConsentNudge />
             </View>
@@ -1197,7 +1244,7 @@ export function RecipeDetailScreen() {
             <View style={styles.esterBlock}>
               <View style={styles.esterEyebrowRow}>
                 <View style={styles.esterEyebrowDot} />
-                <Text style={styles.esterEyebrowText}>Message from Ester</Text>
+                <Text style={[styles.esterEyebrowText, dyn.text, dyn.text]}>Message from Ester</Text>
               </View>
               <View style={styles.esterCard}>
                 <CardGradient colors={TYPE_GRADIENT[metabolicType]} />
@@ -1222,7 +1269,7 @@ export function RecipeDetailScreen() {
           ) : null}
 
           {/* Divider */}
-          <View style={styles.divider} />
+          <View style={[styles.divider, dyn.divider, dyn.divider]} />
 
           {/* Ingredients */}
           {ingredients.length > 0 ? (
@@ -1236,9 +1283,9 @@ export function RecipeDetailScreen() {
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <View style={styles.sectionTitleRow}>
-                    <Text style={styles.sectionTitle}>Ingredients</Text>
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>
+                    <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Ingredients</Text>
+                    <View style={[styles.countBadge, dyn.countBadge, dyn.countBadge]}>
+                      <Text style={[styles.countBadgeText, dyn.text, dyn.text]}>
                         {ingredients.length}
                       </Text>
                     </View>
@@ -1263,7 +1310,7 @@ export function RecipeDetailScreen() {
                       >
                         <Text
                           style={[
-                            styles.segmentText,
+                            styles.segmentText, dyn.text,
                             active && styles.segmentTextActive,
                           ]}
                         >
@@ -1320,10 +1367,10 @@ export function RecipeDetailScreen() {
                           : undefined
                       }
                     >
-                      <Text style={styles.ingredientQty} numberOfLines={2}>
+                      <Text style={[styles.ingredientQty, dyn.text, dyn.text]} numberOfLines={2}>
                         {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
                       </Text>
-                      <Text style={styles.ingredientName}>
+                      <Text style={[styles.ingredientName, dyn.text, dyn.text]}>
                         {shownName}
                         {sub ? (
                           // Lang's `5055:47291` marks the changed row in
@@ -1365,6 +1412,7 @@ export function RecipeDetailScreen() {
               <TouchableOpacity
                 style={[
                   styles.addToGrocery,
+                  dyn.ghost,
                   addingToGrocery ? styles.addToGroceryBusy : null,
                 ]}
                 onPress={handleAddToGroceryList}
@@ -1374,11 +1422,11 @@ export function RecipeDetailScreen() {
                 accessibilityLabel="Add ingredients to Grocery List"
               >
                 {addingToGrocery ? (
-                  <ActivityIndicator size="small" color={K.brown} />
+                  <ActivityIndicator size="small" color={ghostGlyph} />
                 ) : (
-                  <CartGlyph color={K.brown} />
+                  <CartGlyph color={ghostGlyph} />
                 )}
-                <Text style={styles.addToGroceryText}>
+                <Text style={[styles.addToGroceryText, dyn.ghostText]}>
                   Add ingredients to Grocery List
                 </Text>
               </TouchableOpacity>
@@ -1407,14 +1455,14 @@ export function RecipeDetailScreen() {
           {/* Instructions */}
           {steps.length > 0 ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Instructions</Text>
+              <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Instructions</Text>
               <View style={styles.stepsList}>
                 {steps.map((step, idx) => (
-                  <View key={idx} style={styles.stepCard}>
+                  <View key={idx} style={[styles.stepCard, dyn.stepCard, dyn.stepCard]}>
                     <Text style={styles.stepLabel}>
                       {STEP_LABELS[idx] ?? `STEP ${idx + 1}`}
                     </Text>
-                    <Text style={styles.stepText}>{step}</Text>
+                    <Text style={[styles.stepText, dyn.text, dyn.text]}>{step}</Text>
                   </View>
                 ))}
               </View>
@@ -1438,9 +1486,9 @@ export function RecipeDetailScreen() {
                 <Text style={styles.moreCtaText}>
                   I have some more recipes!
                 </Text>
-                <View style={styles.moreCtaButton}>
-                  <Text style={styles.moreCtaButtonLabel}>Show me!</Text>
-                  <Text style={styles.moreCtaButtonGlyph}>→</Text>
+                <View style={[styles.moreCtaButton, dyn.moreCtaButton, dyn.moreCtaButton]}>
+                  <Text style={[styles.moreCtaButtonLabel, dyn.text, dyn.text]}>Show me!</Text>
+                  <Text style={[styles.moreCtaButtonGlyph, dyn.text, dyn.text]}>→</Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -1472,7 +1520,7 @@ export function RecipeDetailScreen() {
             border, which is why it looked like a different component.
             ⚠️ SVG gradients band ~2.5× coarser on Android than iOS, so this
             is checked on the S24, not the simulator. */}
-        <ActionBarScrim />
+        <ActionBarScrim color={palette.innerBg} />
         {canCook ? (
           <Pressable
             style={[styles.actionButton, styles.actionGrow, styles.actionPrimary]}
@@ -1494,7 +1542,7 @@ export function RecipeDetailScreen() {
           </Pressable>
         ) : null}
         <Pressable
-          style={[styles.actionButton, styles.actionSecondary]}
+          style={[styles.actionButton, styles.actionSecondary, dyn.ghost]}
           onPress={openAskEster}
           accessibilityRole="button"
           accessibilityLabel="Ask Ester"
@@ -1504,19 +1552,24 @@ export function RecipeDetailScreen() {
             style={styles.actionEsterMark}
             resizeMode="contain"
           />
-          <Text style={styles.actionSecondaryText} numberOfLines={1}>
+          <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
             Ask Ester
           </Text>
         </Pressable>
         <Pressable
-          style={[styles.actionButton, styles.actionSecondary, !canAdd && styles.actionDisabled]}
+          style={[
+            styles.actionButton,
+            styles.actionSecondary,
+            dyn.ghost,
+            !canAdd && styles.actionDisabled,
+          ]}
           disabled={!canAdd || adding}
           onPress={openAddSheet}
           accessibilityRole="button"
           accessibilityLabel="Add to plan"
         >
-          {adding || addedTo ? null : <PlusGlyph color={K.white} size={24} />}
-          <Text style={styles.actionSecondaryText} numberOfLines={1}>
+          {adding || addedTo ? null : <PlusGlyph color={ghostGlyph} size={24} />}
+          <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
             {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
           </Text>
         </Pressable>
@@ -1608,7 +1661,7 @@ export function RecipeDetailScreen() {
               sit with the ↗ and the 16pt bookmark beside it rather than at the
               frame's 24, which would tower over both. */}
           <TouchableOpacity
-            style={styles.headerCloseButton}
+            style={[styles.headerCloseButton, dyn.headerCloseButton, dyn.headerCloseButton]}
             onPress={handleClose}
             hitSlop={8}
             accessibilityLabel="Back"
@@ -1617,15 +1670,15 @@ export function RecipeDetailScreen() {
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.headerActionButton]}
               onPress={handleShare}
               hitSlop={8}
               accessibilityLabel="Share recipe"
             >
-              <Text style={styles.headerActionGlyph}>↗</Text>
+              <Text style={[styles.headerActionGlyph, dyn.text, dyn.text]}>↗</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.headerActionButton]}
               onPress={handleToggleFavorite}
               hitSlop={8}
               accessibilityLabel={
@@ -1783,7 +1836,7 @@ export function RecipeDetailScreen() {
           <View style={styles.revertCompare}>
             <View style={styles.revertSide}>
               <Text style={styles.revertLabel}>Swapped Ingredient</Text>
-              <Text style={[styles.revertName, styles.revertNameOld]}>
+              <Text style={[styles.revertName, dyn.text, styles.revertNameOld]}>
                 {revertFor?.toIngredientName ?? ""}
               </Text>
             </View>
@@ -1800,7 +1853,7 @@ export function RecipeDetailScreen() {
             </View>
             <View style={styles.revertSide}>
               <Text style={styles.revertLabel}>Original Ingredient</Text>
-              <Text style={styles.revertName}>
+              <Text style={[styles.revertName, dyn.text, dyn.text]}>
                 {revertFor?.fromIngredientName ?? ""}
               </Text>
             </View>
