@@ -493,19 +493,18 @@ function CartGlyph({ color }: { color: string }) {
 }
 
 /**
- * Lang's chef hat from `5061:54966`, her path data verbatim.
+ * Lang's chef hat, her path verbatim — authored on **her 24 viewBox**
+ * (`I5046:43282;4809:39736;5046:43832;73:1947`, layer `chef_hat`).
  *
- * 🔴 The previous version was one I drew by hand from two stroked arcs — it
- * read as a chef hat but was not hers. This is a single filled path on an
- * 18×19 viewBox, rendered at 24 to match the frame's icon size.
+ * 🔴 It used to carry the glyph's own tight 18x19 box rendered at 24, which
+ * scaled the art up by about a third: her hat occupies 18x19 INSIDE the 24
+ * slot, it does not fill it. Same trap as the bookmark — an icon's SLOT is
+ * not its SIZE. The two paths are the same shape, hers offset by (+3, +2.5).
  */
 function ChefHatGlyph({ color, size = 24 }: { color: string; size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 18 19" fill="none">
-      <Path
-        d="M7.59225 11.0055C7.73592 10.8618 7.80775 10.6838 7.80775 10.4713V7.55775C7.80775 7.34525 7.73583 7.16708 7.592 7.02325C7.44817 6.87958 7.26992 6.80775 7.05725 6.80775C6.84475 6.80775 6.66667 6.87958 6.523 7.02325C6.3795 7.16708 6.30775 7.34525 6.30775 7.55775V10.4713C6.30775 10.6838 6.37967 10.8618 6.5235 11.0055C6.66733 11.1493 6.8455 11.2213 7.058 11.2213C7.27067 11.2213 7.44875 11.1493 7.59225 11.0055ZM2.4135 9.9135C1.68533 9.54933 1.101 9.02558 0.6605 8.34225C0.220167 7.65892 0 6.9115 0 6.1C0 4.959 0.3955 3.99042 1.1865 3.19425C1.9775 2.39808 2.94358 2 4.08475 2C4.28308 2 4.48558 2.01667 4.69225 2.05C4.89892 2.08333 5.1015 2.125 5.3 2.175L5.3865 2.19425L5.43475 2.11725C5.82575 1.47242 6.3305 0.958333 6.949 0.575C7.56767 0.191667 8.25133 0 9 0C9.74867 0 10.4323 0.191667 11.051 0.575C11.6695 0.958333 12.1775 1.47242 12.575 2.11725L12.623 2.19425L12.7 2.175C12.8953 2.125 13.0906 2.08333 13.2858 2.05C13.4811 2.01667 13.6846 2 13.8962 2C15.0436 2 16.0143 2.398 16.8085 3.194C17.6028 3.98983 18 4.96175 18 6.10975C18 6.92125 17.7814 7.667 17.3443 8.347C16.9071 9.02717 16.3212 9.54858 15.5865 9.91125V15.1152H2.4135V9.9135ZM11.4865 11.0055C11.6302 10.8618 11.702 10.6838 11.702 10.4713V7.55775C11.702 7.34525 11.6301 7.16708 11.4863 7.02325C11.3424 6.87958 11.1642 6.80775 10.9515 6.80775C10.739 6.80775 10.5609 6.87958 10.4173 7.02325C10.2738 7.16708 10.202 7.34525 10.202 7.55775V10.4713C10.202 10.6838 10.2739 10.8618 10.4178 11.0055C10.5614 11.1493 10.7396 11.2213 10.9523 11.2213C11.1649 11.2213 11.343 11.1493 11.4865 11.0055ZM3.9135 13.6155H14.0865V8.977L15.0423 8.50375C15.4949 8.28075 15.8527 7.959 16.1155 7.5385C16.3782 7.118 16.5095 6.65242 16.5095 6.14175C16.5095 5.40208 16.2528 4.77683 15.7395 4.266C15.226 3.75533 14.6052 3.5 13.877 3.5C13.7 3.5 13.5349 3.51508 13.3818 3.54525C13.2286 3.57542 13.0718 3.6155 12.9115 3.6655L11.9288 3.94225L11.298 2.88275C11.0455 2.46092 10.7189 2.125 10.3182 1.875C9.91758 1.625 9.47975 1.5 9.00475 1.5C8.52975 1.5 8.09192 1.625 7.69125 1.875C7.29058 2.125 6.964 2.46092 6.7115 2.88275L6.08075 3.94225L5.073 3.6655C4.91283 3.62567 4.75358 3.58817 4.59525 3.553C4.43692 3.51767 4.27442 3.5 4.10775 3.5C3.37958 3.5 2.76292 3.75467 2.25775 4.264C1.75258 4.77317 1.5 5.39658 1.5 6.13425C1.5 6.64342 1.631 7.10767 1.893 7.527C2.155 7.94633 2.51308 8.27192 2.96725 8.50375L3.9135 8.977V13.6155ZM2.4135 15.1152H3.9135V17.1923C3.9135 17.2821 3.94233 17.3558 4 17.4135C4.05767 17.4712 4.13142 17.5 4.22125 17.5H13.7788C13.8686 17.5 13.9423 17.4712 14 17.4135C14.0577 17.3558 14.0865 17.2821 14.0865 17.1923V15.1152H15.5865V17.1923C15.5865 17.6894 15.4095 18.115 15.0555 18.469C14.7015 18.823 14.2759 19 13.7788 19H4.22125C3.72408 19 3.2985 18.823 2.9445 18.469C2.5905 18.115 2.4135 17.6894 2.4135 17.1923V15.1152Z"
-        fill={color}
-      />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M10.5923 13.5055C10.7359 13.3618 10.8077 13.1837 10.8077 12.9713V10.0577C10.8077 9.84525 10.7358 9.66708 10.592 9.52325C10.4482 9.37958 10.2699 9.30775 10.0573 9.30775C9.84475 9.30775 9.66667 9.37958 9.523 9.52325C9.3795 9.66708 9.30775 9.84525 9.30775 10.0577V12.9713C9.30775 13.1837 9.37967 13.3618 9.5235 13.5055C9.66733 13.6493 9.8455 13.7213 10.058 13.7213C10.2707 13.7213 10.4488 13.6493 10.5923 13.5055ZM5.4135 12.4135C4.68533 12.0493 4.101 11.5256 3.6605 10.8422C3.22017 10.1589 3 9.4115 3 8.6C3 7.459 3.3955 6.49042 4.1865 5.69425C4.9775 4.89808 5.94358 4.5 7.08475 4.5C7.28308 4.5 7.48558 4.51667 7.69225 4.55C7.89892 4.58333 8.1015 4.625 8.3 4.675L8.3865 4.69425L8.43475 4.61725C8.82575 3.97242 9.3305 3.45833 9.949 3.075C10.5677 2.69167 11.2513 2.5 12 2.5C12.7487 2.5 13.4323 2.69167 14.051 3.075C14.6695 3.45833 15.1775 3.97242 15.575 4.61725L15.623 4.69425L15.7 4.675C15.8953 4.625 16.0906 4.58333 16.2858 4.55C16.4811 4.51667 16.6846 4.5 16.8962 4.5C18.0436 4.5 19.0143 4.898 19.8085 5.694C20.6028 6.48983 21 7.46175 21 8.60975C21 9.42125 20.7814 10.167 20.3443 10.847C19.9071 11.5272 19.3212 12.0486 18.5865 12.4112V17.6152H5.4135V12.4135ZM14.4865 13.5055C14.6302 13.3618 14.702 13.1837 14.702 12.9713V10.0577C14.702 9.84525 14.6301 9.66708 14.4863 9.52325C14.3424 9.37958 14.1642 9.30775 13.9515 9.30775C13.739 9.30775 13.5609 9.37958 13.4173 9.52325C13.2738 9.66708 13.202 9.84525 13.202 10.0577V12.9713C13.202 13.1837 13.2739 13.3618 13.4178 13.5055C13.5614 13.6493 13.7396 13.7213 13.9523 13.7213C14.1649 13.7213 14.343 13.6493 14.4865 13.5055ZM6.9135 16.1155H17.0865V11.477L18.0423 11.0038C18.4949 10.7808 18.8527 10.459 19.1155 10.0385C19.3782 9.618 19.5095 9.15242 19.5095 8.64175C19.5095 7.90208 19.2528 7.27683 18.7395 6.766C18.226 6.25533 17.6052 6 16.877 6C16.7 6 16.5349 6.01508 16.3818 6.04525C16.2286 6.07542 16.0718 6.1155 15.9115 6.1655L14.9288 6.44225L14.298 5.38275C14.0455 4.96092 13.7189 4.625 13.3182 4.375C12.9176 4.125 12.4798 4 12.0048 4C11.5297 4 11.0919 4.125 10.6912 4.375C10.2906 4.625 9.964 4.96092 9.7115 5.38275L9.08075 6.44225L8.073 6.1655C7.91283 6.12567 7.75358 6.08817 7.59525 6.053C7.43692 6.01767 7.27442 6 7.10775 6C6.37958 6 5.76292 6.25467 5.25775 6.764C4.75258 7.27317 4.5 7.89658 4.5 8.63425C4.5 9.14342 4.631 9.60767 4.893 10.027C5.155 10.4463 5.51308 10.7719 5.96725 11.0038L6.9135 11.477V16.1155ZM5.4135 17.6152H6.9135V19.6923C6.9135 19.7821 6.94233 19.8558 7 19.9135C7.05767 19.9712 7.13142 20 7.22125 20H16.7788C16.8686 20 16.9423 19.9712 17 19.9135C17.0577 19.8558 17.0865 19.7821 17.0865 19.6923V17.6152H18.5865V19.6923C18.5865 20.1894 18.4095 20.615 18.0555 20.969C17.7015 21.323 17.2759 21.5 16.7788 21.5H7.22125C6.72408 21.5 6.2985 21.323 5.9445 20.969C5.5905 20.615 5.4135 20.1894 5.4135 19.6923V17.6152Z" fill={color} />
     </Svg>
   );
 }
@@ -529,6 +528,61 @@ function ShareGlyph({ color, size = 24 }: { color: string; size?: number }) {
         fill={color}
       />
     </Svg>
+  );
+}
+
+/**
+ * The gloss on Lang's Cook button. Her fill is TWO layers
+ * (`I5046:43282;4809:39736;5046:43832`):
+ *
+ *   linear-gradient(180deg, rgba(255,255,255,0.5) 0, rgba(255,255,255,0) 63.275)
+ *   over solid rgb(146,180,189) = #92b4bd
+ *
+ * We shipped only the solid, which is her END stop — so ours read uniformly
+ * darker than hers, with no highlight at all.
+ *
+ * 🔑 Checked against her own export before building it: half-opacity white
+ * over #92b4bd computes to #c8d9de, and the export reads #c0d3d8 a few px
+ * below the top edge then goes FLAT at y=767 — which is 63.275 percent of a
+ * 44pt button starting at 739. The CSS and the pixels agree, so this is a
+ * gloss and not a colour ramp.
+ *
+ * Sized from `onLayout` because the Cook button GROWS — it is the only
+ * flexible one in the bar — so there is no constant to hand the Svg, and
+ * `width="100%"` does not fill in react-native-svg.
+ */
+function CookGloss() {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) =>
+        setSize({
+          w: e.nativeEvent.layout.width,
+          h: e.nativeEvent.layout.height,
+        })
+      }
+    >
+      {size ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id="cookGloss"
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={size.h}
+            >
+              <Stop offset="0" stopColor="#ffffff" stopOpacity={0.5} />
+              <Stop offset="0.63275" stopColor="#ffffff" stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect width={size.w} height={size.h} fill="url(#cookGloss)" />
+        </Svg>
+      ) : null}
+    </View>
   );
 }
 
@@ -657,6 +711,8 @@ export function RecipeDetailScreen() {
         backgroundColor: dark ? PAGE_SURFACE_ALT.dark : PAGE_SURFACE_ALT.light,
         borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light,
       },
+      /** Her `Text (alt)` — #b0a3a4 dark, #7e6869 light — for the amount. */
+      ingredientQty: { color: dark ? "#b0a3a4" : "#7e6869" },
       swapButtonOn: {
         backgroundColor: dark ? K.bone : K.cream,
         borderColor: dark ? K.bone : K.brown,
@@ -1647,17 +1703,30 @@ export function RecipeDetailScreen() {
                           : undefined
                       }
                     >
-                      <Text style={[styles.ingredientQty, dyn.text, dyn.text]} numberOfLines={2}>
-                        {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
-                      </Text>
-                      <Text style={[styles.ingredientName, dyn.text, dyn.text]}>
-                        {shownName}
-                        {sub ? (
-                          // Lang's `5055:47291` marks the changed row in
-                          // italics beside the name.
-                          <Text style={styles.ingredientSwapped}> Swapped</Text>
-                        ) : null}
-                      </Text>
+                      {/* 🔴 NAME over QUANTITY, as `5046:43885` stacks them —
+                          not quantity-left / name-right. Her row is a column:
+                          the ingredient in Catalogue 16 on `Text Strong`, the
+                          amount beneath it as an "Eyebrow text" in the SERIF
+                          face at 14 on `Text (alt)`. Audit item 9. */}
+                      <View style={styles.ingredientText}>
+                        <Text
+                          style={[styles.ingredientName, dyn.text]}
+                          numberOfLines={2}
+                        >
+                          {shownName}
+                          {sub ? (
+                            // Lang's `5055:47291` marks the changed row in
+                            // italics beside the name.
+                            <Text style={styles.ingredientSwapped}> Swapped</Text>
+                          ) : null}
+                        </Text>
+                        <Text
+                          style={[styles.ingredientQty, dyn.ingredientQty]}
+                          numberOfLines={1}
+                        >
+                          {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
+                        </Text>
+                      </View>
                       {/* 🔴 A visible affordance. The row was already
                           pressable but drew nothing, so the only way to find
                           ingredient swaps was to tap a list that looks like
@@ -1826,6 +1895,7 @@ export function RecipeDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Start cook mode"
           >
+            <CookGloss />
             <ChefHatGlyph color={K.brown} size={24} />
             <Text style={styles.actionPrimaryText} numberOfLines={1}>
               Cook
@@ -2617,19 +2687,33 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopRightRadius: 24,
   },
-  ingredientQty: {
-    width: 70,
+  /**
+   * Her row's text block (`I5046:43885;4811:40445`): a column, `gap: 4`,
+   * taking the width the swap button leaves.
+   */
+  ingredientText: {
+    flex: 1,
+    gap: 4,
+  },
+  /**
+   * 📌 Catalogue REGULAR at her `Body 1`, not the bold this used to be — the
+   * name no longer needs weight to separate it from the amount now that the
+   * amount sits beneath it in a different face.
+   */
+  ingredientName: {
     fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.brown,
   },
-  ingredientName: {
-    flex: 1,
-    fontFamily: fonts.catalogueBold,
-    fontSize: 16,
-    letterSpacing: -0.16,
-    color: K.brown,
+  /**
+   * The amount, as her "Eyebrow text": `Body 2 Quandrant` — Style/Serif, i.e.
+   * **Quadrant**, at 14 on `Text (alt)`. The token names in this file are
+   * inverted, so Style/Serif is the Quadrant face.
+   */
+  ingredientQty: {
+    fontFamily: fonts.quadrant,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
   /** Lang marks the changed row beside the name, in italics. */
   ingredientSwapped: {
@@ -3077,6 +3161,8 @@ const styles = StyleSheet.create({
   actionButtonTight: { paddingLeft: 6, paddingRight: 8 },
   actionPrimary: {
     backgroundColor: K.blue,
+    // The gloss is an absolute child, so the radius has to clip it.
+    overflow: "hidden",
     // Her Cook carries a drop shadow the ghost buttons do not.
     shadowColor: "#000",
     shadowOpacity: 0.25,
