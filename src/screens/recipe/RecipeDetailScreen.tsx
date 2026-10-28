@@ -374,6 +374,28 @@ function ChefHatGlyph({ color, size = 24 }: { color: string; size?: number }) {
   );
 }
 
+/**
+ * Lang's `share-ios` from the top header (`5046:44136`), her path verbatim.
+ *
+ * 🔴 This replaced a literal "\u2197" TEXT character in a <Text>. An arrow
+ * glyph from the body font is not her icon: wrong weight, wrong metrics, and
+ * it sat on the text baseline rather than centred in the button.
+ *
+ * Authored on her 24 viewBox rather than the glyph's own 15x20 box, so the
+ * art sits where she positions it inside the 24pt slot — same convention as
+ * `ArrowBackIcon` and `CartGlyph`.
+ */
+function ShareGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6.17048 20.8809C5.81173 20.8809 5.49784 20.7464 5.22878 20.4773C4.95972 20.2083 4.8252 19.8944 4.8252 19.5356V8.12317C4.8252 7.76443 4.95972 7.45053 5.22878 7.18147C5.49784 6.91242 5.81173 6.77789 6.17048 6.77789H9.28704C9.47762 6.77789 9.6374 6.84278 9.76641 6.97251C9.89524 7.1021 9.95968 7.26277 9.95968 7.45456C9.95968 7.64618 9.89524 7.80555 9.76641 7.93259C9.6374 8.05963 9.47762 8.12317 9.28704 8.12317H6.17048V19.5356H17.8296V8.12317H14.6682C14.4776 8.12317 14.3179 8.05828 14.189 7.92855C14.06 7.79896 13.9955 7.63828 13.9955 7.44649C13.9955 7.25488 14.06 7.09551 14.189 6.96847C14.3179 6.84143 14.4776 6.77789 14.6682 6.77789H17.8296C18.1883 6.77789 18.5022 6.91242 18.7713 7.18147C19.0403 7.45053 19.1748 7.76443 19.1748 8.12317V19.5356C19.1748 19.8944 19.0403 20.2083 18.7713 20.4773C18.5022 20.7464 18.1883 20.8809 17.8296 20.8809H6.17048ZM11.305 3.75101L9.80273 5.25324C9.6682 5.38777 9.51125 5.45503 9.33188 5.45503C9.15251 5.45503 8.99265 5.38777 8.85229 5.25324C8.72359 5.11871 8.65924 4.95804 8.65924 4.77118C8.65924 4.58433 8.72651 4.42365 8.86104 4.28912L11.5068 1.62098C11.6413 1.48645 11.7982 1.41919 11.9776 1.41919C12.157 1.41919 12.3139 1.48645 12.4484 1.62098L15.1166 4.28912C15.2511 4.42365 15.3184 4.58179 15.3184 4.76356C15.3184 4.9453 15.254 5.10225 15.1253 5.2344C14.985 5.36655 14.8216 5.43261 14.6352 5.43261C14.449 5.43261 14.288 5.36534 14.1525 5.23082L12.6502 3.75101V13.3249C12.6502 13.5155 12.5854 13.6752 12.4556 13.8041C12.326 13.9331 12.1654 13.9976 11.9736 13.9976C11.782 13.9976 11.6226 13.9331 11.4955 13.8041C11.3685 13.6752 11.305 13.5155 11.305 13.3249V3.75101Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 function PlusGlyph({ color, size = 24 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -454,8 +476,14 @@ export function RecipeDetailScreen() {
       divider: { backgroundColor: palette.borderColor },
       countBadge: { backgroundColor: palette.borderColor },
       moreCtaButton: { backgroundColor: palette.innerBg },
-      headerActionButton: { backgroundColor: palette.innerBg },
-      headerCloseButton: { backgroundColor: palette.nestedBg },
+      // 🔑 `5046:44136`, resolved with get_variable_defs (the CSS fallbacks
+      //    were the LIGHT mode of a DARK frame — again):
+      //      back          Ghost Surface/Fully Transparent Surface  #fafdfe00
+      //      share · save  Ghost Surface/Ghost Surface              #fafdfe3d
+      //    The second is the SAME token as the bottom bar's ghost buttons, so
+      //    these reuse `ghost` below rather than keeping a second opaque pair.
+      headerActionButton: { backgroundColor: "transparent" },
+      headerCloseButton: { backgroundColor: "transparent" },
       // text on those surfaces
       text: { color: palette.textColor },
       subtle: { color: palette.subtleText },
@@ -1630,35 +1658,46 @@ export function RecipeDetailScreen() {
         <View style={styles.floatingHeaderRow}>
           {/* An arrow, not a ✕: this screen is PUSHED (see MainNavigator), and
               Lang's frame draws arrow_back here. A ✕ promises a sheet that
-              dismisses downward, which is no longer what happens. Sized 18 to
-              sit with the ↗ and the 16pt bookmark beside it rather than at the
-              frame's 24, which would tower over both. */}
+              dismisses downward, which is no longer what happens.
+
+              🔴 NO background. Her back button is the one control in the
+              header on `Ghost Surface/Fully Transparent Surface` (#fafdfe00)
+              while share and save sit on the 24% ghost — the arrow floats on
+              the hero image on its own. We had it on an opaque `nestedBg`
+              pill, which read as a third filled button.
+
+              🔴 Sized 24, her slot size. It was 18, chosen to sit beside a
+              "↗" text character that is now gone; at 18 her arrow renders
+              ~11pt and looks undersized next to the share glyph. */}
           <TouchableOpacity
-            style={[styles.headerCloseButton, dyn.headerCloseButton, dyn.headerCloseButton]}
+            style={[styles.headerCloseButton, dyn.headerCloseButton]}
             onPress={handleClose}
             hitSlop={8}
             accessibilityLabel="Back"
           >
-            <ArrowBackIcon size={18} color={K.brown} />
+            <ArrowBackIcon size={24} color={ghostGlyph} />
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
-              style={[styles.headerActionButton, dyn.headerActionButton, dyn.headerActionButton]}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.ghost]}
               onPress={handleShare}
               hitSlop={8}
               accessibilityLabel="Share recipe"
             >
-              <Text style={[styles.headerActionGlyph, dyn.text, dyn.text]}>↗</Text>
+              <ShareGlyph color={ghostGlyph} size={24} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.headerActionButton, dyn.headerActionButton, dyn.headerActionButton]}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.ghost]}
               onPress={handleToggleFavorite}
               hitSlop={8}
               accessibilityLabel={
                 isFavorited ? "Remove from favorites" : "Save to favorites"
               }
             >
-              <BookmarkIcon filled={isFavorited} color={K.brown} />
+              {/* 13x16 is exactly how large her bookmark sits inside the
+                  24pt slot (her asset's path spans x 5.5-18.5, y 3.5-19.5),
+                  so the component's own default is already her size. */}
+              <BookmarkIcon filled={isFavorited} color={ghostGlyph} />
             </TouchableOpacity>
           </View>
         </View>
@@ -2359,30 +2398,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 21,
     paddingTop: 8,
   },
+  /**
+   * 40x40 is her button: a 24pt icon in `p-[8px]` with `rounded-[999px]`.
+   * The FILL is set per mode in `dyn` — transparent for back, 24% ghost for
+   * share and save — so nothing static is declared here.
+   */
   headerCloseButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: K.bone,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
+  // Her `Buttons` row is gap 8, not 12 (`I5046:44136;4455:13089`).
   headerRightActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
   },
   headerActionButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: K.white,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerActionGlyph: {
-    fontSize: 18,
-    color: K.brown,
-    fontFamily: fonts.catalogue,
   },
   // Loading
   /* ── Swap ingredient (Lang 5046:44621) ──────────────────────────────
