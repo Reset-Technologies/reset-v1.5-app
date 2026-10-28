@@ -74,7 +74,22 @@ import { logEvent } from "../../services/braze";
 // see it, so `route.params.plannedMeal` failed to compile against a type that
 // claimed to describe the same route. One definition, in the navigator.
 
-const HERO_HEIGHT = 360;
+/**
+ * 🔴 RESTRUCTURED 2026-10-28 to Lang's `5046:43237`. Her geometry, read from
+ * the frame (402x843, absolute positions):
+ *
+ *     Bg-Image     0 .............. 569.6     (67.6% of the screen)
+ *       fade            340 ... 484
+ *       title                433 . 509
+ *       tags                     525 . 543
+ *     Ingredients                      583 ...
+ *
+ * The title, the chips AND the whole fade live INSIDE the image. Ours had a
+ * 360pt hero cut off by an opaque sheet whose top carried the title, so the
+ * fade could never reach it — Cole spotted exactly that.
+ * Scaled to a 780dp screen (780/843).
+ */
+const HERO_HEIGHT = 527;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 /**
@@ -83,32 +98,33 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
  * threshold is derived from them. Changing one in the stylesheet alone would
  * silently drift the fade.
  */
-const SHEET_OVERLAP = 90;
-const SHEET_PAD_TOP = 30;
-
-/** Where the in-page recipe title starts, in scroll-content coordinates. */
-const BODY_TITLE_Y = HERO_HEIGHT - SHEET_OVERLAP + SHEET_PAD_TOP;
+const SHEET_OVERLAP = 0;
+const SHEET_PAD_TOP = 24;
 
 /**
- * How far the hero image dissolves into the page.
- *
- * Measured off Lang's own export of `5046:43237` (402x843, 1:1 in points) by
- * sampling the left margin, clear of the photo's subject: the image holds its
- * own tone to y=340, then ramps steadily to the page colour by y=484 and stays
- * flat. So her fade is **~145pt**, and it ends ON the page colour — the image
- * never has an edge.
- *
- * 🔑 Ours had a HARD EDGE: the sheet simply starts at `HERO_HEIGHT -
- * SHEET_OVERLAP` and cuts the photo off, with a swept top-right corner that is
- * not in her frame at all.
- *
- * 📌 140 rather than her 145 is not a deviation worth flagging — it is the
- * same number against a shorter hero. Her image runs ~485pt before the page
- * takes over; ours only has 270 above the sheet, so the fade covers more of
- * the picture here than it does for her. If it reads as too much, this is the
- * one number to turn down.
+ * The title + chips block sits over the image, its BOTTOM this far above the
+ * image's bottom edge (hers: 569.6 - 543 = 26.6, scaled).
  */
-const HERO_FADE_H = 140;
+const HERO_TITLE_BOTTOM = 24;
+/** Space the block needs, so the condensed header knows when it scrolls away. */
+const HERO_TITLE_RESERVE = 130;
+
+/**
+ * Where the in-page recipe title starts, in scroll-content coordinates.
+ * It now sits ON the hero rather than on the sheet, so it is measured up from
+ * the hero's bottom edge.
+ */
+const BODY_TITLE_Y = HERO_HEIGHT - HERO_TITLE_RESERVE;
+
+/**
+ * The fade, in hero coordinates. Hers starts at 340 and reaches the page
+ * colour at 484 of a 569.6 image — so it begins at 59.7% of the image and
+ * finishes at 85%, with the title's top (433) landing at 76%, two thirds of
+ * the way through the ramp. That overlap is the whole point: the image is
+ * still dissolving where the title sits.
+ */
+const HERO_FADE_START = Math.round(HERO_HEIGHT * 0.597);
+const HERO_FADE_LEN = Math.round(HERO_HEIGHT * (0.85 - 0.597));
 
 /** Height of the persistent action bar, so scroll content can clear it. */
 const ACTION_BAR_H = 64;
@@ -1300,7 +1316,7 @@ export function RecipeDetailScreen() {
           <Svg
             style={styles.heroFade}
             width={SCREEN_WIDTH}
-            height={HERO_FADE_H + SHEET_OVERLAP}
+            height={HERO_HEIGHT - HERO_FADE_START}
           >
             <Defs>
               <LinearGradient
@@ -1309,45 +1325,30 @@ export function RecipeDetailScreen() {
                 x1={0}
                 y1={0}
                 x2={0}
-                y2={HERO_FADE_H}
+                y2={HERO_FADE_LEN}
               >
                 <Stop offset="0" stopColor={palette.innerBg} stopOpacity={0} />
                 <Stop offset="0.55" stopColor={palette.innerBg} stopOpacity={0.72} />
                 <Stop offset="1" stopColor={palette.innerBg} stopOpacity={1} />
               </LinearGradient>
             </Defs>
-            {/* The RECT runs to the hero's bottom edge while the GRADIENT
-                is only defined over the first `HERO_FADE_H`. The default
-                `pad` spread then fills the rest with the final stop, so the
-                strip behind the sheet — and behind its swept corner — is
-                solid `innerBg` rather than bare photo. */}
+            {/* The RECT runs to the hero's bottom edge while the GRADIENT is
+                only defined over `HERO_FADE_LEN`. The default `pad` spread
+                fills the rest with the final stop, so the bottom of the image
+                is solid `innerBg` — which is what lets the title and chips sit
+                on it and still read. */}
             <Rect
               width={SCREEN_WIDTH}
-              height={HERO_FADE_H + SHEET_OVERLAP}
+              height={HERO_HEIGHT - HERO_FADE_START}
               fill="url(#heroFade)"
             />
           </Svg>
-          {/* Top scrim so floating header buttons stay readable */}
-          <Svg
-            style={StyleSheet.absoluteFill}
-            width="100%"
-            height="100%"
-            preserveAspectRatio="none"
-          >
-            <Defs>
-              <LinearGradient id="heroScrim" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#361416" stopOpacity="0.55" />
-                <Stop offset="0.5" stopColor="#361416" stopOpacity="0" />
-              </LinearGradient>
-            </Defs>
-            <Rect width="100%" height="100%" fill="url(#heroScrim)" />
-          </Svg>
-        </View>
-
-        {/* Content sheet (overlaps hero) */}
-        <View style={[styles.sheet, dyn.sheet, dyn.sheet]}>
-          {/* Title + tag chips */}
-          <View style={styles.titleBlock}>
+          {/* 🔴 Title + chips live ON the image, as in `5046:43237` — her title
+              top lands at 76% of the image, two thirds through the fade.
+              📌 COLOURS stay ours (`dyn.text` / `dyn.tag`), not her white-on-
+              brown: our page is WHITE by day, so a white title would vanish
+              into the end of its own fade. Lang's LAYOUT, our palette. */}
+          <View style={styles.heroTitleBlock}>
             <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
             <View style={styles.tagRow}>
               {prepTime ? (
@@ -1373,6 +1374,25 @@ export function RecipeDetailScreen() {
               ) : null}
             </View>
           </View>
+          {/* Top scrim so floating header buttons stay readable */}
+          <Svg
+            style={StyleSheet.absoluteFill}
+            width="100%"
+            height="100%"
+            preserveAspectRatio="none"
+          >
+            <Defs>
+              <LinearGradient id="heroScrim" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#361416" stopOpacity="0.55" />
+                <Stop offset="0.5" stopColor="#361416" stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#heroScrim)" />
+          </Svg>
+        </View>
+
+        {/* Content sheet (overlaps hero) */}
+        <View style={[styles.sheet, dyn.sheet, dyn.sheet]}>
 
           {/* 🔴 NO NUTRITION HERE, DELIBERATELY — this screen used to render a
               Calories pill, Protein/Carbs/Fat/Fiber chips and a
@@ -2196,22 +2216,33 @@ const styles = StyleSheet.create({
   heroPlaceholderText: {
     fontSize: 64,
   },
-  // Sheet (overlaps hero with rounded top-right corner)
+  /**
+   * 🔴 Flat. It used to pull up over the hero by 90, carry a 64pt swept
+   * top-right corner and cast a shadow upward — none of which is in
+   * `5046:43237`. The image now dissolves into this fill instead of being cut
+   * by it, so there is no edge left to decorate: the overlap, the radius and
+   * the shadow all went with the cut.
+   */
   sheet: {
-    marginTop: -90,
     backgroundColor: K.white,
-    borderTopRightRadius: 64,
     paddingHorizontal: 18,
-    paddingTop: 30,
+    paddingTop: SHEET_PAD_TOP,
     paddingBottom: 25,
     gap: 30,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 19.2,
-    shadowOffset: { width: 0, height: -4 },
   },
-  // Title block
-  titleBlock: {
+  /**
+   * The title + chips, over the image. Bottom-anchored so the block grows
+   * UPWARD into the fade as the title wraps — a 3-line title must not push
+   * the chips off the picture.
+   * 📌 18, not her 24: it aligns with the sheet's existing padding so the
+   * title sits flush with the ingredient rows beneath it. Her frame has both
+   * at 24; ours has had 18 in the sheet all along. For Lang.
+   */
+  heroTitleBlock: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: HERO_TITLE_BOTTOM,
     gap: 12,
   },
   mealName: {
