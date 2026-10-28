@@ -89,6 +89,27 @@ const SHEET_PAD_TOP = 30;
 /** Where the in-page recipe title starts, in scroll-content coordinates. */
 const BODY_TITLE_Y = HERO_HEIGHT - SHEET_OVERLAP + SHEET_PAD_TOP;
 
+/**
+ * How far the hero image dissolves into the page.
+ *
+ * Measured off Lang's own export of `5046:43237` (402x843, 1:1 in points) by
+ * sampling the left margin, clear of the photo's subject: the image holds its
+ * own tone to y=340, then ramps steadily to the page colour by y=484 and stays
+ * flat. So her fade is **~145pt**, and it ends ON the page colour — the image
+ * never has an edge.
+ *
+ * 🔑 Ours had a HARD EDGE: the sheet simply starts at `HERO_HEIGHT -
+ * SHEET_OVERLAP` and cuts the photo off, with a swept top-right corner that is
+ * not in her frame at all.
+ *
+ * 📌 140 rather than her 145 is not a deviation worth flagging — it is the
+ * same number against a shorter hero. Her image runs ~485pt before the page
+ * takes over; ours only has 270 above the sheet, so the fade covers more of
+ * the picture here than it does for her. If it reads as too much, this is the
+ * one number to turn down.
+ */
+const HERO_FADE_H = 140;
+
 /** Height of the persistent action bar, so scroll content can clear it. */
 const ACTION_BAR_H = 64;
 
@@ -1267,6 +1288,45 @@ export function RecipeDetailScreen() {
               <Text style={styles.heroPlaceholderText}>🍽️</Text>
             </View>
           )}
+          {/* 🔴 The bottom fade. Lang's hero DISSOLVES into the page
+              (`5046:43237`); ours ended at a hard sheet edge.
+
+              ⚠️ This is a gradient that must NOT match its page to be
+              invisible — it must BECOME it. It ends on `palette.innerBg`,
+              which is exactly the sheet's own fill, so the image resolves
+              into the page with no seam in either mode. Sized numerically
+              rather than with `width="100%"`, which does not fill in
+              react-native-svg. */}
+          <Svg
+            style={styles.heroFade}
+            width={SCREEN_WIDTH}
+            height={HERO_FADE_H + SHEET_OVERLAP}
+          >
+            <Defs>
+              <LinearGradient
+                id="heroFade"
+                gradientUnits="userSpaceOnUse"
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={HERO_FADE_H}
+              >
+                <Stop offset="0" stopColor={palette.innerBg} stopOpacity={0} />
+                <Stop offset="0.55" stopColor={palette.innerBg} stopOpacity={0.72} />
+                <Stop offset="1" stopColor={palette.innerBg} stopOpacity={1} />
+              </LinearGradient>
+            </Defs>
+            {/* The RECT runs to the hero's bottom edge while the GRADIENT
+                is only defined over the first `HERO_FADE_H`. The default
+                `pad` spread then fills the rest with the final stop, so the
+                strip behind the sheet — and behind its swept corner — is
+                solid `innerBg` rather than bare photo. */}
+            <Rect
+              width={SCREEN_WIDTH}
+              height={HERO_FADE_H + SHEET_OVERLAP}
+              fill="url(#heroFade)"
+            />
+          </Svg>
           {/* Top scrim so floating header buttons stay readable */}
           <Svg
             style={StyleSheet.absoluteFill}
@@ -2109,6 +2169,24 @@ const styles = StyleSheet.create({
   heroImage: {
     width: "100%",
     height: "100%",
+  },
+  /**
+   * 🔴 Runs to the hero's BOTTOM (`bottom: 0`), not to the sheet's top edge.
+   *
+   * The first cut ended the fade at `bottom: SHEET_OVERLAP` — the sheet's top
+   * edge — reasoning that nothing below it is visible. The ramp itself was
+   * correct (measured on device: photo -> `#fafdfe` by the sheet edge) but
+   * the sheet's **swept top-right corner** does not paint, so that corner
+   * kept showing raw, un-faded photo: a bright notch exactly where the seam
+   * was supposed to disappear.
+   * 🔑 "Hidden behind a sibling" is not the same as hidden — check what the
+   *    sibling's corner radius leaves uncovered.
+   */
+  heroFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   heroPlaceholder: {
     flex: 1,
