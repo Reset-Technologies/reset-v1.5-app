@@ -1629,7 +1629,12 @@ export function RecipeDetailScreen() {
             is checked on the S24, not the simulator. */}
         {canCook ? (
           <Pressable
-            style={[styles.actionButton, styles.actionGrow, styles.actionPrimary]}
+            style={[
+              styles.actionButton,
+              styles.actionButtonTight,
+              styles.actionGrow,
+              styles.actionPrimary,
+            ]}
             onPress={() =>
               navigation.navigate("CookMode", {
                 recipeVersionId: detail!.recipeVersionId as string,
@@ -1648,7 +1653,13 @@ export function RecipeDetailScreen() {
           </Pressable>
         ) : null}
         <Pressable
-          style={[styles.actionButton, styles.actionSecondary, dyn.ghost]}
+          style={[
+            styles.actionButton,
+            // Only when Cook is up — see `actionButtonTight`.
+            canCook && styles.actionButtonTight,
+            styles.actionSecondary,
+            dyn.ghost,
+          ]}
           onPress={openAskEster}
           accessibilityRole="button"
           accessibilityLabel="Ask Ester"
@@ -1665,6 +1676,7 @@ export function RecipeDetailScreen() {
         <Pressable
           style={[
             styles.actionButton,
+            canCook && styles.actionButtonTight,
             styles.actionSecondary,
             dyn.ghost,
             !canAdd && styles.actionDisabled,
@@ -2764,13 +2776,38 @@ const styles = StyleSheet.create({
   actionGrow: { flexGrow: 1, flexShrink: 0, flexBasis: "auto" },
   /**
    * 🔑 Cook is hidden when a recipe has no parsed cook steps
-   * (`cookStepCount === 0`, ~20 of 520 recipes), and Cook is the ONLY button
-   * that grows. Left as flex-start the two remaining ghost buttons sat
-   * jammed against the left edge with dead space to their right, which reads
-   * as a missing button rather than a two-button bar. Cole 2026-10-28:
-   * centre them instead.
+   * (`cookStepCount === 0`), and Cook is the ONLY button that grows. Left as
+   * flex-start the two remaining ghost buttons sat jammed against the left
+   * edge with dead space to their right, which reads as a missing button
+   * rather than a two-button bar. Cole 2026-10-28: centre them instead.
+   *
+   * 📊 This is the COMMON case, not the rare one: measured on the local
+   * catalogue 2026-10-28, only **64 of 522** recipes have parsed cook steps.
+   * (Local DB, which drifts from prod — re-measure before quoting it.)
    */
   actionBarCentered: { justifyContent: "center" },
+  /**
+   * 🔴 THE THREE-BUTTON ROW DOES NOT FIT A 360dp SCREEN AT HER PADDING.
+   *
+   * Measured on the S24 (1080x2340 at density **480**, so scale 3.0 and the
+   * screen is **360dp** — not 392; read `adb shell wm density`, never infer
+   * it). With Cook present the row ran 48..1080 of 1080: right padding zero,
+   * "Add to plan" clipped by the screen edge.
+   *
+   * Two things stack up:
+   *   · **RN defaults `flexShrink` to 0**, unlike the web, so nothing gives —
+   *     the row overflows instead of compressing.
+   *   · Lang's frame is **402pt**. Her three buttons need ~376dp with 16dp
+   *     page padding: fits her artboard, **16dp over on this phone.** Same
+   *     shape as the 874-vs-780 problem in the onboarding audit.
+   *
+   * Nothing here can truncate — unlike the condensed header's title, these
+   * are three labels that all have to stay readable — so the space is bought
+   * from the buttons' own horizontal padding, and ONLY when all three are up.
+   * pl 10->6 / pr 12->8 frees 8dp per button, 24dp against a 16dp shortfall.
+   * 📌 It is her padding being trimmed, so it is on the list for her.
+   */
+  actionButtonTight: { paddingLeft: 6, paddingRight: 8 },
   actionPrimary: {
     backgroundColor: K.blue,
     // Her Cook carries a drop shadow the ghost buttons do not.
