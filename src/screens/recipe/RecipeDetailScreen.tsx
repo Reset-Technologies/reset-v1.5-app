@@ -647,6 +647,27 @@ export function RecipeDetailScreen() {
         backgroundColor: dark ? PAGE_SURFACE_ALT.dark : PAGE_SURFACE_ALT.light,
         borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light,
       },
+      /**
+       * 🔴 The serving control had three colours hard-coded for a LIGHT page:
+       * an 8% brown wash for the track, a solid `K.brown` pill for the
+       * selection and cream text on it. Once the page became `Page Surface`
+       * (#361416) at night, the selected pill WAS THE PAGE COLOUR and the
+       * selection simply disappeared — same failure as the row rules, which I
+       * fixed in the same commit and did not think to look for here.
+       *
+       * 📌 Lang has no segmented control to copy — her frame has the "4
+       * servings" dropdown we deliberately do not build (MY PLAN r20: the
+       * model is a 0.5/1/2 MULTIPLIER, and the backend throws on anything
+       * else). So this mirrors the light treatment rather than inventing a
+       * new one: a faint wash of the opposite tone for the track, and a
+       * selected pill in the page's opposite tone with the page's own colour
+       * as its text.
+       */
+      segmentTrack: {
+        backgroundColor: dark ? "rgba(250,253,254,0.10)" : "rgba(54,20,22,0.08)",
+      },
+      segmentActive: { backgroundColor: dark ? K.bone : K.brown },
+      segmentTextActive: { color: dark ? K.brown : K.cream },
       // 🔑 `5046:44136`, resolved with get_variable_defs (the CSS fallbacks
       //    were the LIGHT mode of a DARK frame — again):
       //      back          Ghost Surface/Fully Transparent Surface  #fafdfe00
@@ -1539,7 +1560,7 @@ export function RecipeDetailScreen() {
                 </View>
               </View>
               <View style={styles.servingsRow}>
-                <View style={styles.servingsSegmented}>
+                <View style={[styles.servingsSegmented, dyn.segmentTrack]}>
                   {SERVING_OPTIONS.map((m) => {
                     const active = m === multiplier;
                     return (
@@ -1548,6 +1569,7 @@ export function RecipeDetailScreen() {
                         style={[
                           styles.segment,
                           active && styles.segmentActive,
+                          active && dyn.segmentActive,
                         ]}
                         onPress={() => chooseMultiplier(m)}
                         accessibilityRole="button"
@@ -1557,7 +1579,7 @@ export function RecipeDetailScreen() {
                         <Text
                           style={[
                             styles.segmentText, dyn.text,
-                            active && styles.segmentTextActive,
+                            active && dyn.segmentTextActive,
                           ]}
                         >
                           {SERVING_LABEL[m]}
@@ -2468,16 +2490,15 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   servingsRow: { marginTop: 12, alignItems: "flex-start" },
+  // 🔑 Geometry only — every colour here is mode-dependent and lives in `dyn`.
   servingsSegmented: {
     flexDirection: "row",
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "rgba(54,20,22,0.08)",
   },
   segment: { paddingHorizontal: 14, paddingVertical: 8 },
-  segmentActive: { backgroundColor: K.brown, borderRadius: 999 },
-  segmentText: { fontFamily: fonts.catalogue, fontSize: 13, color: K.brown },
-  segmentTextActive: { color: K.cream },
+  segmentActive: { borderRadius: 999 },
+  segmentText: { fontFamily: fonts.catalogue, fontSize: 13 },
   // Add ingredients to Grocery List (Lang 5046:43899)
   addToGrocery: {
     marginTop: 16,
