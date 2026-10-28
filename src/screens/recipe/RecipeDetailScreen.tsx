@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import { shareWithLink } from "../../constants/links";
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
   Modal,
@@ -75,6 +76,18 @@ import { logEvent } from "../../services/braze";
 
 const HERO_HEIGHT = 360;
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+/**
+ * The sheet pulls up over the hero and pads its own top; both live in
+ * `styles.sheet` and both are named here because the condensed header's fade
+ * threshold is derived from them. Changing one in the stylesheet alone would
+ * silently drift the fade.
+ */
+const SHEET_OVERLAP = 90;
+const SHEET_PAD_TOP = 30;
+
+/** Where the in-page recipe title starts, in scroll-content coordinates. */
+const BODY_TITLE_Y = HERO_HEIGHT - SHEET_OVERLAP + SHEET_PAD_TOP;
 
 /** Height of the persistent action bar, so scroll content can clear it. */
 const ACTION_BAR_H = 64;
@@ -197,6 +210,64 @@ const DEFAULT_CARD_GRADIENT: [string, string, string] = [
   "#7A2A18",
   "#361416",
 ];
+
+/**
+ * The condensed header's backing, `5046:44135` in "Recipe Details - Scroll".
+ *
+ * 🔑 THIS one IS a real scrim, unlike the bottom bar's. Lang's is
+ * `#180a0a` -> transparent over a page that reads ~`#200c0e` at the top, so
+ * it is DARKER than its page and genuinely dims the ingredient row sliding
+ * under the title. The bottom bar's gradient was the SAME colour as her page
+ * and dimmed nothing — which is exactly why porting that one literally put a
+ * solid band across our white screen.
+ *
+ * 📌 So this is NOT ported literally either. `#180a0a` is near-black; on our
+ * daytime page it would be a black bar. What her gradient DOES is "the page
+ * colour, deepened, fading out", so ours starts from the page's own
+ * background — which gives the same separation in both modes.
+ *
+ * 📌 Her rect is 95.57 tall with the end stop at 129.8%, so her fill is
+ * clipped at ~23% opacity rather than reaching zero. At her contrast that
+ * step is invisible; at ours it would not be, so this runs to zero inside
+ * the band.
+ *
+ * 🔑 Numeric sizes via onLayout, not `width="100%"` — `react-native-svg`
+ * does not fill on a percentage (see `CardGradient`, same file).
+ */
+function HeaderScrim({ color }: { color: string }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      onLayout={(e) =>
+        setSize({
+          w: e.nativeEvent.layout.width,
+          h: e.nativeEvent.layout.height,
+        })
+      }
+    >
+      {size ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id="headerScrim"
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={size.h}
+            >
+              <Stop offset="0" stopColor={color} stopOpacity={1} />
+              <Stop offset="0.72" stopColor={color} stopOpacity={0.82} />
+              <Stop offset="1" stopColor={color} stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect width={size.w} height={size.h} fill="url(#headerScrim)" />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
 
 function CardGradient({
   colors = DEFAULT_CARD_GRADIENT,
@@ -502,6 +573,34 @@ export function RecipeDetailScreen() {
     });
   }, [palette]);
   const ghostGlyph = palette.evening ? K.white : K.brown;
+
+  /**
+   * Condensed header (`5046:44136`, annotated *"Condensed header that shows
+   * recipe title on scroll"*). Lang draws the back arrow, the truncated
+   * recipe name and the two ghost buttons on one row over a scrim.
+   *
+   * The fade is tied to where the IN-PAGE title actually is, so the small
+   * title appears as the large one leaves rather than at an invented offset:
+   * `BODY_TITLE_Y` minus the header's own height. 48 is the travel of the
+   * cross-fade, about the height of one title line.
+   */
+  const headerH = insets.top + 48;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const onScroll = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        useNativeDriver: true,
+      }),
+    [scrollY],
+  );
+  const condensed = useMemo(() => {
+    const start = Math.max(0, BODY_TITLE_Y - headerH);
+    return scrollY.interpolate({
+      inputRange: [start, start + 48],
+      outputRange: [0, 1],
+      extrapolate: "clamp",
+    });
+  }, [scrollY, headerH]);
   const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
   /**
    * TEST CASES **M34**: the planned-meal Ester entry's context must include
@@ -1139,7 +1238,11 @@ export function RecipeDetailScreen() {
 
   return (
     <View style={[styles.container, dyn.container, dyn.container]}>
-      <ScrollView
+      {/* 🔴 Animated.ScrollView, not ScrollView: a native-driven
+          `Animated.event` is an AnimatedEvent OBJECT, not a function, so a
+          plain ScrollView throws `onScroll is not a function (it is Object)`
+          on the first scroll. */}
+      <Animated.ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
@@ -1148,6 +1251,8 @@ export function RecipeDetailScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {/* Hero */}
         <View style={[styles.heroContainer, dyn.heroContainer, dyn.heroContainer]}>
@@ -1490,7 +1595,7 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* ── Persistent actions ────────────────────────────────────────────
           Lang's "Recipe Details - Scroll" frame (5046:44118) carries a bottom
@@ -1655,6 +1760,16 @@ export function RecipeDetailScreen() {
         style={styles.floatingHeader}
         pointerEvents="box-none"
       >
+        {/* Fades in with the title, so the hero is never covered at rest. */}
+        <Animated.View
+          style={[
+            styles.headerScrimBox,
+            { height: insets.top + 72, opacity: condensed },
+          ]}
+          pointerEvents="none"
+        >
+          <HeaderScrim color={palette.innerBg} />
+        </Animated.View>
         <View style={styles.floatingHeaderRow}>
           {/* An arrow, not a ✕: this screen is PUSHED (see MainNavigator), and
               Lang's frame draws arrow_back here. A ✕ promises a sheet that
@@ -1669,14 +1784,30 @@ export function RecipeDetailScreen() {
               🔴 Sized 24, her slot size. It was 18, chosen to sit beside a
               "↗" text character that is now gone; at 18 her arrow renders
               ~11pt and looks undersized next to the share glyph. */}
-          <TouchableOpacity
-            style={[styles.headerCloseButton, dyn.headerCloseButton]}
-            onPress={handleClose}
-            hitSlop={8}
-            accessibilityLabel="Back"
-          >
-            <ArrowBackIcon size={24} color={ghostGlyph} />
-          </TouchableOpacity>
+          <View style={styles.headerLeftGroup}>
+            <TouchableOpacity
+              style={[styles.headerCloseButton, dyn.headerCloseButton]}
+              onPress={handleClose}
+              hitSlop={8}
+              accessibilityLabel="Back"
+            >
+              <ArrowBackIcon size={24} color={ghostGlyph} />
+            </TouchableOpacity>
+            {/* The truncated recipe name, between the arrow and the two ghost
+                buttons — `I5046:44136;4452:7977`, Catalogue Regular 16 with
+                -0.16 tracking on Text Strong, one line, tail ellipsis.
+                `accessibilityElementsHidden` because the screen's own title
+                is already announced; this is a visual echo of it. */}
+            <Animated.Text
+              style={[styles.headerTitle, dyn.text, { opacity: condensed }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {meal.name}
+            </Animated.Text>
+          </View>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
               style={[styles.headerActionButton, dyn.headerActionButton, dyn.ghost]}
@@ -2391,12 +2522,40 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  headerScrimBox: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
   floatingHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 21,
     paddingTop: 8,
+  },
+  /**
+   * Back arrow + the condensed title. Her left group is `gap: 8`
+   * (`I5046:44136;4613:9845`: the 40pt button at x=0, the text at x=48).
+   *
+   * 🔑 `flexShrink: 1` and `minWidth: 0` are what let the TITLE truncate
+   * instead of shoving the two ghost buttons off the right edge. RN defaults
+   * `flexShrink` to 0, unlike the web — the same default that has the
+   * three-button bottom bar overflowing today.
+   */
+  headerLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    flexShrink: 1,
   },
   /**
    * 40x40 is her button: a 24pt icon in `p-[8px]` with `rounded-[999px]`.
