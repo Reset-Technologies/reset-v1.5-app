@@ -1460,7 +1460,13 @@ export function RecipeDetailScreen() {
           entry passes `recipe_version_id` plus the serving and substitution
           state r8 requires. The other five entries are still unbuilt. */}
       <View
-        style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}
+        style={[
+          styles.actionBar,
+          // 🔑 Cook is the only button that grows, so without it the other two
+          //    hug their labels and strand a gap on the right. Centre them.
+          !canCook && styles.actionBarCentered,
+          { paddingBottom: insets.bottom || 12 },
+        ]}
         pointerEvents="box-none"
       >
         {/* 🔑 Lang's bar has NO slab behind it — `5061:54966` is a gradient
@@ -2540,6 +2546,15 @@ const styles = StyleSheet.create({
    * there is room".
    */
   actionGrow: { flexGrow: 1, flexShrink: 0, flexBasis: "auto" },
+  /**
+   * 🔑 Cook is hidden when a recipe has no parsed cook steps
+   * (`cookStepCount === 0`, ~20 of 520 recipes), and Cook is the ONLY button
+   * that grows. Left as flex-start the two remaining ghost buttons sat
+   * jammed against the left edge with dead space to their right, which reads
+   * as a missing button rather than a two-button bar. Cole 2026-10-28:
+   * centre them instead.
+   */
+  actionBarCentered: { justifyContent: "center" },
   actionPrimary: {
     backgroundColor: K.blue,
     // Her Cook carries a drop shadow the ghost buttons do not.
