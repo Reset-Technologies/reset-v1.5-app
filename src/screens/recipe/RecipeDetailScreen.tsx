@@ -625,7 +625,16 @@ export function RecipeDetailScreen() {
       stepCard: { backgroundColor: palette.nestedBg },
       tag: { backgroundColor: palette.nestedBg },
       divider: { backgroundColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
-      countBadge: { backgroundColor: palette.borderColor },
+      /**
+       * 🔴 Was `palette.borderColor` — K.brown in evening, i.e. THE PAGE, so
+       * the badge disappeared and "17" floated loose beside the heading.
+       * Her counter (`5046:43254`) is `Ghost Surface` #fafdfe3d, the same
+       * 24% token as the action bar and the header buttons, so it reuses
+       * `ghost` below rather than carrying a fill of its own.
+       */
+      countBadge: {
+        backgroundColor: dark ? "rgba(250,253,254,0.24)" : "rgba(54,20,22,0.12)",
+      },
       moreCtaButton: { backgroundColor: palette.innerBg },
       /**
        * Her `Divider Line` (#7e6869). Dropping the page to `outerBg` made
@@ -646,6 +655,10 @@ export function RecipeDetailScreen() {
       swapButton: {
         backgroundColor: dark ? PAGE_SURFACE_ALT.dark : PAGE_SURFACE_ALT.light,
         borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light,
+      },
+      swapButtonOn: {
+        backgroundColor: dark ? K.bone : K.cream,
+        borderColor: dark ? K.bone : K.brown,
       },
       /**
        * 🔴 The serving control had three colours hard-coded for a LIGHT page:
@@ -1656,7 +1669,7 @@ export function RecipeDetailScreen() {
                           style={[
                             styles.ingredientAction,
                             dyn.swapButton,
-                            sub ? styles.ingredientActionOn : null,
+                            sub ? dyn.swapButtonOn : null,
                           ]}
                         >
                           {sub ? <RevertGlyph /> : <SwapGlyph color={ghostGlyph} />}
@@ -2478,16 +2491,18 @@ const styles = StyleSheet.create({
   countBadge: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: K.border,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
+  /**
+   * `Caption Quandrant` on her counter: Style/Serif (= Quadrant Text — the
+   * token names in this file are INVERTED) at 12, not Catalogue 14.
+   */
   countBadgeText: {
-    fontFamily: fonts.catalogue,
-    fontSize: 14,
-    letterSpacing: -0.14,
-    color: K.brown,
+    fontFamily: fonts.quadrant,
+    fontSize: 12,
+    letterSpacing: -0.12,
   },
   servingsRow: { marginTop: 12, alignItems: "flex-start" },
   // 🔑 Geometry only — every colour here is mode-dependent and lives in `dyn`.
@@ -2588,10 +2603,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     marginTop: -2,
   },
-  ingredientActionOn: {
-    borderColor: K.brown,
-    backgroundColor: K.cream,
-  },
+  /**
+   * The SUBSTITUTED state. Its ring was `K.brown` — the page at night, so the
+   * ring vanished; the cream fill kept it legible, which is why this was less
+   * obvious than the serving control. `dyn.swapButtonOn` supplies both.
+   */
+  ingredientActionOn: {},
   // Revert to original ingredient (Lang 5065:58762)
   revertCompare: {
     flexDirection: "row",
