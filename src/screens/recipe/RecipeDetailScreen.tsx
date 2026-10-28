@@ -1553,7 +1553,7 @@ export function RecipeDetailScreen() {
 
           {/* Ingredients */}
           {ingredients.length > 0 ? (
-            <View style={styles.section}>
+            <View style={styles.ingredientsSection}>
               {/* 🔑 The control sits on its OWN row, not beside the title.
                   Three word labels are much wider than the +/− stepper they
                   replaced, and sharing the row squeezed the heading until
@@ -2467,6 +2467,20 @@ const styles = StyleSheet.create({
   section: {
     gap: 30,
   },
+  /**
+   * 🔴 The Ingredients section runs on 16, not the shared `section`'s 30.
+   *
+   * Her `Ingredients` frame (`5046:43250`) stacks header 0..32, list 48..418,
+   * button 434..478 — **16 of air on each side of the table**. Ours inherited
+   * `gap: 30` and then I added a `marginTop: 16` on top of it, which is how
+   * the first attempt landed on 46 instead of 16. `gap` applies between every
+   * pair of children, so a single section cannot carry two rhythms: the
+   * Ingredients block gets its own container and the shared one is left alone
+   * for Instructions.
+   */
+  ingredientsSection: {
+    gap: 16,
+  },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2504,7 +2518,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: -0.12,
   },
-  servingsRow: { marginTop: 12, alignItems: "flex-start" },
+  servingsRow: { alignItems: "flex-start" },
   // 🔑 Geometry only — every colour here is mode-dependent and lives in `dyn`.
   servingsSegmented: {
     flexDirection: "row",
@@ -2516,7 +2530,6 @@ const styles = StyleSheet.create({
   segmentText: { fontFamily: fonts.catalogue, fontSize: 13 },
   // Add ingredients to Grocery List (Lang 5046:43899)
   addToGrocery: {
-    marginTop: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2535,6 +2548,13 @@ const styles = StyleSheet.create({
     color: K.brown,
   },
   // Ingredients list
+  /**
+   * 📌 16 above the table. Her `Ingredients` frame (`5046:43250`) stacks
+   * header 0..32, list 48..418, button 434..478 — so exactly 16 of air on
+   * each side of the table. The gap below is `addToGrocery`'s existing
+   * marginTop: 16; this is the one that was missing (the list sat flush
+   * against the serving control).
+   */
   ingredientsList: {
     gap: 0,
   },
@@ -2556,16 +2576,41 @@ const styles = StyleSheet.create({
    * 📌 Rows are ~12dp taller now. The first row no longer needs its own top
    * padding — it keeps only the top border, which is all it was ever for.
    */
+  /**
+   * 🔴 The table is ONE BORDERED BOX, not a stack of rules.
+   *
+   * `5046:43884` builds it row by row: the FIRST row carries a 0.5 border on
+   * all four sides plus `rounded-tr-[Large]` (24); every row after it adds
+   * `border-b` / `border-l` / `border-r` only. Stacked, that reads as a
+   * continuous outside border with internal horizontal rules — and the one
+   * swept corner at the top right, the same shape language as the sheet's old
+   * corner, now that the sheet has lost it.
+   * We drew the horizontal rules and nothing else, so there was no box.
+   *
+   * 📌 `paddingLeft: 12 / paddingRight: 16` are hers, and they are REQUIRED
+   * now rather than cosmetic: without them the quantity sits on the new left
+   * border and the swap button on the right one.
+   * 📌 Vertical padding stays 12/12 rather than her 16/18 — her rows are 74
+   * tall because they stack NAME over QUANTITY, and ours are one line
+   * (quantity left, name right). That difference is audit item 9 and is not
+   * settled; adopting her vertical padding on a single-line row would just
+   * make it airy.
+   */
   ingredientRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingTop: 12,
     paddingBottom: 12,
+    paddingLeft: 12,
+    paddingRight: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
   },
   ingredientRowFirst: {
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopRightRadius: 24,
   },
   ingredientQty: {
     width: 70,
