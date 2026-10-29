@@ -393,19 +393,6 @@ function renderBoldSegments(text: string): React.ReactNode[] {
     });
 }
 
-const STEP_LABELS = [
-  "STEP ONE",
-  "STEP TWO",
-  "STEP THREE",
-  "STEP FOUR",
-  "STEP FIVE",
-  "STEP SIX",
-  "STEP SEVEN",
-  "STEP EIGHT",
-  "STEP NINE",
-  "STEP TEN",
-];
-
 function dailyPlanMealToMeal(d: DailyPlanMeal): Meal {
   return {
     id: d.id,
@@ -679,7 +666,6 @@ export function RecipeDetailScreen() {
       container: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
       sheet: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
       heroContainer: { backgroundColor: palette.nestedBg },
-      stepCard: { backgroundColor: palette.nestedBg },
       tag: { backgroundColor: palette.nestedBg },
       /**
        * 🔴 Was `palette.borderColor` — K.brown in evening, i.e. THE PAGE, so
@@ -1808,11 +1794,9 @@ export function RecipeDetailScreen() {
               <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Instructions</Text>
               <View style={styles.stepsList}>
                 {steps.map((step, idx) => (
-                  <View key={idx} style={[styles.stepCard, dyn.stepCard, dyn.stepCard]}>
-                    <Text style={styles.stepLabel}>
-                      {STEP_LABELS[idx] ?? `STEP ${idx + 1}`}
-                    </Text>
-                    <Text style={[styles.stepText, dyn.text, dyn.text]}>{step}</Text>
+                  <View key={idx} style={styles.step}>
+                    <Text style={[styles.stepLabel, dyn.text]}>Step {idx + 1}</Text>
+                    <Text style={[styles.stepText, dyn.text]}>{step}</Text>
                   </View>
                 ))}
               </View>
@@ -2571,11 +2555,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  /**
+   * 🔴 Her `Title 3` is **20**, not 24. Both headings that use this style —
+   * `Ingredients` (`5046:43253`) and `Instructions` (`5046:43274`) — are
+   * Catalogue Regular 20 at -1% tracking in her file, so this is one change
+   * for both and not a per-section override. The -1% ratio we already had
+   * right; only the size was over.
+   */
   sectionTitle: {
     fontFamily: fonts.catalogue,
-    fontSize: 24,
-    letterSpacing: -0.24,
-    color: K.brown,
+    fontSize: 20,
+    letterSpacing: -0.2,
   },
   countBadge: {
     width: 24,
@@ -2802,31 +2792,44 @@ const styles = StyleSheet.create({
     letterSpacing: -0.15,
     color: K.textLight,
   },
-  // Instructions
+  /**
+   * 🔴 A STEP IS NOT A CARD. Her `Instructions` frame (`5046:43272`) is a
+   * plain vertical stack — no fill, no radius, no padding. The swept-corner
+   * card here was ours, never hers, and it was the last thing on the Meals
+   * audit never compared against her frame.
+   *
+   * 📏 Measured off the frame's own children rather than read off a comment:
+   * `Top` 0..112, then Steps at y=144, 213, 301, 389 with heights 37, 56, 56,
+   * 37 — every gap lands on **32**, including the one between the heading and
+   * step one. So `stepsList` runs on the same 32 as `instructionsSection`;
+   * the two containers exist only because the heading is a sibling, and both
+   * must stay equal or the rhythm breaks at step one.
+   */
   stepsList: {
-    gap: 12,
+    gap: 32,
   },
-  stepCard: {
-    backgroundColor: K.bone,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 40,
-    borderBottomLeftRadius: 8,
-    padding: 16,
-    gap: 10,
+  step: {
+    gap: 4,
   },
+  /**
+   * 🔑 The SERIF does the separating, not weight or colour — the same move as
+   * the ingredient rows. Her label is `Style/Serif` (Quadrant) at Caption 12
+   * in **Text Strong**, i.e. the same colour as the body it labels; only the
+   * face and the size differ. We had Catalogue BOLD in `K.sub`, which
+   * separated the wrong way round.
+   * 📌 `CookModeScreen` already labels its steps `Step {index + 1}` in
+   * Quadrant, so this is the app agreeing with itself, not a new string.
+   */
   stepLabel: {
-    fontFamily: fonts.catalogueBold,
+    fontFamily: fonts.quadrant,
     fontSize: 12,
     letterSpacing: -0.12,
-    color: K.sub,
   },
   stepText: {
     fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
-    color: K.brown,
   },
   // More recipes CTA
   moreCta: {
