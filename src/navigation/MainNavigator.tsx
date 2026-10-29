@@ -1,5 +1,6 @@
 import React from "react";
 import { View } from "react-native";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { HomeScreen, HomeScreenV2 } from "../screens/home";
@@ -45,14 +46,31 @@ import type { RecipeViewSurface } from "../services/meals";
 // Tab navigator param list
 export type MainTabParamList = {
   Home: undefined;
-  /** My Plan — the weekly plan surface is this tab's root. */
-  Meals: undefined;
+  /**
+   * My Plan — the weekly plan surface is this tab's root.
+   *
+   * 🔑 `openEditFor` is how Recipe Details' **"Change meal"** gets back here.
+   * Bryan ruled 2026-10-30 that changing a planned meal reuses My Plan's
+   * existing edit sheet rather than growing a second picker on Recipe
+   * Details, so the only thing that has to travel is WHICH slot to open.
+   *
+   * 🔴 It names the **`planned_meal` row**, not the recipe. A member can have
+   * the same recipe in several slots, and Bryan asked specifically that we
+   * edit the one they came from instead of guessing — `plannedMealId` is what
+   * makes that possible. `localDate` comes along so the week can land on the
+   * right day without searching every day for the id.
+   */
+  Meals:
+    | { openEditFor?: { plannedMealId: string; localDate: string } }
+    | undefined;
   Profile: undefined;
 };
 
 // Stack navigator param list (wraps tabs + modals)
 export type MainStackParamList = {
-  Tabs: undefined;
+  // Typed as nested params so a screen pushed above the tabs can navigate
+  // back INTO a tab with arguments — see `MainTabParamList.Meals`.
+  Tabs: NavigatorScreenParams<MainTabParamList>;
   AppOpenFlow: undefined;
   // Preview-only route for Settings ▸ EXPERIMENTAL; see the import comment.
   WelcomeBackPreview: undefined;

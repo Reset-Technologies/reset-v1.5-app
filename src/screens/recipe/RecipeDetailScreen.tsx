@@ -602,6 +602,24 @@ function SwapGlyph({ color }: { color: string }) {
   );
 }
 
+/**
+ * The SAME `swap_horiz`, for the action bar's "Change meal" — and it is a
+ * separate component on purpose.
+ *
+ * 🔴 `SwapGlyph` above is Lang's 16-box version for the ingredient control.
+ * Hers here (`I5061:55849;...;73:1939`) is authored natively on a **24 box**,
+ * art spanning 2.88..21.12 — NOT the 16 path scaled up. Rendering the small
+ * one at 24 would inflate the mark by half, which is exactly what went wrong
+ * with the chef hat. An icon's SLOT is not its SIZE; check the path's extent.
+ */
+function SwapActionGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5.373 15.5865L7.68075 17.8943C7.81925 18.0328 7.89008 18.2042 7.89325 18.4087C7.89642 18.6131 7.82558 18.7928 7.68075 18.948C7.52558 19.1032 7.34742 19.1807 7.14625 19.1807C6.94492 19.1807 6.76667 19.1032 6.6115 18.948L3.13275 15.4692C3.03908 15.3756 2.97308 15.2768 2.93475 15.173C2.89625 15.0692 2.877 14.957 2.877 14.8365C2.877 14.716 2.89625 14.6038 2.93475 14.5C2.97308 14.3962 3.03908 14.2974 3.13275 14.2038L6.627 10.7095C6.77567 10.5608 6.94967 10.4875 7.149 10.4895C7.34833 10.4913 7.52558 10.5698 7.68075 10.725C7.82558 10.8802 7.90058 11.0558 7.90575 11.252C7.91092 11.4482 7.83592 11.6237 7.68075 11.7787L5.373 14.0865H11.9038C12.1166 14.0865 12.2948 14.1583 12.4385 14.302C12.582 14.4455 12.6538 14.6237 12.6538 14.8365C12.6538 15.0493 12.582 15.2276 12.4385 15.3712C12.2948 15.5148 12.1166 15.5865 11.9038 15.5865H5.373ZM18.627 9.90375H12.0963C11.8834 9.90375 11.7052 9.832 11.5615 9.6885C11.418 9.54483 11.3463 9.36658 11.3463 9.15375C11.3463 8.94108 11.418 8.76292 11.5615 8.61925C11.7052 8.47575 11.8834 8.404 12.0963 8.404H18.627L16.3193 6.09625C16.1808 5.95775 16.1099 5.78625 16.1068 5.58175C16.1036 5.37725 16.1744 5.19742 16.3193 5.04225C16.4744 4.88725 16.6526 4.80975 16.8538 4.80975C17.0551 4.80975 17.2333 4.88725 17.3885 5.04225L20.8673 8.52125C20.9609 8.61475 21.0269 8.71342 21.0653 8.81725C21.1038 8.92108 21.123 9.03325 21.123 9.15375C21.123 9.27442 21.1038 9.38667 21.0653 9.4905C21.0269 9.59433 20.9609 9.693 20.8673 9.7865L17.373 13.2807C17.2243 13.4294 17.0503 13.5028 16.851 13.501C16.6517 13.499 16.4744 13.4205 16.3193 13.2655C16.1744 13.1103 16.0994 12.9347 16.0943 12.7385C16.0891 12.5423 16.1641 12.3667 16.3193 12.2115L18.627 9.90375Z" fill={color} />
+    </Svg>
+  );
+}
+
 function RevertGlyph() {
   return (
     <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
@@ -1317,9 +1335,25 @@ export function RecipeDetailScreen() {
       ? { uri: detail.imageAsset }
       : null;
 
-  /** The chosen day's planned meals — what the member picks between. */
-  const dayMeals: MyPlanSlot[] =
+  /** Everything actually planned on the chosen day. */
+  const daySlots: MyPlanSlot[] =
     plan?.days.find((d) => d.date === addDate)?.slots.filter((sl) => sl.recipe) ?? [];
+
+  /**
+   * What the member picks between — the day's meals MINUS this recipe.
+   *
+   * 🔴 Bryan, 2026-10-30: *"fix 'Add to plan' so a recipe can't replace
+   * itself."* Without this filter the sheet offered the slot this very recipe
+   * already occupies, and tapping it swapped the meal for itself: a write, a
+   * fresh plan revision, and nothing changed on screen. It also made Bryan's
+   * multiple-slots case ambiguous, since the same title appeared twice with
+   * no way to tell which was which.
+   *
+   * 📌 Matched on the MEAL id, not the version. A different version of the
+   * same recipe is still the same meal to a member, so replacing one with the
+   * other is still a no-op worth preventing.
+   */
+  const dayMeals: MyPlanSlot[] = daySlots.filter((sl) => sl.recipe!.id !== meal.id);
 
   const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
   /**
@@ -1328,6 +1362,50 @@ export function RecipeDetailScreen() {
    * there is nothing to add and the button must not pretend otherwise.
    */
   const canAdd = Boolean(detail?.recipeVersionId);
+
+  /**
+   * 🔑 LANG'S TWO BOTTOM-BAR STATES ARE SET BY THE ENTRY POINT, not by a
+   * component variant. Both bars are the same `BottomContainer` at the same
+   * position; only the third button differs:
+   *
+   *   from Explore — the recipe is not in the plan — `＋ Add to plan`
+   *   from My Plan — it already is                 — `↔ Change meal`
+   *
+   * Proven structurally rather than guessed: the one top-level `Change meal`
+   * (`5061:55849`) sits in her **Meals** section, the base Recipe Details
+   * frames (`5046:43282`) carry `Add to plan`, and a frame named "Ingredient
+   * swapped" exists TWICE with a different bar in each — the copy placed
+   * after a My Plan frame says `Change meal`. Same screen, same component;
+   * only the flow differs.
+   *
+   * `plannedMeal` is exactly that signal — My Plan is the only caller that
+   * sends it — so the state costs nothing to know.
+   *
+   * 📌 Her file has FOUR third-button labels in total; the other two
+   * (`Swap into plan`, `Change to this meal`) are single full-width bars on
+   * the saved-meal and mid-swap screens, which we do not ship.
+   */
+  const inPlan = Boolean(plannedMeal);
+
+  /**
+   * "Change meal" → My Plan's existing edit sheet, opened on this exact slot.
+   *
+   * Bryan ruled this on 2026-10-30 over building a second picker here:
+   * *"Let's use the existing My Plan edit sheet… No need to build a separate
+   * picker."* Which is also why this screen gained no swap UI of its own.
+   */
+  const openPlanEditor = useCallback(() => {
+    if (!plannedMeal) return;
+    navigation.navigate("Tabs", {
+      screen: "Meals",
+      params: {
+        openEditFor: {
+          plannedMealId: plannedMeal.id,
+          localDate: plannedMeal.localDate,
+        },
+      },
+    });
+  }, [navigation, plannedMeal]);
 
   const openAddSheet = useCallback(() => {
     setAddSheet(true);
@@ -1913,16 +1991,26 @@ export function RecipeDetailScreen() {
             canCook && styles.actionButtonTight,
             styles.actionSecondary,
             dyn.ghost,
-            !canAdd && styles.actionDisabled,
+            !inPlan && !canAdd && styles.actionDisabled,
           ]}
-          disabled={!canAdd || adding}
-          onPress={openAddSheet}
+          disabled={inPlan ? false : !canAdd || adding}
+          onPress={inPlan ? openPlanEditor : openAddSheet}
           accessibilityRole="button"
-          accessibilityLabel="Add to plan"
+          accessibilityLabel={inPlan ? "Change meal" : "Add to plan"}
         >
-          {adding || addedTo ? null : <PlusGlyph color={ghostGlyph} size={24} />}
+          {inPlan ? (
+            <SwapActionGlyph color={ghostGlyph} size={24} />
+          ) : adding || addedTo ? null : (
+            <PlusGlyph color={ghostGlyph} size={24} />
+          )}
           <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
-            {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
+            {inPlan
+              ? "Change meal"
+              : adding
+                ? "Adding…"
+                : addedTo
+                  ? "Added"
+                  : "Add to plan"}
           </Text>
         </Pressable>
       </View>
@@ -1977,7 +2065,15 @@ export function RecipeDetailScreen() {
                   member to pick one — the thing being replaced has to be
                   visible, or "swap" is a guess. */}
               {dayMeals.length === 0 ? (
-                <Text style={styles.addSub}>Nothing planned that day yet.</Text>
+                <Text style={styles.addSub}>
+                  {/* Two different empty states. A day with nothing on it is
+                      not the same as a day whose only meal is the one being
+                      looked at, and saying "nothing planned" there would be
+                      a lie the member can see. */}
+                  {daySlots.length > 0
+                    ? "This meal is already planned for that day."
+                    : "Nothing planned that day yet."}
+                </Text>
               ) : (
                 dayMeals.map((slot) => (
                   <Pressable
