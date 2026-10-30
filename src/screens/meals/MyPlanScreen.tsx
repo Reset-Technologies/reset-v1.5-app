@@ -1888,8 +1888,15 @@ const styles = StyleSheet.create({
     // 🔑 What reads as "off the line" is not the box: labels with no
     // descender ("Whole30", "Vegan", "Primal") end their ink at the baseline
     // while "Dairy-free" beside them reaches lower, so identical, perfectly
-    // centred boxes still show two apparent heights. That is typography, and
-    // the only lever is Lang shortening the pill or tightening its padding.
+    // centred boxes still show two apparent heights. That is typography, not
+    // layout.
+    //
+    // 📌 DECIDED 2026-10-26 — put to Lang, answered by Bryan while she is out:
+    // *"let's leave these as they are. The text is centered correctly, and
+    // reducing the pill height or padding won't address the difference between
+    // the letter shapes. No change needed here."*
+    // ⇒ The remaining lever (a shorter pill / less padding) was offered and
+    // declined. Do not reopen this without a newer dated decision.
     //
     // ⚠️ The first version of this comment claimed a 4px imbalance. It was an
     // artifact: the measuring crop was 62 rows for a 65px pill, so the pill
