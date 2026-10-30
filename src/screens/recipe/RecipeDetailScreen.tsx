@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import { shareWithLink } from "../../constants/links";
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
   Modal,
@@ -31,6 +32,7 @@ import { AiConsentNudge } from "../../components";
 import { AskEsterSheet } from "./AskEsterSheet";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { useResetWindow } from "../../hooks/useResetWindow";
+import { useAppPalette } from "../../hooks/useAppPalette";
 import { BookmarkIcon } from "../../components/BookmarkIcon";
 import { ArrowBackIcon } from "../../components/PaywallIcons";
 import {
@@ -61,6 +63,7 @@ import {
   setPlannedMealServings,
   swapPlannedMeal,
 } from "../../services/myPlan";
+import { addRecipeIngredientsToGroceryList } from "../../services/grocery";
 import { dietLabel } from "../../utils/dietLabel";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 import { logEvent } from "../../services/braze";
@@ -71,11 +74,107 @@ import { logEvent } from "../../services/braze";
 // see it, so `route.params.plannedMeal` failed to compile against a type that
 // claimed to describe the same route. One definition, in the navigator.
 
-const HERO_HEIGHT = 360;
+/**
+ * 🔴 RESTRUCTURED 2026-10-28 to Lang's `5046:43237`. Her geometry, read from
+ * the frame (402x843, absolute positions):
+ *
+ *     Bg-Image     0 .............. 569.6     (67.6% of the screen)
+ *       fade            340 ... 484
+ *       title                433 . 509
+ *       tags                     525 . 543
+ *     Ingredients                      583 ...
+ *
+ * The title, the chips AND the whole fade live INSIDE the image. Ours had a
+ * 360pt hero cut off by an opaque sheet whose top carried the title, so the
+ * fade could never reach it — Cole spotted exactly that.
+ * Scaled to a 780dp screen (780/843).
+ */
+const HERO_HEIGHT = 527;
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+/**
+ * The sheet pulls up over the hero and pads its own top; both live in
+ * `styles.sheet` and both are named here because the condensed header's fade
+ * threshold is derived from them. Changing one in the stylesheet alone would
+ * silently drift the fade.
+ */
+const SHEET_OVERLAP = 0;
+const SHEET_PAD_TOP = 24;
+
+/**
+ * The title + chips block sits over the image, its BOTTOM this far above the
+ * image's bottom edge (hers: 569.6 - 543 = 26.6, scaled).
+ */
+const HERO_TITLE_BOTTOM = 24;
+
+/** The sheet's own rhythm between sections. */
+const SHEET_GAP = 30;
+
+/**
+ * Lang's three surface tokens for this screen, from `5046:43885` — the dark
+ * values resolved with `get_variable_defs`, the light ones read off the CSS
+ * fallbacks in the same response (which ARE the light mode of each token).
+ *
+ * 🔴🔴 THEY DO NOT MAP ONTO `outerBg` / `innerBg` — the pair CROSSES.
+ *
+ *            her Page Surface      her Page Surface (alt)
+ *   dark     #361416  = outerBg    #513436  = innerBg
+ *   light    #fafdfe  = innerBg    #f3efe3  = outerBg
+ *                      ^^^^^^^^              ^^^^^^^^
+ * In her system the raised surface is LIGHTER than the page in dark mode and
+ * DARKER in light mode. `useAppPalette` does not model that, so "the page" is
+ * `outerBg` at night and `innerBg` by day. Reaching for one of them would
+ * have been right in one mode and wrong in the other — and switching the page
+ * to `outerBg` outright, which is what I did first, silently turned the
+ * DAYTIME page from #fafdfe to bone.
+ * ▶ Hence explicit tokens here rather than a palette lookup. Fixing
+ *   `useAppPalette` itself would re-level Home, Ester, Profile and Saved
+ *   Meals, which is not this change.
+ */
+const PAGE_SURFACE = { dark: "#361416", light: K.white };
+const PAGE_SURFACE_ALT = { dark: "#513436", light: K.bone };
+const DIVIDER_LINE = { dark: "#7e6869", light: "#c3b9ba" };
+/** Space the block needs, so the condensed header knows when it scrolls away. */
+const HERO_TITLE_RESERVE = 130;
+
+/**
+ * Where the in-page recipe title starts, in scroll-content coordinates.
+ * It now sits ON the hero rather than on the sheet, so it is measured up from
+ * the hero's bottom edge.
+ */
+const BODY_TITLE_Y = HERO_HEIGHT - HERO_TITLE_RESERVE;
+
+/**
+ * The fade, in hero coordinates. Hers starts at 340 and reaches the page
+ * colour at 484 of a 569.6 image — so it begins at 59.7% of the image and
+ * finishes at 85%, with the title's top (433) landing at 76%, two thirds of
+ * the way through the ramp. That overlap is the whole point: the image is
+ * still dissolving where the title sits.
+ */
+const HERO_FADE_START = Math.round(HERO_HEIGHT * 0.597);
+const HERO_FADE_LEN = Math.round(HERO_HEIGHT * (0.85 - 0.597));
 
 /** Height of the persistent action bar, so scroll content can clear it. */
 const ACTION_BAR_H = 64;
+
+/**
+ * Clear space Lang leaves BELOW the action bar.
+ *
+ * Measured off her own export of `5046:43237` (402x843, so 1:1 in points):
+ * the Cook button's fill runs y=739..782 and the frame's last row is 842, so
+ * she leaves **60pt** under the buttons. We were leaving `insets.bottom`
+ * alone — 15 on the S24 — which sat the bar roughly 26pt too low.
+ *
+ * Her frame draws a status bar but NO home indicator, so that 60 is measured
+ * to the physical screen edge. 34 of it is the iPhone indicator region the
+ * system already reserves and reports as `insets.bottom`; the remaining 26 is
+ * real breathing room, and that is what this constant is. On the S24
+ * `insets.bottom` is 15, so the gap lands at 41 rather than 60 — correct,
+ * because that device has no 34pt indicator to clear.
+ * 📌 For Lang, with the Android number: she may instead mean a flat 60 from
+ *    the screen edge on every device. Ask before assuming.
+ */
+const ACTION_BAR_LIFT = 26;
 
 /**
  * Slot display names for the add sheet.
@@ -177,6 +276,64 @@ const DEFAULT_CARD_GRADIENT: [string, string, string] = [
   "#361416",
 ];
 
+/**
+ * The condensed header's backing, `5046:44135` in "Recipe Details - Scroll".
+ *
+ * 🔑 THIS one IS a real scrim, unlike the bottom bar's. Lang's is
+ * `#180a0a` -> transparent over a page that reads ~`#200c0e` at the top, so
+ * it is DARKER than its page and genuinely dims the ingredient row sliding
+ * under the title. The bottom bar's gradient was the SAME colour as her page
+ * and dimmed nothing — which is exactly why porting that one literally put a
+ * solid band across our white screen.
+ *
+ * 📌 So this is NOT ported literally either. `#180a0a` is near-black; on our
+ * daytime page it would be a black bar. What her gradient DOES is "the page
+ * colour, deepened, fading out", so ours starts from the page's own
+ * background — which gives the same separation in both modes.
+ *
+ * 📌 Her rect is 95.57 tall with the end stop at 129.8%, so her fill is
+ * clipped at ~23% opacity rather than reaching zero. At her contrast that
+ * step is invisible; at ours it would not be, so this runs to zero inside
+ * the band.
+ *
+ * 🔑 Numeric sizes via onLayout, not `width="100%"` — `react-native-svg`
+ * does not fill on a percentage (see `CardGradient`, same file).
+ */
+function HeaderScrim({ color }: { color: string }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      onLayout={(e) =>
+        setSize({
+          w: e.nativeEvent.layout.width,
+          h: e.nativeEvent.layout.height,
+        })
+      }
+    >
+      {size ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id="headerScrim"
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={size.h}
+            >
+              <Stop offset="0" stopColor={color} stopOpacity={1} />
+              <Stop offset="0.72" stopColor={color} stopOpacity={0.82} />
+              <Stop offset="1" stopColor={color} stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect width={size.w} height={size.h} fill="url(#headerScrim)" />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
 function CardGradient({
   colors = DEFAULT_CARD_GRADIENT,
 }: {
@@ -236,19 +393,6 @@ function renderBoldSegments(text: string): React.ReactNode[] {
     });
 }
 
-const STEP_LABELS = [
-  "STEP ONE",
-  "STEP TWO",
-  "STEP THREE",
-  "STEP FOUR",
-  "STEP FIVE",
-  "STEP SIX",
-  "STEP SEVEN",
-  "STEP EIGHT",
-  "STEP NINE",
-  "STEP TEN",
-];
-
 function dailyPlanMealToMeal(d: DailyPlanMeal): Meal {
   return {
     id: d.id,
@@ -293,16 +437,185 @@ const SERVING_LABEL: Record<ServingMultiplier, string> = {
  * emoji data, and U+25B6 on the Cook Mode timer shipped as a BLUE EMOJI on
  * iOS for exactly that reason. A path cannot be re-presented by the platform.
  */
-function SwapGlyph() {
+/**
+ * Her Ester mark for the action bar.
+ *
+ * 📌 The SILVER variant, not the copper one. `EsterChatScreen` sets the
+ * convention in its own names — `ESTER_AVATAR_LIGHT` (ester-avatar) for light
+ * surfaces, `ESTER_AVATAR_DARK` (ester-avatar-silver) for dark — and this
+ * button is a dark ghost surface. Her frame shows a light mark here too; the
+ * copper one read as a muddy smudge at 18pt against `#fafdfe3d`.
+ */
+/**
+ * 🔑 The Ester mark in the action bar is PER METABOLIC TYPE (Cole, 2026-10-28).
+ * It was a single fixed `ester-avatar-silver.png`.
+ *
+ * Uses `TYPE_LOGO`, which this screen ALREADY imports and renders for the
+ * type card, and which `EsterChatScreen` uses as its per-type Ester header —
+ * so the mark here is the same art the member sees when they actually open
+ * Ester. Adding a second registry would have been one more thing to drift.
+ */
+
+/**
+ * Lang's action-bar icons (`5046:44118` / `5061:55849`).
+ *
+ * 📌 Drawn as paths rather than exported, matching this file's existing
+ * `SwapGlyph`/`RevertGlyph` convention. They are 16pt glyphs that inherit the
+ * button's text colour, so they stay correct on both the blue primary and the
+ * ghost secondary without a second asset.
+ */
+/**
+ * Lang's `shopping_cart` from `5046:43899`, her path data unchanged.
+ * 24pt, as the frame draws it beside "Add ingredients to Grocery List".
+ */
+function CartGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5.9145 21.047C5.57417 20.7067 5.404 20.2936 5.404 19.8078C5.404 19.3218 5.57417 18.9086 5.9145 18.5683C6.25483 18.2279 6.66792 18.0577 7.15375 18.0577C7.63975 18.0577 8.05292 18.2279 8.39325 18.5683C8.73358 18.9086 8.90375 19.3218 8.90375 19.8078C8.90375 20.2936 8.73358 20.7067 8.39325 21.047C8.05292 21.3875 7.63975 21.5578 7.15375 21.5578C6.66792 21.5578 6.25483 21.3875 5.9145 21.047ZM15.6068 21.047C15.2664 20.7067 15.0963 20.2936 15.0963 19.8078C15.0963 19.3218 15.2664 18.9086 15.6068 18.5683C15.9471 18.2279 16.3603 18.0577 16.8463 18.0577C17.3321 18.0577 17.7452 18.2279 18.0855 18.5683C18.4258 18.9086 18.596 19.3218 18.596 19.8078C18.596 20.2936 18.4258 20.7067 18.0855 21.047C17.7452 21.3875 17.3321 21.5578 16.8463 21.5578C16.3603 21.5578 15.9471 21.3875 15.6068 21.047ZM6.01525 5.75L8.55 11.0577H15.3673C15.4249 11.0577 15.4763 11.0433 15.5213 11.0145C15.5661 10.9857 15.6045 10.9456 15.6365 10.8943L18.3193 6.01925C18.3578 5.94875 18.3609 5.88625 18.3288 5.83175C18.2968 5.77725 18.2423 5.75 18.1653 5.75H6.01525ZM5.29625 4.25H19.1808C19.5898 4.25 19.899 4.42408 20.1085 4.77225C20.3182 5.12025 20.3282 5.47567 20.1385 5.8385L16.9345 11.6422C16.7705 11.9307 16.5536 12.1554 16.2838 12.3162C16.0137 12.4772 15.7179 12.5577 15.3963 12.5577H8.1L6.94225 14.673C6.89092 14.75 6.88933 14.8333 6.9375 14.923C6.9855 15.0128 7.05758 15.0577 7.15375 15.0577H17.8463C18.0589 15.0577 18.2371 15.1295 18.3808 15.273C18.5242 15.4167 18.596 15.5949 18.596 15.8077C18.596 16.0206 18.5242 16.1987 18.3808 16.3422C18.2371 16.4859 18.0589 16.5577 17.8463 16.5577H7.15375C6.48708 16.5577 5.98617 16.2703 5.651 15.6953C5.31567 15.1203 5.30383 14.5462 5.6155 13.973L7.04225 11.4077L3.404 3.75H2.25C2.03717 3.75 1.859 3.67817 1.7155 3.5345C1.57183 3.391 1.5 3.21283 1.5 3C1.5 2.78717 1.57183 2.609 1.7155 2.4655C1.859 2.32183 2.03717 2.25 2.25 2.25H3.77875C3.94942 2.25 4.10842 2.29517 4.25575 2.3855C4.40325 2.476 4.51542 2.60325 4.59225 2.76725L5.29625 4.25Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+/**
+ * Lang's chef hat, her path verbatim — authored on **her 24 viewBox**
+ * (`I5046:43282;4809:39736;5046:43832;73:1947`, layer `chef_hat`).
+ *
+ * 🔴 It used to carry the glyph's own tight 18x19 box rendered at 24, which
+ * scaled the art up by about a third: her hat occupies 18x19 INSIDE the 24
+ * slot, it does not fill it. Same trap as the bookmark — an icon's SLOT is
+ * not its SIZE. The two paths are the same shape, hers offset by (+3, +2.5).
+ */
+function ChefHatGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M10.5923 13.5055C10.7359 13.3618 10.8077 13.1837 10.8077 12.9713V10.0577C10.8077 9.84525 10.7358 9.66708 10.592 9.52325C10.4482 9.37958 10.2699 9.30775 10.0573 9.30775C9.84475 9.30775 9.66667 9.37958 9.523 9.52325C9.3795 9.66708 9.30775 9.84525 9.30775 10.0577V12.9713C9.30775 13.1837 9.37967 13.3618 9.5235 13.5055C9.66733 13.6493 9.8455 13.7213 10.058 13.7213C10.2707 13.7213 10.4488 13.6493 10.5923 13.5055ZM5.4135 12.4135C4.68533 12.0493 4.101 11.5256 3.6605 10.8422C3.22017 10.1589 3 9.4115 3 8.6C3 7.459 3.3955 6.49042 4.1865 5.69425C4.9775 4.89808 5.94358 4.5 7.08475 4.5C7.28308 4.5 7.48558 4.51667 7.69225 4.55C7.89892 4.58333 8.1015 4.625 8.3 4.675L8.3865 4.69425L8.43475 4.61725C8.82575 3.97242 9.3305 3.45833 9.949 3.075C10.5677 2.69167 11.2513 2.5 12 2.5C12.7487 2.5 13.4323 2.69167 14.051 3.075C14.6695 3.45833 15.1775 3.97242 15.575 4.61725L15.623 4.69425L15.7 4.675C15.8953 4.625 16.0906 4.58333 16.2858 4.55C16.4811 4.51667 16.6846 4.5 16.8962 4.5C18.0436 4.5 19.0143 4.898 19.8085 5.694C20.6028 6.48983 21 7.46175 21 8.60975C21 9.42125 20.7814 10.167 20.3443 10.847C19.9071 11.5272 19.3212 12.0486 18.5865 12.4112V17.6152H5.4135V12.4135ZM14.4865 13.5055C14.6302 13.3618 14.702 13.1837 14.702 12.9713V10.0577C14.702 9.84525 14.6301 9.66708 14.4863 9.52325C14.3424 9.37958 14.1642 9.30775 13.9515 9.30775C13.739 9.30775 13.5609 9.37958 13.4173 9.52325C13.2738 9.66708 13.202 9.84525 13.202 10.0577V12.9713C13.202 13.1837 13.2739 13.3618 13.4178 13.5055C13.5614 13.6493 13.7396 13.7213 13.9523 13.7213C14.1649 13.7213 14.343 13.6493 14.4865 13.5055ZM6.9135 16.1155H17.0865V11.477L18.0423 11.0038C18.4949 10.7808 18.8527 10.459 19.1155 10.0385C19.3782 9.618 19.5095 9.15242 19.5095 8.64175C19.5095 7.90208 19.2528 7.27683 18.7395 6.766C18.226 6.25533 17.6052 6 16.877 6C16.7 6 16.5349 6.01508 16.3818 6.04525C16.2286 6.07542 16.0718 6.1155 15.9115 6.1655L14.9288 6.44225L14.298 5.38275C14.0455 4.96092 13.7189 4.625 13.3182 4.375C12.9176 4.125 12.4798 4 12.0048 4C11.5297 4 11.0919 4.125 10.6912 4.375C10.2906 4.625 9.964 4.96092 9.7115 5.38275L9.08075 6.44225L8.073 6.1655C7.91283 6.12567 7.75358 6.08817 7.59525 6.053C7.43692 6.01767 7.27442 6 7.10775 6C6.37958 6 5.76292 6.25467 5.25775 6.764C4.75258 7.27317 4.5 7.89658 4.5 8.63425C4.5 9.14342 4.631 9.60767 4.893 10.027C5.155 10.4463 5.51308 10.7719 5.96725 11.0038L6.9135 11.477V16.1155ZM5.4135 17.6152H6.9135V19.6923C6.9135 19.7821 6.94233 19.8558 7 19.9135C7.05767 19.9712 7.13142 20 7.22125 20H16.7788C16.8686 20 16.9423 19.9712 17 19.9135C17.0577 19.8558 17.0865 19.7821 17.0865 19.6923V17.6152H18.5865V19.6923C18.5865 20.1894 18.4095 20.615 18.0555 20.969C17.7015 21.323 17.2759 21.5 16.7788 21.5H7.22125C6.72408 21.5 6.2985 21.323 5.9445 20.969C5.5905 20.615 5.4135 20.1894 5.4135 19.6923V17.6152Z" fill={color} />
+    </Svg>
+  );
+}
+
+/**
+ * Lang's `share-ios` from the top header (`5046:44136`), her path verbatim.
+ *
+ * 🔴 This replaced a literal "\u2197" TEXT character in a <Text>. An arrow
+ * glyph from the body font is not her icon: wrong weight, wrong metrics, and
+ * it sat on the text baseline rather than centred in the button.
+ *
+ * Authored on her 24 viewBox rather than the glyph's own 15x20 box, so the
+ * art sits where she positions it inside the 24pt slot — same convention as
+ * `ArrowBackIcon` and `CartGlyph`.
+ */
+function ShareGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6.17048 20.8809C5.81173 20.8809 5.49784 20.7464 5.22878 20.4773C4.95972 20.2083 4.8252 19.8944 4.8252 19.5356V8.12317C4.8252 7.76443 4.95972 7.45053 5.22878 7.18147C5.49784 6.91242 5.81173 6.77789 6.17048 6.77789H9.28704C9.47762 6.77789 9.6374 6.84278 9.76641 6.97251C9.89524 7.1021 9.95968 7.26277 9.95968 7.45456C9.95968 7.64618 9.89524 7.80555 9.76641 7.93259C9.6374 8.05963 9.47762 8.12317 9.28704 8.12317H6.17048V19.5356H17.8296V8.12317H14.6682C14.4776 8.12317 14.3179 8.05828 14.189 7.92855C14.06 7.79896 13.9955 7.63828 13.9955 7.44649C13.9955 7.25488 14.06 7.09551 14.189 6.96847C14.3179 6.84143 14.4776 6.77789 14.6682 6.77789H17.8296C18.1883 6.77789 18.5022 6.91242 18.7713 7.18147C19.0403 7.45053 19.1748 7.76443 19.1748 8.12317V19.5356C19.1748 19.8944 19.0403 20.2083 18.7713 20.4773C18.5022 20.7464 18.1883 20.8809 17.8296 20.8809H6.17048ZM11.305 3.75101L9.80273 5.25324C9.6682 5.38777 9.51125 5.45503 9.33188 5.45503C9.15251 5.45503 8.99265 5.38777 8.85229 5.25324C8.72359 5.11871 8.65924 4.95804 8.65924 4.77118C8.65924 4.58433 8.72651 4.42365 8.86104 4.28912L11.5068 1.62098C11.6413 1.48645 11.7982 1.41919 11.9776 1.41919C12.157 1.41919 12.3139 1.48645 12.4484 1.62098L15.1166 4.28912C15.2511 4.42365 15.3184 4.58179 15.3184 4.76356C15.3184 4.9453 15.254 5.10225 15.1253 5.2344C14.985 5.36655 14.8216 5.43261 14.6352 5.43261C14.449 5.43261 14.288 5.36534 14.1525 5.23082L12.6502 3.75101V13.3249C12.6502 13.5155 12.5854 13.6752 12.4556 13.8041C12.326 13.9331 12.1654 13.9976 11.9736 13.9976C11.782 13.9976 11.6226 13.9331 11.4955 13.8041C11.3685 13.6752 11.305 13.5155 11.305 13.3249V3.75101Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+/**
+ * The gloss on Lang's Cook button. Her fill is TWO layers
+ * (`I5046:43282;4809:39736;5046:43832`):
+ *
+ *   linear-gradient(180deg, rgba(255,255,255,0.5) 0, rgba(255,255,255,0) 63.275)
+ *   over solid rgb(146,180,189) = #92b4bd
+ *
+ * We shipped only the solid, which is her END stop — so ours read uniformly
+ * darker than hers, with no highlight at all.
+ *
+ * 🔑 Checked against her own export before building it: half-opacity white
+ * over #92b4bd computes to #c8d9de, and the export reads #c0d3d8 a few px
+ * below the top edge then goes FLAT at y=767 — which is 63.275 percent of a
+ * 44pt button starting at 739. The CSS and the pixels agree, so this is a
+ * gloss and not a colour ramp.
+ *
+ * Sized from `onLayout` because the Cook button GROWS — it is the only
+ * flexible one in the bar — so there is no constant to hand the Svg, and
+ * `width="100%"` does not fill in react-native-svg.
+ */
+function CookGloss() {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) =>
+        setSize({
+          w: e.nativeEvent.layout.width,
+          h: e.nativeEvent.layout.height,
+        })
+      }
+    >
+      {size ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id="cookGloss"
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={size.h}
+            >
+              <Stop offset="0" stopColor="#ffffff" stopOpacity={0.5} />
+              <Stop offset="0.63275" stopColor="#ffffff" stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect width={size.w} height={size.h} fill="url(#cookGloss)" />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
+function PlusGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 5v14M5 12h14"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+/**
+ * Lang's Material `swap_horiz` from `5046:43885`, her path verbatim.
+ *
+ * 🔴 The previous version was four stroked line segments I drew by hand. It
+ * read as a swap icon but was not hers — the same mistake as the chef hat,
+ * and it is why the control "looked different" without anything obviously
+ * being wrong. Hers is a single FILLED path on a 16 viewBox.
+ */
+function SwapGlyph({ color }: { color: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path
-        d="M2.5 5.5h9M9 3l2.5 2.5L9 8M13.5 10.5h-9M7 8l-2.5 2.5L7 13"
-        stroke={K.textMuted}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Path d="M3.582 10.391L5.1205 11.9295C5.21283 12.0218 5.26006 12.1362 5.26217 12.2725C5.26428 12.4087 5.21706 12.5286 5.1205 12.632C5.01706 12.7354 4.89828 12.7872 4.76417 12.7872C4.62994 12.7872 4.51111 12.7354 4.40767 12.632L2.0885 10.3128C2.02606 10.2504 1.98206 10.1846 1.9565 10.1153C1.93083 10.0461 1.918 9.97133 1.918 9.891C1.918 9.81067 1.93083 9.73589 1.9565 9.66667C1.98206 9.59744 2.02606 9.53161 2.0885 9.46917L4.418 7.13967C4.51711 7.04056 4.63311 6.99167 4.766 6.993C4.89889 6.99422 5.01706 7.04656 5.1205 7.15C5.21706 7.25344 5.26706 7.37056 5.2705 7.50133C5.27394 7.63211 5.22394 7.74917 5.1205 7.8525L3.582 9.391H7.93583C8.07772 9.391 8.19656 9.43889 8.29233 9.53467C8.388 9.63033 8.43583 9.74911 8.43583 9.891C8.43583 10.0329 8.388 10.1517 8.29233 10.2475C8.19656 10.3432 8.07772 10.391 7.93583 10.391H3.582ZM12.418 6.6025H8.06417C7.92228 6.6025 7.80344 6.55467 7.70767 6.459C7.612 6.36322 7.56417 6.24439 7.56417 6.1025C7.56417 5.96072 7.612 5.84194 7.70767 5.74617C7.80344 5.6505 7.92228 5.60267 8.06417 5.60267H12.418L10.8795 4.06417C10.7872 3.97183 10.7399 3.8575 10.7378 3.72117C10.7357 3.58483 10.7829 3.46494 10.8795 3.3615C10.9829 3.25817 11.1017 3.2065 11.2358 3.2065C11.3701 3.2065 11.4889 3.25817 11.5923 3.3615L13.9115 5.68083C13.9739 5.74317 14.0179 5.80894 14.0435 5.87817C14.0692 5.94739 14.082 6.02217 14.082 6.1025C14.082 6.18294 14.0692 6.25778 14.0435 6.327C14.0179 6.39622 13.9739 6.462 13.9115 6.52433L11.582 8.85383C11.4829 8.95294 11.3669 9.00189 11.234 9.00067C11.1011 8.99933 10.9829 8.947 10.8795 8.84367C10.7829 8.74022 10.7329 8.62311 10.7295 8.49233C10.7261 8.36156 10.7761 8.24444 10.8795 8.141L12.418 6.6025Z" fill={color} />
+    </Svg>
+  );
+}
+
+/**
+ * The SAME `swap_horiz`, for the action bar's "Change meal" — and it is a
+ * separate component on purpose.
+ *
+ * 🔴 `SwapGlyph` above is Lang's 16-box version for the ingredient control.
+ * Hers here (`I5061:55849;...;73:1939`) is authored natively on a **24 box**,
+ * art spanning 2.88..21.12 — NOT the 16 path scaled up. Rendering the small
+ * one at 24 would inflate the mark by half, which is exactly what went wrong
+ * with the chef hat. An icon's SLOT is not its SIZE; check the path's extent.
+ */
+function SwapActionGlyph({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5.373 15.5865L7.68075 17.8943C7.81925 18.0328 7.89008 18.2042 7.89325 18.4087C7.89642 18.6131 7.82558 18.7928 7.68075 18.948C7.52558 19.1032 7.34742 19.1807 7.14625 19.1807C6.94492 19.1807 6.76667 19.1032 6.6115 18.948L3.13275 15.4692C3.03908 15.3756 2.97308 15.2768 2.93475 15.173C2.89625 15.0692 2.877 14.957 2.877 14.8365C2.877 14.716 2.89625 14.6038 2.93475 14.5C2.97308 14.3962 3.03908 14.2974 3.13275 14.2038L6.627 10.7095C6.77567 10.5608 6.94967 10.4875 7.149 10.4895C7.34833 10.4913 7.52558 10.5698 7.68075 10.725C7.82558 10.8802 7.90058 11.0558 7.90575 11.252C7.91092 11.4482 7.83592 11.6237 7.68075 11.7787L5.373 14.0865H11.9038C12.1166 14.0865 12.2948 14.1583 12.4385 14.302C12.582 14.4455 12.6538 14.6237 12.6538 14.8365C12.6538 15.0493 12.582 15.2276 12.4385 15.3712C12.2948 15.5148 12.1166 15.5865 11.9038 15.5865H5.373ZM18.627 9.90375H12.0963C11.8834 9.90375 11.7052 9.832 11.5615 9.6885C11.418 9.54483 11.3463 9.36658 11.3463 9.15375C11.3463 8.94108 11.418 8.76292 11.5615 8.61925C11.7052 8.47575 11.8834 8.404 12.0963 8.404H18.627L16.3193 6.09625C16.1808 5.95775 16.1099 5.78625 16.1068 5.58175C16.1036 5.37725 16.1744 5.19742 16.3193 5.04225C16.4744 4.88725 16.6526 4.80975 16.8538 4.80975C17.0551 4.80975 17.2333 4.88725 17.3885 5.04225L20.8673 8.52125C20.9609 8.61475 21.0269 8.71342 21.0653 8.81725C21.1038 8.92108 21.123 9.03325 21.123 9.15375C21.123 9.27442 21.1038 9.38667 21.0653 9.4905C21.0269 9.59433 20.9609 9.693 20.8673 9.7865L17.373 13.2807C17.2243 13.4294 17.0503 13.5028 16.851 13.501C16.6517 13.499 16.4744 13.4205 16.3193 13.2655C16.1744 13.1103 16.0994 12.9347 16.0943 12.7385C16.0891 12.5423 16.1641 12.3667 16.3193 12.2115L18.627 9.90375Z" fill={color} />
     </Svg>
   );
 }
@@ -334,6 +647,157 @@ export function RecipeDetailScreen() {
   const { meal } = route.params;
   const insets = useSafeAreaInsets();
   const { state } = useApp();
+  /**
+   * 🔑 Recipe Details was the only Meals screen pinned to a light surface —
+   * `container`/`sheet` were hard `K.white` — so at 4pm it stayed bright while
+   * Home and the rest of the app went to the evening palette.
+   *
+   * ⚠️ "Dark mode" in this app is TIME OF DAY (`evening`, 16:00–06:00), not
+   * the OS colour scheme. `useAppPalette` owns that and reschedules itself
+   * across the boundary, so nothing here needs a timer.
+   *
+   * `dyn` holds ONLY the values that move. The static StyleSheet keeps
+   * everything else, which is why this is an override object rather than a
+   * rewrite of 730 lines of styles.
+   */
+  const palette = useAppPalette();
+  const dyn = useMemo(() => {
+    const dark = palette.evening;
+    return StyleSheet.create({
+      /**
+       * 🔴 CORRECTED 2026-10-28 — the page is `outerBg`, not `innerBg`.
+       *
+       * `get_variable_defs` on `5046:43885` resolves her two page tokens:
+       *     Page Surface        #361416   <- the PAGE
+       *     Page Surface (alt)  #513436   <- raised surfaces ON it
+       * which map 1:1 onto our `outerBg` / `innerBg`. This screen was
+       * painting `innerBg` as the page, i.e. rendering #513436 where she has
+       * #361416: one surface level too high, all the way down.
+       *
+       * 🔑 The tell was her swap button, whose fill is #513436 sitting ON the
+       * page — a hierarchy that only works if the page is a level below it.
+       * Cole spotted the colour directly; I had measured #513436 off the
+       * device earlier and read it as "the page colour".
+       * ▶ This is the standing rule, hit again: a colour token's NAME encodes
+       *   its SURFACE. `outer` / `inner` are not decoration.
+       */
+      container: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
+      sheet: { backgroundColor: dark ? PAGE_SURFACE.dark : PAGE_SURFACE.light },
+      heroContainer: { backgroundColor: palette.nestedBg },
+      tag: { backgroundColor: palette.nestedBg },
+      /**
+       * 🔴 Was `palette.borderColor` — K.brown in evening, i.e. THE PAGE, so
+       * the badge disappeared and "17" floated loose beside the heading.
+       * Her counter (`5046:43254`) is `Ghost Surface` #fafdfe3d, the same
+       * 24% token as the action bar and the header buttons, so it reuses
+       * `ghost` below rather than carrying a fill of its own.
+       */
+      countBadge: {
+        backgroundColor: dark ? "rgba(250,253,254,0.24)" : "rgba(54,20,22,0.12)",
+      },
+      moreCtaButton: { backgroundColor: palette.innerBg },
+      /**
+       * Her `Divider Line`, for the ingredient table's rules. Dropping the
+       * page to `Page Surface` made `palette.borderColor` — `K.brown`, i.e.
+       * #361416 — IDENTICAL to the page in evening, so every rule would have
+       * vanished into it.
+       * 📌 Kept local rather than added to `useAppPalette`: Home, Ester,
+       * Profile and Saved Meals all read `borderColor`, and changing it there
+       * would alter four screens I am not looking at.
+       */
+      dividerBorder: { borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light },
+      /**
+       * The row-level swap control, `I5046:43885;5055:46608`: a 24pt pill
+       * FILLED with `Page Surface (alt)` and hairlined in `Divider Line`.
+       * Ours was a 28pt transparent circle with a 1px `K.border` ring.
+       */
+      swapButton: {
+        backgroundColor: dark ? PAGE_SURFACE_ALT.dark : PAGE_SURFACE_ALT.light,
+        borderColor: dark ? DIVIDER_LINE.dark : DIVIDER_LINE.light,
+      },
+      /** Her `Text (alt)` — #b0a3a4 dark, #7e6869 light — for the amount. */
+      ingredientQty: { color: dark ? "#b0a3a4" : "#7e6869" },
+      swapButtonOn: {
+        backgroundColor: dark ? K.bone : K.cream,
+        borderColor: dark ? K.bone : K.brown,
+      },
+      /**
+       * 🔴 The serving control had three colours hard-coded for a LIGHT page:
+       * an 8% brown wash for the track, a solid `K.brown` pill for the
+       * selection and cream text on it. Once the page became `Page Surface`
+       * (#361416) at night, the selected pill WAS THE PAGE COLOUR and the
+       * selection simply disappeared — same failure as the row rules, which I
+       * fixed in the same commit and did not think to look for here.
+       *
+       * 📌 Lang has no segmented control to copy — her frame has the "4
+       * servings" dropdown we deliberately do not build (MY PLAN r20: the
+       * model is a 0.5/1/2 MULTIPLIER, and the backend throws on anything
+       * else). So this mirrors the light treatment rather than inventing a
+       * new one: a faint wash of the opposite tone for the track, and a
+       * selected pill in the page's opposite tone with the page's own colour
+       * as its text.
+       */
+      segmentTrack: {
+        backgroundColor: dark ? "rgba(250,253,254,0.10)" : "rgba(54,20,22,0.08)",
+      },
+      segmentActive: { backgroundColor: dark ? K.bone : K.brown },
+      segmentTextActive: { color: dark ? K.brown : K.cream },
+      // 🔑 `5046:44136`, resolved with get_variable_defs (the CSS fallbacks
+      //    were the LIGHT mode of a DARK frame — again):
+      //      back          Ghost Surface/Fully Transparent Surface  #fafdfe00
+      //      share · save  Ghost Surface/Ghost Surface              #fafdfe3d
+      //    The second is the SAME token as the bottom bar's ghost buttons, so
+      //    these reuse `ghost` below rather than keeping a second opaque pair.
+      headerActionButton: { backgroundColor: "transparent" },
+      headerCloseButton: { backgroundColor: "transparent" },
+      // text on those surfaces
+      text: { color: palette.textColor },
+      subtle: { color: palette.subtleText },
+      /**
+       * The ghost buttons — Ask Ester, Add to plan, and the Add-ingredients
+       * button — are Lang's `Ghost Surface` token, which resolves per mode:
+       *   dark   #fafdfe3d on #fafdfe   ← her frame (`5061:54966`)
+       *   light  rgba(54,20,22,0.12) on #361416
+       * The light pair is not invented: it is the SAME token's light-mode
+       * value, already shipping on the Add-ingredients button.
+       */
+      ghost: {
+        backgroundColor: dark ? "rgba(250,253,254,0.24)" : "rgba(54,20,22,0.12)",
+      },
+      ghostText: { color: dark ? K.white : K.brown },
+    });
+  }, [palette]);
+  const ghostGlyph = palette.evening ? K.white : K.brown;
+  /** The page's own fill — what the hero and the header scrim dissolve into. */
+  const pageSurface = palette.evening ? PAGE_SURFACE.dark : PAGE_SURFACE.light;
+
+  /**
+   * Condensed header (`5046:44136`, annotated *"Condensed header that shows
+   * recipe title on scroll"*). Lang draws the back arrow, the truncated
+   * recipe name and the two ghost buttons on one row over a scrim.
+   *
+   * The fade is tied to where the IN-PAGE title actually is, so the small
+   * title appears as the large one leaves rather than at an invented offset:
+   * `BODY_TITLE_Y` minus the header's own height. 48 is the travel of the
+   * cross-fade, about the height of one title line.
+   */
+  const headerH = insets.top + 48;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const onScroll = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        useNativeDriver: true,
+      }),
+    [scrollY],
+  );
+  const condensed = useMemo(() => {
+    const start = Math.max(0, BODY_TITLE_Y - headerH);
+    return scrollY.interpolate({
+      inputRange: [start, start + 48],
+      outputRange: [0, 1],
+      extrapolate: "clamp",
+    });
+  }, [scrollY, headerH]);
   const { aiConsentGranted, runWithAiConsent } = useAiConsentGate();
   /**
    * TEST CASES **M34**: the planned-meal Ester entry's context must include
@@ -401,6 +865,8 @@ export function RecipeDetailScreen() {
   const [reverting, setReverting] = useState(false);
   /** Lang's `5055:47291` toast. Cleared on a timer, and on unmount. */
   const [toast, setToast] = useState<string | null>(null);
+  /** In flight for Lang's `5046:43899` — the button under the ingredients. */
+  const [addingToGrocery, setAddingToGrocery] = useState(false);
 
   /**
    * Ask Ester (Lang `5062:56495`, ESTER CONTEXT r8 — the only entry Bryan
@@ -790,6 +1256,60 @@ export function RecipeDetailScreen() {
     }
   };
 
+  /**
+   * Lang's `5046:43899` — "Add ingredients to Grocery List".
+   *
+   * 🔑 Sends the CURRENT multiplier, so what lands in the basket is what the
+   * rows above the button say. The server scales by the same rule.
+   *
+   * 🔴 The server dedupes against the whole list, so a recipe already on this
+   * week's plan adds nothing — its ingredients are derived already. Reporting
+   * "Added 9 items" there would be a lie, so the toast says what actually
+   * happened, including the mixed case.
+   */
+  const handleAddToGroceryList = async () => {
+    if (addingToGrocery) return;
+    setAddingToGrocery(true);
+    try {
+      const { added, skipped } = await addRecipeIngredientsToGroceryList({
+        mealId: meal.id,
+        servings: multiplier,
+      });
+      const n = added.length;
+      const plural = (count: number) =>
+        `${count} ingredient${count === 1 ? "" : "s"}`;
+      if (n === 0) {
+        setToast(
+          skipped === 1
+            ? "That ingredient is already on your Grocery List"
+            : "Already on your Grocery List",
+        );
+      } else if (skipped > 0) {
+        setToast(`${plural(n)} added · ${skipped} already there`);
+      } else {
+        setToast(`${plural(n)} added to your Grocery List`);
+      }
+      logEvent("home_recipe_detail_addToGroceryCTA", {
+        mealId: meal.id,
+        ...(meal.name ? { mealName: meal.name } : {}),
+        added: n,
+        skipped,
+      });
+    } catch (err: any) {
+      // 🔑 The one failure worth naming. The list is derived from the week's
+      // plan, so with no plan there is nothing to add to — and "Try again"
+      // would send the member round a loop that cannot succeed.
+      const noPlan = /no meal plan/i.test(String(err?.message ?? ""));
+      setToast(
+        noPlan
+          ? "Your plan for this week isn't ready yet"
+          : "That didn't go through. Try again.",
+      );
+    } finally {
+      setAddingToGrocery(false);
+    }
+  };
+
   const handleMoreRecipes = () => {
     if (siblings.length === 0) return;
     const [next, ...rest] = siblings;
@@ -815,9 +1335,25 @@ export function RecipeDetailScreen() {
       ? { uri: detail.imageAsset }
       : null;
 
-  /** The chosen day's planned meals — what the member picks between. */
-  const dayMeals: MyPlanSlot[] =
+  /** Everything actually planned on the chosen day. */
+  const daySlots: MyPlanSlot[] =
     plan?.days.find((d) => d.date === addDate)?.slots.filter((sl) => sl.recipe) ?? [];
+
+  /**
+   * What the member picks between — the day's meals MINUS this recipe.
+   *
+   * 🔴 Bryan, 2026-10-30: *"fix 'Add to plan' so a recipe can't replace
+   * itself."* Without this filter the sheet offered the slot this very recipe
+   * already occupies, and tapping it swapped the meal for itself: a write, a
+   * fresh plan revision, and nothing changed on screen. It also made Bryan's
+   * multiple-slots case ambiguous, since the same title appeared twice with
+   * no way to tell which was which.
+   *
+   * 📌 Matched on the MEAL id, not the version. A different version of the
+   * same recipe is still the same meal to a member, so replacing one with the
+   * other is still a no-op worth preventing.
+   */
+  const dayMeals: MyPlanSlot[] = daySlots.filter((sl) => sl.recipe!.id !== meal.id);
 
   const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
   /**
@@ -826,6 +1362,50 @@ export function RecipeDetailScreen() {
    * there is nothing to add and the button must not pretend otherwise.
    */
   const canAdd = Boolean(detail?.recipeVersionId);
+
+  /**
+   * 🔑 LANG'S TWO BOTTOM-BAR STATES ARE SET BY THE ENTRY POINT, not by a
+   * component variant. Both bars are the same `BottomContainer` at the same
+   * position; only the third button differs:
+   *
+   *   from Explore — the recipe is not in the plan — `＋ Add to plan`
+   *   from My Plan — it already is                 — `↔ Change meal`
+   *
+   * Proven structurally rather than guessed: the one top-level `Change meal`
+   * (`5061:55849`) sits in her **Meals** section, the base Recipe Details
+   * frames (`5046:43282`) carry `Add to plan`, and a frame named "Ingredient
+   * swapped" exists TWICE with a different bar in each — the copy placed
+   * after a My Plan frame says `Change meal`. Same screen, same component;
+   * only the flow differs.
+   *
+   * `plannedMeal` is exactly that signal — My Plan is the only caller that
+   * sends it — so the state costs nothing to know.
+   *
+   * 📌 Her file has FOUR third-button labels in total; the other two
+   * (`Swap into plan`, `Change to this meal`) are single full-width bars on
+   * the saved-meal and mid-swap screens, which we do not ship.
+   */
+  const inPlan = Boolean(plannedMeal);
+
+  /**
+   * "Change meal" → My Plan's existing edit sheet, opened on this exact slot.
+   *
+   * Bryan ruled this on 2026-10-30 over building a second picker here:
+   * *"Let's use the existing My Plan edit sheet… No need to build a separate
+   * picker."* Which is also why this screen gained no swap UI of its own.
+   */
+  const openPlanEditor = useCallback(() => {
+    if (!plannedMeal) return;
+    navigation.navigate("Tabs", {
+      screen: "Meals",
+      params: {
+        openEditFor: {
+          plannedMealId: plannedMeal.id,
+          localDate: plannedMeal.localDate,
+        },
+      },
+    });
+  }, [navigation, plannedMeal]);
 
   const openAddSheet = useCallback(() => {
     setAddSheet(true);
@@ -914,19 +1494,25 @@ export function RecipeDetailScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <ScrollView
+    <View style={[styles.container, dyn.container, dyn.container]}>
+      {/* 🔴 Animated.ScrollView, not ScrollView: a native-driven
+          `Animated.event` is an AnimatedEvent OBJECT, not a function, so a
+          plain ScrollView throws `onScroll is not a function (it is Object)`
+          on the first scroll. */}
+      <Animated.ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
           // Clears the persistent action bar.
-          { paddingBottom: insets.bottom + ACTION_BAR_H + 32 },
+          { paddingBottom: insets.bottom + ACTION_BAR_H + ACTION_BAR_LIFT + 32 },
         ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {/* Hero */}
-        <View style={styles.heroContainer}>
+        <View style={[styles.heroContainer, dyn.heroContainer, dyn.heroContainer]}>
           {heroSource ? (
             <Image
               source={heroSource}
@@ -938,6 +1524,76 @@ export function RecipeDetailScreen() {
               <Text style={styles.heroPlaceholderText}>🍽️</Text>
             </View>
           )}
+          {/* 🔴 The bottom fade. Lang's hero DISSOLVES into the page
+              (`5046:43237`); ours ended at a hard sheet edge.
+
+              ⚠️ This is a gradient that must NOT match its page to be
+              invisible — it must BECOME it. It ends on `palette.outerBg`,
+              which is exactly the sheet's own fill, so the image resolves
+              into the page with no seam in either mode. Sized numerically
+              rather than with `width="100%"`, which does not fill in
+              react-native-svg. */}
+          <Svg
+            style={styles.heroFade}
+            width={SCREEN_WIDTH}
+            height={HERO_HEIGHT - HERO_FADE_START}
+          >
+            <Defs>
+              <LinearGradient
+                id="heroFade"
+                gradientUnits="userSpaceOnUse"
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={HERO_FADE_LEN}
+              >
+                <Stop offset="0" stopColor={pageSurface} stopOpacity={0} />
+                <Stop offset="0.55" stopColor={pageSurface} stopOpacity={0.72} />
+                <Stop offset="1" stopColor={pageSurface} stopOpacity={1} />
+              </LinearGradient>
+            </Defs>
+            {/* The RECT runs to the hero's bottom edge while the GRADIENT is
+                only defined over `HERO_FADE_LEN`. The default `pad` spread
+                fills the rest with the final stop, so the bottom of the image
+                is solid `innerBg` — which is what lets the title and chips sit
+                on it and still read. */}
+            <Rect
+              width={SCREEN_WIDTH}
+              height={HERO_HEIGHT - HERO_FADE_START}
+              fill="url(#heroFade)"
+            />
+          </Svg>
+          {/* 🔴 Title + chips live ON the image, as in `5046:43237` — her title
+              top lands at 76% of the image, two thirds through the fade.
+              📌 COLOURS stay ours (`dyn.text` / `dyn.tag`), not her white-on-
+              brown: our page is WHITE by day, so a white title would vanish
+              into the end of its own fade. Lang's LAYOUT, our palette. */}
+          <View style={styles.heroTitleBlock}>
+            <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
+            <View style={styles.tagRow}>
+              {prepTime ? (
+                <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>{formatPrepTime(prepTime, "minutes")}</Text>
+                </View>
+              ) : null}
+              <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                <Text style={[styles.tagText, dyn.text, dyn.text]}>{capitalizeSlot(meal.time)}</Text>
+              </View>
+              {dietTags.map((d) => (
+                <View key={d} style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>{d}</Text>
+                </View>
+              ))}
+              {servingsBase ? (
+                <View style={[styles.tag, dyn.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text, dyn.text]}>
+                    {servingsBase}{" "}
+                    {servingsBase === 1 ? "serving" : "servings"}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
           {/* Top scrim so floating header buttons stay readable */}
           <Svg
             style={StyleSheet.absoluteFill}
@@ -956,34 +1612,7 @@ export function RecipeDetailScreen() {
         </View>
 
         {/* Content sheet (overlaps hero) */}
-        <View style={styles.sheet}>
-          {/* Title + tag chips */}
-          <View style={styles.titleBlock}>
-            <Text style={styles.mealName}>{meal.name}</Text>
-            <View style={styles.tagRow}>
-              {prepTime ? (
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>{formatPrepTime(prepTime, "minutes")}</Text>
-                </View>
-              ) : null}
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{capitalizeSlot(meal.time)}</Text>
-              </View>
-              {dietTags.map((d) => (
-                <View key={d} style={styles.tag}>
-                  <Text style={styles.tagText}>{d}</Text>
-                </View>
-              ))}
-              {servingsBase ? (
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>
-                    {servingsBase}{" "}
-                    {servingsBase === 1 ? "serving" : "servings"}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
+        <View style={[styles.sheet, dyn.sheet, dyn.sheet]}>
 
           {/* 🔴 NO NUTRITION HERE, DELIBERATELY — this screen used to render a
               Calories pill, Protein/Carbs/Fat/Fiber chips and a
@@ -1008,7 +1637,7 @@ export function RecipeDetailScreen() {
             <View style={styles.esterBlock}>
               <View style={styles.esterEyebrowRow}>
                 <View style={styles.esterEyebrowDot} />
-                <Text style={styles.esterEyebrowText}>Message from Ester</Text>
+                <Text style={[styles.esterEyebrowText, dyn.text, dyn.text]}>Message from Ester</Text>
               </View>
               <AiConsentNudge />
             </View>
@@ -1016,7 +1645,7 @@ export function RecipeDetailScreen() {
             <View style={styles.esterBlock}>
               <View style={styles.esterEyebrowRow}>
                 <View style={styles.esterEyebrowDot} />
-                <Text style={styles.esterEyebrowText}>Message from Ester</Text>
+                <Text style={[styles.esterEyebrowText, dyn.text, dyn.text]}>Message from Ester</Text>
               </View>
               <View style={styles.esterCard}>
                 <CardGradient colors={TYPE_GRADIENT[metabolicType]} />
@@ -1040,12 +1669,9 @@ export function RecipeDetailScreen() {
             </View>
           ) : null}
 
-          {/* Divider */}
-          <View style={styles.divider} />
-
           {/* Ingredients */}
           {ingredients.length > 0 ? (
-            <View style={styles.section}>
+            <View style={styles.ingredientsSection}>
               {/* 🔑 The control sits on its OWN row, not beside the title.
                   Three word labels are much wider than the +/− stepper they
                   replaced, and sharing the row squeezed the heading until
@@ -1055,9 +1681,9 @@ export function RecipeDetailScreen() {
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <View style={styles.sectionTitleRow}>
-                    <Text style={styles.sectionTitle}>Ingredients</Text>
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>
+                    <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Ingredients</Text>
+                    <View style={[styles.countBadge, dyn.countBadge, dyn.countBadge]}>
+                      <Text style={[styles.countBadgeText, dyn.text, dyn.text]}>
                         {ingredients.length}
                       </Text>
                     </View>
@@ -1065,7 +1691,7 @@ export function RecipeDetailScreen() {
                 </View>
               </View>
               <View style={styles.servingsRow}>
-                <View style={styles.servingsSegmented}>
+                <View style={[styles.servingsSegmented, dyn.segmentTrack]}>
                   {SERVING_OPTIONS.map((m) => {
                     const active = m === multiplier;
                     return (
@@ -1074,6 +1700,7 @@ export function RecipeDetailScreen() {
                         style={[
                           styles.segment,
                           active && styles.segmentActive,
+                          active && dyn.segmentActive,
                         ]}
                         onPress={() => chooseMultiplier(m)}
                         accessibilityRole="button"
@@ -1082,8 +1709,8 @@ export function RecipeDetailScreen() {
                       >
                         <Text
                           style={[
-                            styles.segmentText,
-                            active && styles.segmentTextActive,
+                            styles.segmentText, dyn.text,
+                            active && dyn.segmentTextActive,
                           ]}
                         >
                           {SERVING_LABEL[m]}
@@ -1128,6 +1755,7 @@ export function RecipeDetailScreen() {
                       }
                       style={[
                         styles.ingredientRow,
+                        dyn.dividerBorder,
                         idx === 0 ? styles.ingredientRowFirst : null,
                       ]}
                       accessibilityRole={plannedMeal ? "button" : undefined}
@@ -1139,17 +1767,30 @@ export function RecipeDetailScreen() {
                           : undefined
                       }
                     >
-                      <Text style={styles.ingredientQty} numberOfLines={2}>
-                        {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
-                      </Text>
-                      <Text style={styles.ingredientName}>
-                        {shownName}
-                        {sub ? (
-                          // Lang's `5055:47291` marks the changed row in
-                          // italics beside the name.
-                          <Text style={styles.ingredientSwapped}> Swapped</Text>
-                        ) : null}
-                      </Text>
+                      {/* 🔴 NAME over QUANTITY, as `5046:43885` stacks them —
+                          not quantity-left / name-right. Her row is a column:
+                          the ingredient in Catalogue 16 on `Text Strong`, the
+                          amount beneath it as an "Eyebrow text" in the SERIF
+                          face at 14 on `Text (alt)`. Audit item 9. */}
+                      <View style={styles.ingredientText}>
+                        <Text
+                          style={[styles.ingredientName, dyn.text]}
+                          numberOfLines={2}
+                        >
+                          {shownName}
+                          {sub ? (
+                            // Lang's `5055:47291` marks the changed row in
+                            // italics beside the name.
+                            <Text style={styles.ingredientSwapped}> Swapped</Text>
+                          ) : null}
+                        </Text>
+                        <Text
+                          style={[styles.ingredientQty, dyn.ingredientQty]}
+                          numberOfLines={1}
+                        >
+                          {qtyDisplay} {abbreviateMeasurement(ing.measurement)}
+                        </Text>
+                      </View>
                       {/* 🔴 A visible affordance. The row was already
                           pressable but drew nothing, so the only way to find
                           ingredient swaps was to tap a list that looks like
@@ -1158,16 +1799,51 @@ export function RecipeDetailScreen() {
                         <View
                           style={[
                             styles.ingredientAction,
-                            sub ? styles.ingredientActionOn : null,
+                            dyn.swapButton,
+                            sub ? dyn.swapButtonOn : null,
                           ]}
                         >
-                          {sub ? <RevertGlyph /> : <SwapGlyph />}
+                          {sub ? <RevertGlyph /> : <SwapGlyph color={ghostGlyph} />}
                         </View>
                       ) : null}
                     </Row>
                   );
                 })}
               </View>
+
+              {/* ── Add ingredients to Grocery List ──────────────────────
+                  Lang `5046:43899`: full width, 44 tall, radius 4 (XSmall),
+                  her cart glyph at 24, gap 12, Catalogue Medium 14.
+
+                  🔑 Her ghost token resolves to `#fafdfe3d` on `#fafdfe`
+                  text, because she draws this on the BROWN Recipe Details
+                  page. We still ship a white sheet, where white-at-24% is
+                  invisible — so this uses the SAME token's light-surface
+                  values (`rgba(54,20,22,0.12)` with brown text), which is
+                  what her own light mode resolves to. Same button, the mode
+                  that fits the surface we actually have. Revisit when the
+                  page treatment is settled. */}
+              <TouchableOpacity
+                style={[
+                  styles.addToGrocery,
+                  dyn.ghost,
+                  addingToGrocery ? styles.addToGroceryBusy : null,
+                ]}
+                onPress={handleAddToGroceryList}
+                disabled={addingToGrocery}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: addingToGrocery }}
+                accessibilityLabel="Add ingredients to Grocery List"
+              >
+                {addingToGrocery ? (
+                  <ActivityIndicator size="small" color={ghostGlyph} />
+                ) : (
+                  <CartGlyph color={ghostGlyph} />
+                )}
+                <Text style={[styles.addToGroceryText, dyn.ghostText]}>
+                  Add ingredients to Grocery List
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -1192,15 +1868,13 @@ export function RecipeDetailScreen() {
 
           {/* Instructions */}
           {steps.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Instructions</Text>
+            <View style={styles.instructionsSection}>
+              <Text style={[styles.sectionTitle, dyn.text, dyn.text]}>Instructions</Text>
               <View style={styles.stepsList}>
                 {steps.map((step, idx) => (
-                  <View key={idx} style={styles.stepCard}>
-                    <Text style={styles.stepLabel}>
-                      {STEP_LABELS[idx] ?? `STEP ${idx + 1}`}
-                    </Text>
-                    <Text style={styles.stepText}>{step}</Text>
+                  <View key={idx} style={styles.step}>
+                    <Text style={[styles.stepLabel, dyn.text]}>Step {idx + 1}</Text>
+                    <Text style={[styles.stepText, dyn.text]}>{step}</Text>
                   </View>
                 ))}
               </View>
@@ -1224,15 +1898,15 @@ export function RecipeDetailScreen() {
                 <Text style={styles.moreCtaText}>
                   I have some more recipes!
                 </Text>
-                <View style={styles.moreCtaButton}>
-                  <Text style={styles.moreCtaButtonLabel}>Show me!</Text>
-                  <Text style={styles.moreCtaButtonGlyph}>→</Text>
+                <View style={[styles.moreCtaButton, dyn.moreCtaButton, dyn.moreCtaButton]}>
+                  <Text style={[styles.moreCtaButtonLabel, dyn.text, dyn.text]}>Show me!</Text>
+                  <Text style={[styles.moreCtaButtonGlyph, dyn.text, dyn.text]}>→</Text>
                 </View>
               </View>
             </TouchableOpacity>
           ) : null}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* ── Persistent actions ────────────────────────────────────────────
           Lang's "Recipe Details - Scroll" frame (5046:44118) carries a bottom
@@ -1248,10 +1922,30 @@ export function RecipeDetailScreen() {
           contract: all six `ester_opened_from_*` events declared, and this
           entry passes `recipe_version_id` plus the serving and substitution
           state r8 requires. The other five entries are still unbuilt. */}
-      <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
+      <View
+        style={[
+          styles.actionBar,
+          // 🔑 Cook is the only button that grows, so without it the other two
+          //    hug their labels and strand a gap on the right. Centre them.
+          !canCook && styles.actionBarCentered,
+          { paddingBottom: (insets.bottom || 12) + ACTION_BAR_LIFT },
+        ]}
+        pointerEvents="box-none"
+      >
+        {/* 🔑 Lang's bar has NO slab behind it — `5061:54966` is a gradient
+            scrim that fades to nothing, so the buttons read as floating over
+            the content. This was a solid `K.brown` fill with a hairline top
+            border, which is why it looked like a different component.
+            ⚠️ SVG gradients band ~2.5× coarser on Android than iOS, so this
+            is checked on the S24, not the simulator. */}
         {canCook ? (
           <Pressable
-            style={[styles.actionButton, styles.actionSecondary]}
+            style={[
+              styles.actionButton,
+              styles.actionButtonTight,
+              styles.actionGrow,
+              styles.actionPrimary,
+            ]}
             onPress={() =>
               navigation.navigate("CookMode", {
                 recipeVersionId: detail!.recipeVersionId as string,
@@ -1263,26 +1957,60 @@ export function RecipeDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Start cook mode"
           >
-            <Text style={styles.actionSecondaryText}>Cook</Text>
+            <CookGloss />
+            <ChefHatGlyph color={K.brown} size={24} />
+            <Text style={styles.actionPrimaryText} numberOfLines={1}>
+              Cook
+            </Text>
           </Pressable>
         ) : null}
         <Pressable
-          style={[styles.actionButton, styles.actionSecondary]}
+          style={[
+            styles.actionButton,
+            // Only when Cook is up — see `actionButtonTight`.
+            canCook && styles.actionButtonTight,
+            styles.actionSecondary,
+            dyn.ghost,
+          ]}
           onPress={openAskEster}
           accessibilityRole="button"
           accessibilityLabel="Ask Ester"
         >
-          <Text style={styles.actionSecondaryText}>Ask Ester</Text>
+          <Image
+            source={TYPE_LOGO[metabolicType]}
+            style={styles.actionEsterMark}
+            resizeMode="contain"
+          />
+          <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
+            Ask Ester
+          </Text>
         </Pressable>
         <Pressable
-          style={[styles.actionButton, styles.actionPrimary, !canAdd && styles.actionDisabled]}
-          disabled={!canAdd || adding}
-          onPress={openAddSheet}
+          style={[
+            styles.actionButton,
+            canCook && styles.actionButtonTight,
+            styles.actionSecondary,
+            dyn.ghost,
+            !inPlan && !canAdd && styles.actionDisabled,
+          ]}
+          disabled={inPlan ? false : !canAdd || adding}
+          onPress={inPlan ? openPlanEditor : openAddSheet}
           accessibilityRole="button"
-          accessibilityLabel="Add to plan"
+          accessibilityLabel={inPlan ? "Change meal" : "Add to plan"}
         >
-          <Text style={styles.actionPrimaryText}>
-            {adding ? "Adding…" : addedTo ? "Added" : "Add to plan"}
+          {inPlan ? (
+            <SwapActionGlyph color={ghostGlyph} size={24} />
+          ) : adding || addedTo ? null : (
+            <PlusGlyph color={ghostGlyph} size={24} />
+          )}
+          <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
+            {inPlan
+              ? "Change meal"
+              : adding
+                ? "Adding…"
+                : addedTo
+                  ? "Added"
+                  : "Add to plan"}
           </Text>
         </Pressable>
       </View>
@@ -1337,7 +2065,15 @@ export function RecipeDetailScreen() {
                   member to pick one — the thing being replaced has to be
                   visible, or "swap" is a guess. */}
               {dayMeals.length === 0 ? (
-                <Text style={styles.addSub}>Nothing planned that day yet.</Text>
+                <Text style={styles.addSub}>
+                  {/* Two different empty states. A day with nothing on it is
+                      not the same as a day whose only meal is the one being
+                      looked at, and saying "nothing planned" there would be
+                      a lie the member can see. */}
+                  {daySlots.length > 0
+                    ? "This meal is already planned for that day."
+                    : "Nothing planned that day yet."}
+                </Text>
               ) : (
                 dayMeals.map((slot) => (
                   <Pressable
@@ -1366,38 +2102,75 @@ export function RecipeDetailScreen() {
         style={styles.floatingHeader}
         pointerEvents="box-none"
       >
+        {/* Fades in with the title, so the hero is never covered at rest. */}
+        <Animated.View
+          style={[
+            styles.headerScrimBox,
+            { height: insets.top + 72, opacity: condensed },
+          ]}
+          pointerEvents="none"
+        >
+          <HeaderScrim color={pageSurface} />
+        </Animated.View>
         <View style={styles.floatingHeaderRow}>
           {/* An arrow, not a ✕: this screen is PUSHED (see MainNavigator), and
               Lang's frame draws arrow_back here. A ✕ promises a sheet that
-              dismisses downward, which is no longer what happens. Sized 18 to
-              sit with the ↗ and the 16pt bookmark beside it rather than at the
-              frame's 24, which would tower over both. */}
-          <TouchableOpacity
-            style={styles.headerCloseButton}
-            onPress={handleClose}
-            hitSlop={8}
-            accessibilityLabel="Back"
-          >
-            <ArrowBackIcon size={18} color={K.brown} />
-          </TouchableOpacity>
+              dismisses downward, which is no longer what happens.
+
+              🔴 NO background. Her back button is the one control in the
+              header on `Ghost Surface/Fully Transparent Surface` (#fafdfe00)
+              while share and save sit on the 24% ghost — the arrow floats on
+              the hero image on its own. We had it on an opaque `nestedBg`
+              pill, which read as a third filled button.
+
+              🔴 Sized 24, her slot size. It was 18, chosen to sit beside a
+              "↗" text character that is now gone; at 18 her arrow renders
+              ~11pt and looks undersized next to the share glyph. */}
+          <View style={styles.headerLeftGroup}>
+            <TouchableOpacity
+              style={[styles.headerCloseButton, dyn.headerCloseButton]}
+              onPress={handleClose}
+              hitSlop={8}
+              accessibilityLabel="Back"
+            >
+              <ArrowBackIcon size={24} color={ghostGlyph} />
+            </TouchableOpacity>
+            {/* The truncated recipe name, between the arrow and the two ghost
+                buttons — `I5046:44136;4452:7977`, Catalogue Regular 16 with
+                -0.16 tracking on Text Strong, one line, tail ellipsis.
+                `accessibilityElementsHidden` because the screen's own title
+                is already announced; this is a visual echo of it. */}
+            <Animated.Text
+              style={[styles.headerTitle, dyn.text, { opacity: condensed }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {meal.name}
+            </Animated.Text>
+          </View>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.ghost]}
               onPress={handleShare}
               hitSlop={8}
               accessibilityLabel="Share recipe"
             >
-              <Text style={styles.headerActionGlyph}>↗</Text>
+              <ShareGlyph color={ghostGlyph} size={24} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, dyn.headerActionButton, dyn.ghost]}
               onPress={handleToggleFavorite}
               hitSlop={8}
               accessibilityLabel={
                 isFavorited ? "Remove from favorites" : "Save to favorites"
               }
             >
-              <BookmarkIcon filled={isFavorited} color={K.brown} />
+              {/* 13x16 is exactly how large her bookmark sits inside the
+                  24pt slot (her asset's path spans x 5.5-18.5, y 3.5-19.5),
+                  so the component's own default is already her size. */}
+              <BookmarkIcon filled={isFavorited} color={ghostGlyph} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1548,7 +2321,7 @@ export function RecipeDetailScreen() {
           <View style={styles.revertCompare}>
             <View style={styles.revertSide}>
               <Text style={styles.revertLabel}>Swapped Ingredient</Text>
-              <Text style={[styles.revertName, styles.revertNameOld]}>
+              <Text style={[styles.revertName, dyn.text, styles.revertNameOld]}>
                 {revertFor?.toIngredientName ?? ""}
               </Text>
             </View>
@@ -1565,7 +2338,7 @@ export function RecipeDetailScreen() {
             </View>
             <View style={styles.revertSide}>
               <Text style={styles.revertLabel}>Original Ingredient</Text>
-              <Text style={styles.revertName}>
+              <Text style={[styles.revertName, dyn.text, dyn.text]}>
                 {revertFor?.fromIngredientName ?? ""}
               </Text>
             </View>
@@ -1667,6 +2440,24 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  /**
+   * 🔴 Runs to the hero's BOTTOM (`bottom: 0`), not to the sheet's top edge.
+   *
+   * The first cut ended the fade at `bottom: SHEET_OVERLAP` — the sheet's top
+   * edge — reasoning that nothing below it is visible. The ramp itself was
+   * correct (measured on device: photo -> `#fafdfe` by the sheet edge) but
+   * the sheet's **swept top-right corner** does not paint, so that corner
+   * kept showing raw, un-faded photo: a bright notch exactly where the seam
+   * was supposed to disappear.
+   * 🔑 "Hidden behind a sibling" is not the same as hidden — check what the
+   *    sibling's corner radius leaves uncovered.
+   */
+  heroFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   heroPlaceholder: {
     flex: 1,
     alignItems: "center",
@@ -1675,22 +2466,33 @@ const styles = StyleSheet.create({
   heroPlaceholderText: {
     fontSize: 64,
   },
-  // Sheet (overlaps hero with rounded top-right corner)
+  /**
+   * 🔴 Flat. It used to pull up over the hero by 90, carry a 64pt swept
+   * top-right corner and cast a shadow upward — none of which is in
+   * `5046:43237`. The image now dissolves into this fill instead of being cut
+   * by it, so there is no edge left to decorate: the overlap, the radius and
+   * the shadow all went with the cut.
+   */
   sheet: {
-    marginTop: -90,
     backgroundColor: K.white,
-    borderTopRightRadius: 64,
     paddingHorizontal: 18,
-    paddingTop: 30,
+    paddingTop: SHEET_PAD_TOP,
     paddingBottom: 25,
-    gap: 30,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 19.2,
-    shadowOffset: { width: 0, height: -4 },
+    gap: SHEET_GAP,
   },
-  // Title block
-  titleBlock: {
+  /**
+   * The title + chips, over the image. Bottom-anchored so the block grows
+   * UPWARD into the fade as the title wraps — a 3-line title must not push
+   * the chips off the picture.
+   * 📌 18, not her 24: it aligns with the sheet's existing padding so the
+   * title sits flush with the ingredient rows beneath it. Her frame has both
+   * at 24; ours has had 18 in the sheet all along. For Lang.
+   */
+  heroTitleBlock: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: HERO_TITLE_BOTTOM,
     gap: 12,
   },
   mealName: {
@@ -1790,10 +2592,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   // Section
-  divider: {
-    height: 1,
-    backgroundColor: K.border,
-  },
   /* Cook Mode entry. Recipe Details is the LIGHT surface (bone bg, dark
      text), unlike My Plan and Cook Mode itself — so this is a dark button on
      bone, the inverse of the "Done" button inside Cook Mode. */
@@ -1810,8 +2608,33 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: K.bone,
   },
-  section: {
-    gap: 30,
+  /**
+   * Instructions. Her `Instructions` frame (`5046:43272`) puts the heading at
+   * y 0..24 with the first Step at 56 — **32** between them — and sits at
+   * y=1101 where `Ingredients` ended at 1061, so **40** above it.
+   *
+   * 📌 The 40 is expressed as a top-up over `SHEET_GAP` because `gap` already
+   * supplies 30 between every pair of the sheet's children and RN cannot
+   * exclude one pair. Written as arithmetic so it follows if `SHEET_GAP`
+   * ever moves, rather than sitting there as a bare 10.
+   */
+  instructionsSection: {
+    gap: 32,
+    marginTop: 40 - SHEET_GAP,
+  },
+  /**
+   * 🔴 The Ingredients section runs on 16, not the shared `section`'s 30.
+   *
+   * Her `Ingredients` frame (`5046:43250`) stacks header 0..32, list 48..418,
+   * button 434..478 — **16 of air on each side of the table**. Ours inherited
+   * `gap: 30` and then I added a `marginTop: 16` on top of it, which is how
+   * the first attempt landed on 46 instead of 16. `gap` applies between every
+   * pair of children, so a single section cannot carry two rhythms: the
+   * Ingredients block gets its own container and the shared one is left alone
+   * for Instructions.
+   */
+  ingredientsSection: {
+    gap: 16,
   },
   sectionHeaderRow: {
     flexDirection: "row",
@@ -1828,38 +2651,71 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  /**
+   * 🔴 Her `Title 3` is **20**, not 24. Both headings that use this style —
+   * `Ingredients` (`5046:43253`) and `Instructions` (`5046:43274`) — are
+   * Catalogue Regular 20 at -1% tracking in her file, so this is one change
+   * for both and not a per-section override. The -1% ratio we already had
+   * right; only the size was over.
+   */
   sectionTitle: {
     fontFamily: fonts.catalogue,
-    fontSize: 24,
-    letterSpacing: -0.24,
-    color: K.brown,
+    fontSize: 20,
+    letterSpacing: -0.2,
   },
   countBadge: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: K.border,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
+  /**
+   * `Caption Quandrant` on her counter: Style/Serif (= Quadrant Text — the
+   * token names in this file are INVERTED) at 12, not Catalogue 14.
+   */
   countBadgeText: {
-    fontFamily: fonts.catalogue,
-    fontSize: 14,
-    letterSpacing: -0.14,
-    color: K.brown,
+    fontFamily: fonts.quadrant,
+    fontSize: 12,
+    letterSpacing: -0.12,
   },
-  servingsRow: { marginTop: 12, alignItems: "flex-start" },
+  servingsRow: { alignItems: "flex-start" },
+  // 🔑 Geometry only — every colour here is mode-dependent and lives in `dyn`.
   servingsSegmented: {
     flexDirection: "row",
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "rgba(54,20,22,0.08)",
   },
   segment: { paddingHorizontal: 14, paddingVertical: 8 },
-  segmentActive: { backgroundColor: K.brown, borderRadius: 999 },
-  segmentText: { fontFamily: fonts.catalogue, fontSize: 13, color: K.brown },
-  segmentTextActive: { color: K.cream },
+  segmentActive: { borderRadius: 999 },
+  segmentText: { fontFamily: fonts.catalogue, fontSize: 13 },
+  // Add ingredients to Grocery List (Lang 5046:43899)
+  addToGrocery: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    // 📌 Her gap is 12 and her radius is XSmall (4) — not the 999 the action
+    // bar uses. Those are different components in her file, so they are
+    // different here too.
+    gap: 12,
+    height: 44,
+    borderRadius: 4,
+    backgroundColor: "rgba(54, 20, 22, 0.12)",
+  },
+  addToGroceryBusy: { opacity: 0.6 },
+  addToGroceryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.brown,
+  },
   // Ingredients list
+  /**
+   * 📌 16 above the table. Her `Ingredients` frame (`5046:43250`) stacks
+   * header 0..32, list 48..418, button 434..478 — so exactly 16 of air on
+   * each side of the table. The gap below is `addToGrocery`'s existing
+   * marginTop: 16; this is the one that was missing (the list sat flush
+   * against the serving control).
+   */
   ingredientsList: {
     gap: 0,
   },
@@ -1881,32 +2737,69 @@ const styles = StyleSheet.create({
    * 📌 Rows are ~12dp taller now. The first row no longer needs its own top
    * padding — it keeps only the top border, which is all it was ever for.
    */
+  /**
+   * 🔴 The table is ONE BORDERED BOX, not a stack of rules.
+   *
+   * `5046:43884` builds it row by row: the FIRST row carries a 0.5 border on
+   * all four sides plus `rounded-tr-[Large]` (24); every row after it adds
+   * `border-b` / `border-l` / `border-r` only. Stacked, that reads as a
+   * continuous outside border with internal horizontal rules — and the one
+   * swept corner at the top right, the same shape language as the sheet's old
+   * corner, now that the sheet has lost it.
+   * We drew the horizontal rules and nothing else, so there was no box.
+   *
+   * 📌 `paddingLeft: 12 / paddingRight: 16` are hers, and they are REQUIRED
+   * now rather than cosmetic: without them the quantity sits on the new left
+   * border and the swap button on the right one.
+   * 📌 Vertical padding stays 12/12 rather than her 16/18 — her rows are 74
+   * tall because they stack NAME over QUANTITY, and ours are one line
+   * (quantity left, name right). That difference is audit item 9 and is not
+   * settled; adopting her vertical padding on a single-line row would just
+   * make it airy.
+   */
   ingredientRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingTop: 12,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: K.border,
+    paddingLeft: 12,
+    paddingRight: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
   },
   ingredientRowFirst: {
-    borderTopWidth: 1,
-    borderTopColor: K.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopRightRadius: 24,
   },
-  ingredientQty: {
-    width: 70,
+  /**
+   * Her row's text block (`I5046:43885;4811:40445`): a column, `gap: 4`,
+   * taking the width the swap button leaves.
+   */
+  ingredientText: {
+    flex: 1,
+    gap: 4,
+  },
+  /**
+   * 📌 Catalogue REGULAR at her `Body 1`, not the bold this used to be — the
+   * name no longer needs weight to separate it from the amount now that the
+   * amount sits beneath it in a different face.
+   */
+  ingredientName: {
     fontFamily: fonts.catalogue,
     fontSize: 16,
     letterSpacing: -0.16,
-    color: K.brown,
   },
-  ingredientName: {
-    flex: 1,
-    fontFamily: fonts.catalogueBold,
-    fontSize: 16,
-    letterSpacing: -0.16,
-    color: K.brown,
+  /**
+   * The amount, as her "Eyebrow text": `Body 2 Quandrant` — Style/Serif, i.e.
+   * **Quadrant**, at 14 on `Text (alt)`. The token names in this file are
+   * inverted, so Style/Serif is the Quadrant face.
+   */
+  ingredientQty: {
+    fontFamily: fonts.quadrant,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
   /** Lang marks the changed row beside the name, in italics. */
   ingredientSwapped: {
@@ -1915,20 +2808,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: K.textMuted,
   },
+  /**
+   * Her `Rounded Icon button` on the ingredient row (`I5046:43885;5055:46608`):
+   * a 16pt icon in `p-[4px]` with `rounded-[999px]`, so **24x24** — not the
+   * 28pt ring this was. Filled `Page Surface (alt)` and hairlined `Divider
+   * Line` at **0.5**, both supplied by `dyn.swapButton`.
+   */
   ingredientAction: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: K.border,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: -2,
   },
-  ingredientActionOn: {
-    borderColor: K.brown,
-    backgroundColor: K.cream,
-  },
+  /**
+   * The SUBSTITUTED state. Its ring was `K.brown` — the page at night, so the
+   * ring vanished; the cream fill kept it legible, which is why this was less
+   * obvious than the serving control. `dyn.swapButtonOn` supplies both.
+   */
+  ingredientActionOn: {},
   // Revert to original ingredient (Lang 5065:58762)
   revertCompare: {
     flexDirection: "row",
@@ -1988,31 +2888,44 @@ const styles = StyleSheet.create({
     letterSpacing: -0.15,
     color: K.textLight,
   },
-  // Instructions
+  /**
+   * 🔴 A STEP IS NOT A CARD. Her `Instructions` frame (`5046:43272`) is a
+   * plain vertical stack — no fill, no radius, no padding. The swept-corner
+   * card here was ours, never hers, and it was the last thing on the Meals
+   * audit never compared against her frame.
+   *
+   * 📏 Measured off the frame's own children rather than read off a comment:
+   * `Top` 0..112, then Steps at y=144, 213, 301, 389 with heights 37, 56, 56,
+   * 37 — every gap lands on **32**, including the one between the heading and
+   * step one. So `stepsList` runs on the same 32 as `instructionsSection`;
+   * the two containers exist only because the heading is a sibling, and both
+   * must stay equal or the rhythm breaks at step one.
+   */
   stepsList: {
-    gap: 12,
+    gap: 32,
   },
-  stepCard: {
-    backgroundColor: K.bone,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 40,
-    borderBottomLeftRadius: 8,
-    padding: 16,
-    gap: 10,
+  step: {
+    gap: 4,
   },
+  /**
+   * 🔑 The SERIF does the separating, not weight or colour — the same move as
+   * the ingredient rows. Her label is `Style/Serif` (Quadrant) at Caption 12
+   * in **Text Strong**, i.e. the same colour as the body it labels; only the
+   * face and the size differ. We had Catalogue BOLD in `K.sub`, which
+   * separated the wrong way round.
+   * 📌 `CookModeScreen` already labels its steps `Step {index + 1}` in
+   * Quadrant, so this is the app agreeing with itself, not a new string.
+   */
   stepLabel: {
-    fontFamily: fonts.catalogueBold,
+    fontFamily: fonts.quadrant,
     fontSize: 12,
     letterSpacing: -0.12,
-    color: K.sub,
   },
   stepText: {
     fontFamily: fonts.catalogue,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.16,
-    color: K.brown,
   },
   // More recipes CTA
   moreCta: {
@@ -2071,6 +2984,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  headerScrimBox: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
   floatingHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2078,30 +2997,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 21,
     paddingTop: 8,
   },
+  /**
+   * Back arrow + the condensed title. Her left group is `gap: 8`
+   * (`I5046:44136;4613:9845`: the 40pt button at x=0, the text at x=48).
+   *
+   * 🔑 `flexShrink: 1` and `minWidth: 0` are what let the TITLE truncate
+   * instead of shoving the two ghost buttons off the right edge. RN defaults
+   * `flexShrink` to 0, unlike the web — the same default that has the
+   * three-button bottom bar overflowing today.
+   */
+  headerLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontFamily: fonts.catalogue,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    flexShrink: 1,
+  },
+  /**
+   * 40x40 is her button: a 24pt icon in `p-[8px]` with `rounded-[999px]`.
+   * The FILL is set per mode in `dyn` — transparent for back, 24% ghost for
+   * share and save — so nothing static is declared here.
+   */
   headerCloseButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: K.bone,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
+  // Her `Buttons` row is gap 8, not 12 (`I5046:44136;4455:13089`).
   headerRightActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
   },
   headerActionButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: K.white,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerActionGlyph: {
-    fontSize: 18,
-    color: K.brown,
-    fontFamily: fonts.catalogue,
   },
   // Loading
   /* ── Swap ingredient (Lang 5046:44621) ──────────────────────────────
@@ -2207,28 +3147,141 @@ const styles = StyleSheet.create({
     minHeight: ACTION_BAR_H,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    // 🔑 Her gap is 8 and her side padding 24 (`px-[24px]` on the container).
+    gap: 8,
+    // 📌 DEVIATION from Lang's `px-[24px]`, measured not guessed: at 24 the
+    //    three buttons need ~976px of an S24's 954px and Cook truncates.
+    //    Her frame is 402pt and may not have been checked with all three
+    //    present. 16 buys the ~22px and is the smallest change that fits;
+    //    worth putting to her rather than quietly keeping.
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: K.brown,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(243,239,227,0.14)",
+    // 🔴🔴 NO background of ANY kind — not a slab, not a border, and not a
+    // gradient scrim either. `5046:43237` shows the ingredient list running
+    // straight under the buttons ("Olive oil", "Garlic powder · 1 sp" are
+    // both legible around them): they genuinely float over the content.
+    //
+    // I had a brown→transparent scrim here, reasoning from `5061:54966`'s
+    // gradient container. That gradient is the same colour as HER page, so on
+    // her brown screen it is invisible — but ours is white by day, so the
+    // same construction read as a solid band that hid the recipe behind it.
+    // 🔑 A gradient that matches its page is not a background. Look at the
+    //    rendered frame, not just the CSS.
   },
+  /**
+   * Lang's bottom bar (`5046:44118`, and `5061:55849` for the planned-meal
+   * variant). Her tokens, read from the frame rather than the render:
+   *
+   *   Blue Surface/Blue Surface    #92b4bd   ← the PRIMARY, and it is COOK
+   *   Blue Surface/ON Blue Strong  #361416
+   *   Ghost Surface/Ghost Surface  #fafdfe3d ← filled, NOT a transparent border
+   *   Ghost Surface/On Ghost Strong #fafdfe
+   *   Button  Catalogue Medium 14 / lineHeight 100 / letterSpacing 0
+   *
+   * 🔴 Four things were off before this: the primary was `K.cream` and sat on
+   * "Add to plan", the secondaries were a transparent 1px outline instead of a
+   * filled ghost, the type was regular 16 rather than Medium 14, and none of
+   * the three carried its icon.
+   *
+   * 📌 Still only the "Add to plan" variant. She also drew `5061:55849` with
+   * **Change meal** for a recipe already in the plan, and that state is NOT
+   * built — opening a planned meal still offers "Add to plan". Cole's call
+   * 2026-10-26: match the styling for the state we have, leave the second
+   * state for later.
+   */
+  /**
+   * 🔴 CORRECTED 2026-10-28 against `5061:54966`, which is the bar Lang
+   * actually drew. I had built from `5061:55849` and got the SHAPE wrong:
+   *
+   *   radius   999 (a pill)      ->  XSmall = **4**, same as every other
+   *                                  button in her file
+   *   width    all three flex:1  ->  only **Cook** grows; the other two hug
+   *                                  their label (`shrink-0` in her frame)
+   *   gap      6                 ->  8
+   *   padding  centred           ->  pl 10 / pr 12 / py 8, min-height 44
+   *   icons    16                ->  **24**
+   */
   actionButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 999,
+    flexDirection: "row",
+    minHeight: 44,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    paddingLeft: 10,
+    paddingRight: 12,
+    paddingVertical: 8,
   },
-  actionPrimary: { backgroundColor: K.cream },
-  actionPrimaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.brown },
-  actionSecondary: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "rgba(243,239,227,0.35)",
+  /**
+   * Only Cook grows. Hers is `flex-[1_0_0]` — grow 1, **shrink 0**, basis 0.
+   *
+   * 🔴 Two RN traps in a row here, both only visible on a device:
+   *   `flex: 1`      = grow 1 / **shrink 1** / basis 0%  -> Cook gave way and
+   *                    the label wrapped to "Coo / k"
+   *   `flexBasis: 0` = base width ZERO, and flexShrink only protects against
+   *                    shrinking below the BASIS, not below content -> "Co…"
+   * `basis: "auto"` is what actually means "at least my content, grow if
+   * there is room".
+   */
+  actionGrow: { flexGrow: 1, flexShrink: 0, flexBasis: "auto" },
+  /**
+   * 🔑 Cook is hidden when a recipe has no parsed cook steps
+   * (`cookStepCount === 0`), and Cook is the ONLY button that grows. Left as
+   * flex-start the two remaining ghost buttons sat jammed against the left
+   * edge with dead space to their right, which reads as a missing button
+   * rather than a two-button bar. Cole 2026-10-28: centre them instead.
+   *
+   * 📊 This is the COMMON case, not the rare one: measured on the local
+   * catalogue 2026-10-28, only **64 of 522** recipes have parsed cook steps.
+   * (Local DB, which drifts from prod — re-measure before quoting it.)
+   */
+  actionBarCentered: { justifyContent: "center" },
+  /**
+   * 🔴 THE THREE-BUTTON ROW DOES NOT FIT A 360dp SCREEN AT HER PADDING.
+   *
+   * Measured on the S24 (1080x2340 at density **480**, so scale 3.0 and the
+   * screen is **360dp** — not 392; read `adb shell wm density`, never infer
+   * it). With Cook present the row ran 48..1080 of 1080: right padding zero,
+   * "Add to plan" clipped by the screen edge.
+   *
+   * Two things stack up:
+   *   · **RN defaults `flexShrink` to 0**, unlike the web, so nothing gives —
+   *     the row overflows instead of compressing.
+   *   · Lang's frame is **402pt**. Her three buttons need ~376dp with 16dp
+   *     page padding: fits her artboard, **16dp over on this phone.** Same
+   *     shape as the 874-vs-780 problem in the onboarding audit.
+   *
+   * Nothing here can truncate — unlike the condensed header's title, these
+   * are three labels that all have to stay readable — so the space is bought
+   * from the buttons' own horizontal padding, and ONLY when all three are up.
+   * pl 10->6 / pr 12->8 frees 8dp per button, 24dp against a 16dp shortfall.
+   * 📌 It is her padding being trimmed, so it is on the list for her.
+   */
+  actionButtonTight: { paddingLeft: 6, paddingRight: 8 },
+  actionPrimary: {
+    backgroundColor: K.blue,
+    // The gloss is an absolute child, so the radius has to clip it.
+    overflow: "hidden",
+    // Her Cook carries a drop shadow the ghost buttons do not.
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    shadowOffset: { width: 0, height: 25 },
+    elevation: 6,
   },
-  actionSecondaryText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
+  actionPrimaryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.brown,
+  },
+  actionSecondary: { backgroundColor: "rgba(250,253,254,0.24)" },
+  actionSecondaryText: {
+    fontFamily: fonts.catalogueMedium,
+    fontSize: 14,
+    color: K.white,
+  },
+  /** 24 to match her icon size; the mark is per metabolic type. */
+  actionEsterMark: { width: 24, height: 24 },
   actionDisabled: { opacity: 0.4 },
   addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   addSheet: {

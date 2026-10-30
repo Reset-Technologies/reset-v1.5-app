@@ -184,7 +184,7 @@ function friendlyTime(hhmm: string): string {
   return mStr === "00" ? `${h12}${suffix}` : `${h12}:${mStr}${suffix}`;
 }
 
-export function MyPlanScreen({ navigation }: Props) {
+export function MyPlanScreen({ navigation, route }: Props) {
   const [plan, setPlan] = useState<MyPlanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -290,6 +290,44 @@ export function MyPlanScreen({ navigation }: Props) {
    * started on so an undo knows where to put it back.
    */
   const [acting, setActing] = useState<{ slot: MyPlanSlot; onDate: string } | null>(null);
+
+  /**
+   * "Change meal" on Recipe Details lands here (`MainTabParamList.Meals`).
+   *
+   * Bryan, 2026-10-30: *"Let's use the existing My Plan edit sheet for 'Change
+   * meal.' No need to build a separate picker."* So the whole feature on this
+   * side is: find the slot the member came from and open the sheet already
+   * built for it.
+   *
+   * 🔴 Matched on `plannedMealId` — the `planned_meal` ROW — not on the
+   * recipe. That is Bryan's *"if a recipe appears in multiple planned slots,
+   * make sure we're editing the right one rather than guessing"*: the same
+   * recipe can sit in Tuesday dinner and Thursday lunch, and only the row id
+   * tells them apart.
+   *
+   * 🔑 The param is cleared BEFORE the sheet opens, so dismissing it and
+   * re-selecting this tab does not re-open it. This screen is a tab and stays
+   * mounted, so a param left behind would fire again on every focus.
+   *
+   * 📌 A missing slot is not an error. The meal can legitimately be gone —
+   * swapped or removed from another surface while Recipe Details was open —
+   * and the honest response is to land on the plan and show nothing, rather
+   * than open a sheet pointed at a row that no longer exists.
+   */
+  useEffect(() => {
+    const target = route.params?.openEditFor;
+    if (!target || !plan) return;
+
+    navigation.setParams({ openEditFor: undefined });
+
+    const dayIndex = plan.days.findIndex((d) => d.date === target.localDate);
+    const day = dayIndex >= 0 ? plan.days[dayIndex] : undefined;
+    const slot = day?.slots.find((sl) => sl.id === target.plannedMealId);
+    if (!day || !slot) return;
+
+    setSelected(dayIndex);
+    setActing({ slot, onDate: day.date });
+  }, [route.params?.openEditFor, plan, navigation]);
 
   /**
    * The rejection drawer's options (P0 #11).

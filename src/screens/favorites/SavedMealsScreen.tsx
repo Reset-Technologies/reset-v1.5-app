@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { formatPrepTime } from "../../utils/prepTime";
 import {
   View,
@@ -11,16 +11,21 @@ import {
   Image,
   Dimensions,
   TextInput,
-  ActionSheetIOS,
-  Alert,
-  Platform,
+  Modal,
   Pressable,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
-import Svg, { Path } from "react-native-svg";
+import { ArrowBackIcon } from "../../components/PaywallIcons";
+import Svg, {
+  Path,
+  Defs,
+  Rect,
+  Stop,
+  LinearGradient as SvgLinearGradient,
+} from "react-native-svg";
 import { K } from "../../constants/colors";
 import { fonts, typography, spacing, radius } from "../../constants/typography";
 import { useAppPalette } from "../../hooks/useAppPalette";
@@ -55,9 +60,23 @@ const SORT_ORDER: SortKey[] = ["recent", "az", "quickest"];
 // pill padding / gap / row inset only on small screens; larger screens
 // (iPhone 16 Pro ~393pt and up) keep the original spacing untouched.
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+
+/** Sort menu geometry — shared by the layout maths and the stylesheet. */
+const MENU_W = 216;
+const MENU_ROW_H = 44;
+const MENU_V_PAD = 6;
+const MENU_GAP = 6;
 const COMPACT = SCREEN_WIDTH < 380;
-const PILL_PAD_H = COMPACT ? 12 : spacing.md;
-const PILL_GAP = COMPACT ? 8 : 12;
+/**
+ * Her chip (`5044:35868`) is 20 horizontal at 36 tall. Her row holds THREE
+ * chips and fits her 402 frame; ours holds FOUR because we add "All", which
+ * at her padding overflows a 360dp screen — hence the narrow-screen tighten,
+ * which is ours and not in her file.
+ */
+const PILL_PAD_H = COMPACT ? 16 : 20;
+/** Her `Meal filters` row gap, both sizes. */
+const PILL_GAP = 8;
 const ROW_PAD_H = COMPACT ? spacing.md : spacing.lg;
 
 /**
@@ -96,7 +115,8 @@ function Icon({
 
 export function SavedMealsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const { evening, outerBg, textColor, subtleText } = useAppPalette();
+  const { evening, outerBg, innerBg, textColor, subtleText } = useAppPalette();
+  const insets = useSafeAreaInsets();
   // Meal-name color is themed via textColor (#361416 day / bone night). The
   // meta line under it (prep time) is a muted secondary: #7E6869 in light, a
   // dimmed bone at night so it reads as secondary against the bone name.
@@ -107,6 +127,11 @@ export function SavedMealsScreen() {
   const [filter, setFilter] = useState<MealTypeFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [searchBox, setSearchBox] = useState({ w: 0, h: 0 });
+  /** Window-space box of the sort button, so the menu can hang off it. */
+  const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const sortBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   /** Toast state. `undo` carries the meal so it can be put back. */
   const [toast, setToast] = useState<{ text: string; undo: MealFavorite | null } | null>(null);
 
@@ -262,24 +287,64 @@ export function SavedMealsScreen() {
           return at - bt;
         });
 
-  /** Lang's frame shows a native picker; Android has no equivalent, so it
-   *  falls back to the Alert the rest of this app already uses. */
+  /**
+   * A dropdown anchored to the button, not a system picker.
+   *
+   * 📌 Lang annotated the control *"Default iOS picker"*, and that is what
+   * this was: `ActionSheetIOS` on iOS, and on Android the plain grey system
+   * `Alert`, which looks nothing like the rest of the app. Cole called it on
+   * the device — *"I don't love the look of the pop up"* — so this is a
+   * deliberate departure from her annotation, agreed with him, not an
+   * oversight. **Tell Lang.**
+   *
+   * 🔑 It measures the BUTTON rather than assuming a position, then flips to
+   * a drop-UP when there is not enough room below. The sort control sits near
+   * the top of this screen today, but it moves down as the filter row wraps
+   * on a narrow device, and a menu that opens off-screen is worse than the
+   * Alert it replaced.
+   */
   const openSortPicker = () => {
-    const labels = SORT_ORDER.map((k) => SORT_LABEL[k]);
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: [...labels, "Cancel"], cancelButtonIndex: labels.length },
-        (i) => {
-          if (i < labels.length) setSort(SORT_ORDER[i]);
-        },
-      );
-      return;
-    }
-    Alert.alert("Sort by", undefined, [
-      ...SORT_ORDER.map((k) => ({ text: SORT_LABEL[k], onPress: () => setSort(k) })),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
+    sortBtnRef.current?.measureInWindow((x, y, w, h) => {
+      setAnchor({ x, y, w, h });
+      setSortOpen(true);
+    });
   };
+
+  /**
+   * Where the menu hangs. Right-aligned to the button because the button is
+   * itself right-aligned in the results row, clamped to the screen so a long
+   * label can never push it off the edge, and flipped above the button when
+   * there is not enough room below.
+   */
+  const menuH = SORT_ORDER.length * MENU_ROW_H + MENU_V_PAD * 2;
+  const dropUp = anchor
+    ? anchor.y + anchor.h + MENU_GAP + menuH > SCREEN_HEIGHT - insets.bottom - 24
+    : false;
+  const menuPos = anchor
+    ? {
+        left: Math.max(
+          12,
+          Math.min(anchor.x + anchor.w - MENU_W, SCREEN_WIDTH - MENU_W - 12),
+        ),
+        /**
+         * 🔴 `+ insets.top` IS THE WHOLE TRICK, and it is measured, not
+         * guessed. `measureInWindow` reports in WINDOW space (status bar
+         * excluded) while a `Modal` lays out in SCREEN space, because this app
+         * runs edge-to-edge. On the S24 the button measured y=163 while it
+         * actually sits at 197.3 — a gap of 34.33, which is exactly
+         * `insets.top`. Without this the menu lands ON the button it hangs
+         * from.
+         *
+         * ⚠️ Removing `statusBarTranslucent` does NOT fix this — I tried, and
+         * the position did not move by a pixel. Edge-to-edge means the Modal
+         * spans the full screen whatever that flag says. Use the inset.
+         */
+        top:
+          (dropUp
+            ? anchor.y - MENU_GAP - menuH
+            : anchor.y + anchor.h + MENU_GAP) + insets.top,
+      }
+    : null;
 
   // Split the visible meals into rows of two for the grid.
   const rows: MealFavorite[][] = [];
@@ -289,52 +354,63 @@ export function SavedMealsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: outerBg }]} edges={["top"]}>
-      {/* Header */}
+      {/* Header — `5044:30927`.
+
+          🔴 Her title is LEFT-aligned beside the back button, not centred.
+          Ours centred it by accident: the row was `space-between` with an
+          empty 36x36 View standing in for the buttons she has on the right,
+          and that phantom third child is what pushed the title to the middle.
+
+          📏 Her geometry: back button 40x40 at x=0, title starting at x=48
+          (so an 8 gap), `Title 2` = 24. We had a 36 button, a 15 glyph and a
+          20 title. */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
-            <Path
-              d="M2.496 7.9356L7.66525 13.1049C7.81392 13.2535 7.88733 13.4275 7.8855 13.6269C7.8835 13.8262 7.805 14.0034 7.65 14.1586C7.49483 14.3034 7.31917 14.3784 7.123 14.3836C6.92683 14.3888 6.75117 14.3138 6.596 14.1586L0.25575 7.81835C0.162083 7.72468 0.0960833 7.62593 0.0577499 7.5221C0.0192499 7.41827 0 7.3061 0 7.1856C0 7.0651 0.0192499 6.95293 0.0577499 6.8491C0.0960833 6.74527 0.162083 6.64652 0.25575 6.55285L6.596 0.212602C6.7345 0.0741016 6.906 0.0032683 7.1105 0.000101633C7.315 -0.00306503 7.49483 0.0677683 7.65 0.212602C7.805 0.367768 7.8825 0.545935 7.8825 0.747102C7.8825 0.948435 7.805 1.12668 7.65 1.28185L2.496 6.4356H13.873C14.0858 6.4356 14.264 6.50743 14.4075 6.6511C14.5512 6.7946 14.623 6.97277 14.623 7.1856C14.623 7.39843 14.5512 7.5766 14.4075 7.7201C14.264 7.86377 14.0858 7.9356 13.873 7.9356H2.496Z"
-              fill={textColor}
-            />
-          </Svg>
+          {/* Her `arrow_back` is a 24 instance in a 40 slot. `ArrowBackIcon`
+              is already that glyph at that scale — the same one Recipe
+              Details uses — so this stops being a hand-rolled 15px path. */}
+          <ArrowBackIcon size={24} color={textColor} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: textColor }]}>Saved Meals</Text>
-        <View style={styles.backButton} />
-      </View>
-
-      {/* Filter tabs */}
-      <View style={styles.filterRow}>
-        {(["all", "breakfast", "lunch", "dinner"] as MealTypeFilter[]).map((type) => (
-          <TouchableOpacity
-            key={type}
-            style={[
-              styles.filterTab,
-              filter === type && styles.filterTabActive,
-            ]}
-            onPress={() => setFilter(type)}
-          >
-            <Text style={[styles.filterText, { color: textColor }]}>
-              {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
       </View>
 
       {/* Search. The clear button only appears with text in the field, as the
           frame shows. */}
       <View style={styles.searchRow}>
-        <View style={[styles.searchBox, { borderColor: subtleText }]}>
-          <Icon name="search" color={subtleText} size={18} />
+        <View
+          style={[
+            styles.searchBox,
+            evening ? styles.searchBoxDark : styles.searchBoxLight,
+          ]}
+          onLayout={(e) =>
+            setSearchBox({
+              w: e.nativeEvent.layout.width,
+              h: e.nativeEvent.layout.height,
+            })
+          }
+        >
+          {evening ? (
+            <GlassSheen
+              w={searchBox.w}
+              h={searchBox.h}
+              rx={searchBox.h / 2}
+              id="searchGloss"
+            />
+          ) : null}
+          {/* Her magnifier is `Text Strong`, not the subtle grey — only the
+              PLACEHOLDER is `On Ghost Subtle`. */}
+          <Icon name="search" color={textColor} size={18} />
           <TextInput
             style={[styles.searchInput, { color: textColor }]}
             value={query}
             onChangeText={setQuery}
             placeholder="Search"
-            placeholderTextColor={subtleText}
+            placeholderTextColor="#9b8a8b"
             returnKeyType="search"
             autoCorrect={false}
             accessibilityLabel="Search saved meals"
@@ -352,6 +428,20 @@ export function SavedMealsScreen() {
         </View>
       </View>
 
+      {/* Filter tabs */}
+      <View style={styles.filterRow}>
+        {(["all", "breakfast", "lunch", "dinner"] as MealTypeFilter[]).map((type) => (
+          <FilterChip
+            key={type}
+            id={type}
+            label={type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1)}
+            active={filter === type}
+            evening={evening}
+            onPress={() => setFilter(type)}
+          />
+        ))}
+      </View>
+
       {/* Result count + sort. Hidden while loading so the count never flashes
           a momentary "0 results" before the first response lands. */}
       {!loading ? (
@@ -360,6 +450,7 @@ export function SavedMealsScreen() {
             {visibleMeals.length} {visibleMeals.length === 1 ? "result" : "results"}
           </Text>
           <TouchableOpacity
+            ref={sortBtnRef}
             style={styles.sortButton}
             onPress={openSortPicker}
             accessibilityRole="button"
@@ -473,7 +564,212 @@ export function SavedMealsScreen() {
           ) : null}
         </View>
       ) : null}
+      {sortOpen && menuPos ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSortOpen(false)}
+        >
+          <Pressable
+            style={styles.sortBackdrop}
+            onPress={() => setSortOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close sort menu"
+          >
+            {/* Swallow taps on the menu itself so they do not close it. */}
+            <Pressable
+              style={[
+                styles.sortMenu,
+                menuPos,
+                { backgroundColor: innerBg, borderColor: subtleText },
+              ]}
+              onPress={() => {}}
+            >
+              {SORT_ORDER.map((k, i) => {
+                const active = sort === k;
+                return (
+                  <Pressable
+                    key={k}
+                    style={[
+                      styles.sortMenuRow,
+                      i > 0 && [styles.sortMenuRowDivided, { borderTopColor: subtleText }],
+                    ]}
+                    onPress={() => {
+                      setSort(k);
+                      setSortOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      style={[
+                        styles.sortMenuText,
+                        active && styles.sortMenuTextActive,
+                        { color: textColor },
+                      ]}
+                    >
+                      {SORT_LABEL[k]}
+                    </Text>
+                    {active ? (
+                      <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                        <Path
+                          d="M20 6L9 17l-5-5"
+                          stroke={K.blue}
+                          strokeWidth={2.5}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </Svg>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </SafeAreaView>
+  );
+}
+
+/**
+ * Her Figma `GLASS` effect, approximated — shared by the chips and the search
+ * field, which both carry it with identical parameters
+ * (`lightIntensity 0.8, lightAngle -45, refraction 0.8, depth 20`).
+ *
+ * React Native has no equivalent, so this is a white linear gradient running
+ * top-left → bottom-right to match her -45° light, laid over the fill and
+ * under the content.
+ *
+ * 🔴 `id` must be unique per instance. Several of these sharing one gradient
+ * id makes react-native-svg resolve them all to the first, and only one gets
+ * a sheen.
+ * 🔴 Sized from `onLayout`, never `width="100%"` — a percentage does not fill
+ * in react-native-svg, it collapses to nothing.
+ */
+function GlassSheen({ w, h, rx, id }: { w: number; h: number; rx: number; id: string }) {
+  if (!w || !h) return null;
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#ffffff" stopOpacity={0.06} />
+          <Stop offset="0.7" stopColor="#ffffff" stopOpacity={0} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x={0} y={0} width={w} height={h} rx={rx} fill={`url(#${id})`} />
+    </Svg>
+  );
+}
+
+/**
+ * One filter chip, with her `GLASS` effect approximated.
+ *
+ * 🔑 Her chip (`5044:35868`) carries a Figma **GLASS** effect —
+ * `lightIntensity 0.8, lightAngle -45, refraction 0.8, depth 20` — on top of
+ * the fill and the drop shadow. That is the "glossy" read: a specular
+ * highlight down the TOP-LEFT edge fading out toward the bottom-right, which
+ * is also why her border does not look like one flat line.
+ *
+ * React Native has no equivalent, so this is the same trick the Cook button
+ * uses: an SVG linear gradient of white, laid over the fill and under the
+ * label, running top-left → bottom-right to match her -45° light.
+ *
+ * 📏 KEPT DELIBERATELY FAINT (0.06). Measured down her chip's centre column,
+ * her render only moves from 57 to 65 across the whole height — about 8 units
+ * out of 60. A first pass at 0.18 took our top to 101 when her entire chip
+ * lives in the 57-65 band, i.e. the gloss was louder than the fill it sits
+ * on. Our flat 12% fill already matched her (+24 over the page against her
+ * +21..+29), so this is a hint of sheen, not a highlight.
+ *
+ * ⚠️ Her GLASS may simply not render at full strength in a 1x PNG export, so
+ * this is tuned to what the export shows. If it reads flat next to her canvas,
+ * the stop opacity is the dial.
+ *
+ * 🔴 Each chip needs its OWN gradient id. Four chips sharing one id makes
+ * react-native-svg resolve them all to the first, and only that chip gets a
+ * gloss.
+ * 🔴 Sized from `onLayout`, never `width="100%"` — a percentage does not fill
+ * in react-native-svg, it collapses to nothing.
+ */
+function FilterChip({
+  id,
+  label,
+  active,
+  evening,
+  onPress,
+}: {
+  id: string;
+  label: string;
+  active: boolean;
+  evening: boolean;
+  onPress: () => void;
+}) {
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const gradId = `chipGloss-${id}`;
+  const edgeId = `chipEdge-${id}`;
+
+  return (
+    <TouchableOpacity
+      onLayout={(e) =>
+        setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+      }
+      style={[
+        styles.filterTab,
+        evening ? styles.filterTabDark : styles.filterTabLight,
+        active && (evening ? styles.filterTabDarkOn : styles.filterTabLightOn),
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      {evening && box.w > 0 ? (
+        <Svg
+          width={box.w}
+          height={box.h}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          <Defs>
+            <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor="#ffffff" stopOpacity={0.06} />
+              <Stop offset="0.7" stopColor="#ffffff" stopOpacity={0} />
+            </SvgLinearGradient>
+            {/* The edge shine: bright along the top and bottom runs, faint at
+                the rounded ends — a VERTICAL ramp, matching her perimeter. */}
+            <SvgLinearGradient id={edgeId} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#9b8a8b" stopOpacity={0.5} />
+              <Stop offset="0.5" stopColor="#9b8a8b" stopOpacity={0.18} />
+              <Stop offset="1" stopColor="#9b8a8b" stopOpacity={0.45} />
+            </SvgLinearGradient>
+          </Defs>
+          <Rect
+            x={0}
+            y={0}
+            width={box.w}
+            height={box.h}
+            rx={box.h / 2}
+            fill={`url(#${gradId})`}
+          />
+          {!active ? (
+            <Rect
+              x={0.25}
+              y={0.25}
+              width={box.w - 0.5}
+              height={box.h - 0.5}
+              rx={(box.h - 0.5) / 2}
+              fill="none"
+              stroke={`url(#${edgeId})`}
+              strokeWidth={0.5}
+            />
+          ) : null}
+        </Svg>
+      ) : null}
+      <Text style={[styles.filterText, { color: evening ? "#fafdfe" : K.brown }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -515,16 +811,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchRow: { paddingHorizontal: ROW_PAD_H, paddingBottom: spacing.sm },
+  /** Her `Search + filter`: Search y=0 h=40, Meal filters y=52 — a 12 gap. */
+  searchRow: { paddingHorizontal: ROW_PAD_H, paddingBottom: 12 },
+  /**
+   * Her `Search` (`5044:35819`): 40 tall, a FULL pill, filled with the ghost
+   * surface — that is the milky look — a 0.5 edge of `#9b8a8b` at full
+   * opacity, and the same GLASS + `0 4 8` shadow the chips carry. We had no
+   * fill at all and a hairline in the palette's subtle grey, so it read as an
+   * outline rather than a surface.
+   *
+   * 🔑 Her stroke here is `rgba(155,138,139,1)` — FULL alpha, unlike the
+   * chips' 0.5. The search field has a stronger edge than the chips do; that
+   * is deliberate in her file, not a copy-paste.
+   */
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0.5,
+    borderColor: "#9b8a8b",
     borderRadius: 100,
     paddingHorizontal: 12,
     height: 40,
     gap: 8,
+    boxShadow: "0px 4px 8px 0px rgba(0, 0, 0, 0.12)",
   },
+  searchBoxDark: { backgroundColor: "rgba(250,253,254,0.24)" },
+  searchBoxLight: { backgroundColor: "rgba(54,20,22,0.12)" },
   // 🔑 No explicit height: a fixed height clips descenders on Android, which is
   // the same `includeFontPadding` family of bug the onboarding work hit.
   searchInput: { flex: 1, fontFamily: fonts.catalogue, fontSize: 16, padding: 0 },
@@ -544,22 +856,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: radius.sm,
+    // Her `XSmall` is 4 (`5044:30954`), not the 8 of `radius.sm`. One
+    // character, and it is the same radius every other button on this
+    // design system uses.
+    borderRadius: 4,
     backgroundColor: "rgba(250,253,254,0.12)",
   },
   sortText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     alignSelf: "stretch",
+    gap: 8,
     paddingHorizontal: spacing.lg,
     paddingBottom: 20,
   },
+  /** Her `Rounded Icon button`: 40x40, `Full` radius, no fill. */
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -567,11 +883,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: K.brown,
   },
+  /** Her `Title 2` — Catalogue Regular 24 at -1%. We were shipping 20. */
   headerTitle: {
     fontFamily: fonts.catalogue,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "400",
-    letterSpacing: -0.2,
+    letterSpacing: -0.24,
   },
   filterRow: {
     flexDirection: "row",
@@ -580,25 +897,98 @@ const styles = StyleSheet.create({
     paddingHorizontal: ROW_PAD_H,
     paddingBottom: 20,
   },
+  /**
+   * Lang's `Chip`, `Selected=False / Style=OnDark / Size=Small`
+   * (`5044:35868`): a FULL pill at 36 tall, 12% white fill, and a **0.5**
+   * border of `rgba(155,138,139,0.5)` — we had a 24 radius, no fill, and a
+   * solid 1px `#C3B9BA`, so it read as an outline box rather than a chip.
+   */
   filterTab: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
+    /**
+     * 📏 Her chip is exactly **36** tall. `minHeight` + padding landed at
+     * 39–41 on the device, because the 14px line box is taller than the 16
+     * her 10+10 padding implies. A fixed height with centred content hits her
+     * number regardless of font metrics.
+     */
+    height: 36,
     paddingHorizontal: PILL_PAD_H,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: "#C3B9BA",
+    borderRadius: 100,
+    /**
+     * 🔴 `boxShadow`, NOT `shadow*` + `elevation`. On Android the `shadow*`
+     * props are ignored outright and `elevation` draws its own hard grey
+     * shadow with a different falloff — so the chip got an Android shadow
+     * instead of hers, which reads as the whole edge looking wrong.
+     * RN 0.83 supports `boxShadow` on both platforms, and this is her CSS
+     * verbatim: `0 4px 8px 0 rgba(0,0,0,0.12)`.
+     */
+    boxShadow: "0px 4px 8px 0px rgba(0, 0, 0, 0.12)",
   },
-  filterTabActive: {
+  /**
+   * 🔴 HER CHIP HAS A VARIANT PER SURFACE, and this screen's page changes with
+   * the palette — brown at night, bone by day — so one set of values would be
+   * right in one mode and wrong in the other. Night uses her **OnDark**,
+   * day her **Ghost**.
+   *
+   * 🔑 OnDark's text is the one place the component default LIES: every
+   * variant defaults to brown `#361416`, but the actual instances on her
+   * `Meal filters` row override it to `Text Strong` `#fafdfe`. Read the
+   * INSTANCE, not the component.
+   */
+  filterTabDark: {
+    backgroundColor: "rgba(250,253,254,0.12)",
+    /**
+     * 🔑 0 — at night the edge is drawn as an SVG gradient STROKE in
+     * `FilterChip`, because her border is not one flat line. Measured around
+     * her perimeter: top **117**, bottom **112**, sides **70** against a ~56
+     * interior. A React Native border is a single colour the whole way round
+     * (ours measured 86 / 87 / 90 — flat), so it can never show that shine.
+     */
+    borderWidth: 0,
+    /**
+     * ⚠️ Her CSS says this at **0.5** alpha. We ship **0.25**, on purpose.
+     *
+     * A 0.5px border is sub-pixel: in her 1x export it can only half-cover a
+     * pixel, so it renders at about half strength (measured `rgb(70,51,53)`
+     * against a `57` fill — a step of 13). On a 3x phone the same 0.5dp is a
+     * solid 1.5 physical pixels at full alpha, which measured
+     * `rgb(107,82,84)` against a `77` fill — a step of 30, more than twice
+     * hers. Halving the alpha reproduces what she actually sees.
+     */
+    borderColor: "transparent",
+  },
+  /**
+   * `Selected=True / OnDark`: a 20% blue WASH with a solid 1.5 blue edge, not
+   * the solid blue we shipped. The EDGE marks it, not the fill.
+   *
+   * ⚠️ Her component puts brown text here, which over this page composites to
+   * about `rgb(72,52,55)` behind `#361416` — roughly 1.3:1, unreadable. Her
+   * file carries a `GLASS` effect that React Native has no equivalent for and
+   * that presumably lifts it. We keep her fill and edge and stay on white
+   * text. **Flagged to Lang.**
+   */
+  filterTabDarkOn: {
+    backgroundColor: "rgba(146,180,189,0.2)",
+    borderWidth: 1.5,
+    borderColor: K.blue,
+  },
+  /** Her `Ghost` variant — the daytime surface. No edge in her file. */
+  filterTabLight: {
+    backgroundColor: "rgba(54,20,22,0.12)",
+    borderWidth: 0,
+  },
+  filterTabLightOn: {
     backgroundColor: K.blue,
+    borderWidth: 0,
   },
   filterText: {
     fontFamily: fonts.catalogue,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "400",
-    letterSpacing: -0.16,
+    letterSpacing: -0.14,
     textAlign: "center",
   },
   centered: {
@@ -698,4 +1088,34 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 2,
   },
+  /**
+   * The sort dropdown. A menu anchored to its button, deliberately replacing
+   * the system picker Lang annotated — see `openSortPicker`.
+   *
+   * 🔑 Surface is `innerBg`, not a hardcoded colour. The raised/page pair
+   * CROSSES between modes on this design system (raised is LIGHTER than the
+   * page at night, DARKER by day), so any fixed hex would be right in one
+   * mode and wrong in the other.
+   */
+  sortBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
+  sortMenu: {
+    position: "absolute",
+    width: MENU_W,
+    paddingVertical: MENU_V_PAD,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+    // Same reason as the chips: `elevation` would draw Android's own shadow.
+    boxShadow: "0px 8px 16px 0px rgba(0, 0, 0, 0.25)",
+  },
+  sortMenuRow: {
+    height: MENU_ROW_H,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+  },
+  sortMenuRowDivided: { borderTopWidth: StyleSheet.hairlineWidth },
+  sortMenuText: { fontFamily: fonts.catalogue, fontSize: 14, letterSpacing: -0.14 },
+  sortMenuTextActive: { fontFamily: fonts.catalogueMedium },
 });

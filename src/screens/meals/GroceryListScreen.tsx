@@ -455,8 +455,13 @@ function AddItemSheet({
           <View style={styles.sheetGrabber} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Add custom item</Text>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close">
-              <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+            <Pressable
+              onPress={onClose}
+              style={styles.sheetClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
                 <Path
                   d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                   fill={K.brown}
@@ -464,6 +469,10 @@ function AddItemSheet({
               </Svg>
             </Pressable>
           </View>
+
+          {/* Her `Line 30` (5039:33968): 0.5 of `#c3b9ba`, 24 below the title
+              block and 24 above the first field. We had no rule at all. */}
+          <View style={styles.sheetDivider} />
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -475,7 +484,7 @@ function AddItemSheet({
             value={name}
             onChangeText={setName}
             placeholder="Item name"
-            placeholderTextColor="rgba(54,20,22,0.45)"
+            placeholderTextColor="#7e6869"
             autoFocus
             returnKeyType="done"
             onSubmitEditing={submit}
@@ -490,7 +499,7 @@ function AddItemSheet({
             value={category}
             onChangeText={setCategory}
             placeholder="Category"
-            placeholderTextColor="rgba(54,20,22,0.45)"
+            placeholderTextColor="#7e6869"
             returnKeyType="next"
           />
           <TextInput
@@ -498,7 +507,7 @@ function AddItemSheet({
             value={quantity}
             onChangeText={setQuantity}
             placeholder="Quantity"
-            placeholderTextColor="rgba(54,20,22,0.45)"
+            placeholderTextColor="#7e6869"
             returnKeyType="done"
             onSubmitEditing={submit}
           />
@@ -665,8 +674,9 @@ const styles = StyleSheet.create({
   sheet: {
     maxHeight: "85%",
     backgroundColor: "#F3EFE3",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    // Her sheet is 32 at the top (`5039:33962`), not 24.
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
     paddingBottom: 36,
     gap: 12,
@@ -679,28 +689,81 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(54,20,22,0.25)",
     marginBottom: 8,
   },
-  sheetFields: { gap: 12, paddingBottom: 8 },
+  /**
+   * 📏 Her fields sit 72 apart at 48 tall (`5039:33962`: y=118/190/262), so the
+   * gap is **24**. We were running 12, which read as a denser form than she
+   * drew.
+   *
+   * ⚠️ THE COST, measured on an S24 (360x780dp): at 24 the form is ~46dp
+   * taller, and with the keyboard up — `autoFocus` opens it immediately —
+   * "Add Item" now sits BELOW the fold. At 12 it was visible without
+   * scrolling. The `ScrollView` is what keeps it reachable (verified: one
+   * swipe brings it back, bounds valid, submit works), which is exactly the
+   * belt the comment on `behavior` below describes.
+   *
+   * 🔑 Her frame is 402x843 with no keyboard drawn, so this constraint does
+   * not exist in Figma — it only appears on a narrow phone mid-entry. Flagged
+   * to Lang rather than silently reverting her spacing: the choice between
+   * her rhythm and a visible CTA is hers, not ours.
+   */
+  sheetFields: { gap: 24, paddingBottom: 8 },
+  sheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#c3b9ba",
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  /**
+   * Her close is a **40x40 Rounded Icon button** (`5039:33977`) with a
+   * transparent fill — a real 40 target, not a 20 glyph wearing hitSlop. The
+   * circle is invisible; the size is the point.
+   */
+  sheetClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -8,
+  },
   sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sheetTitle: { fontFamily: fonts.catalogue, fontSize: 24, color: K.brown },
+  sheetTitle: { fontFamily: fonts.catalogue, fontSize: 32, color: K.brown },
+  /**
+   * 🔑 THE SWEPT CORNER IS THE HOUSE SHAPE, and her inputs carry it too:
+   * `0 / 0 / 24 / 0` — bottom-right only (`5039:33969`'s inner frame). We had
+   * a uniform 10 all round, which is a different language from every other
+   * surface on this screen.
+   * 📏 48 tall, border 0.5 of `#7e6869` (her `Text (alt)` light), text inset
+   * 12 — her `text` frame is 313 inside 337.
+   */
   input: {
+    height: 48,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(54,20,22,0.35)",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderColor: "#7e6869",
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
     fontFamily: fonts.catalogue,
     fontSize: 16,
     color: K.brown,
   },
+  /** Her primary (`5039:33973`): 56 tall, `4 / 24 / 4 / 4`, solid brown. */
   addButton: {
-    marginTop: 8,
-    borderRadius: 10,
-    paddingVertical: 16,
+    marginTop: 11,
+    height: 56,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 4,
+    borderBottomLeftRadius: 4,
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: K.brown,
   },
   addButtonDisabled: { opacity: 0.4 },
@@ -708,17 +771,45 @@ const styles = StyleSheet.create({
 
   confirmTitle: {
     fontFamily: fonts.catalogue,
-    fontSize: 24,
+    fontSize: 32,
     color: K.brown,
     marginBottom: 24,
   },
+  /**
+   * 🔴 NOT A PILL. Keeping is her primary and it is the same button as
+   * "Add Item" — 56 tall, `4 / 24 / 4 / 4`, solid brown
+   * (`I5039:34569;4634:58802`). The 999 here was the same mistake the action
+   * bar made: **her buttons are XSmall 4 with one swept corner, never round.**
+   */
   keepButton: {
-    borderRadius: 999,
-    paddingVertical: 16,
+    height: 56,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 4,
+    borderBottomLeftRadius: 4,
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: K.brown,
   },
   keepButtonText: { fontFamily: fonts.catalogueMedium, fontSize: 16, color: K.cream },
-  deleteLink: { paddingVertical: 14, alignItems: "center" },
-  deleteLinkText: { fontFamily: fonts.catalogueMedium, fontSize: 14, color: "#A3242B" },
+  /**
+   * Her secondary (`I5039:34569;4634:58803`) is a REAL button that hugs its
+   * label: 32 tall, radius 4, ghost `rgba(54,20,22,0.12)` — not a bare text
+   * link, and **not red**.
+   *
+   * ⚠️ The red was ours. Her hierarchy already does the protecting: "Keep
+   * item" is large and solid, this one is small and quiet. Flagged to Lang
+   * rather than kept, since a destructive-red link is a semantic choice
+   * neither she nor Bryan asked for.
+   */
+  deleteLink: {
+    alignSelf: "center",
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(54,20,22,0.12)",
+  },
+  deleteLinkText: { fontFamily: fonts.catalogueMedium, fontSize: 14, color: K.brown },
 });
