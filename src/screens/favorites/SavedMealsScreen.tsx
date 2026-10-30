@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
+import { ArrowBackIcon } from "../../components/PaywallIcons";
 import Svg, {
   Path,
   Defs,
@@ -352,21 +353,29 @@ export function SavedMealsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: outerBg }]} edges={["top"]}>
-      {/* Header */}
+      {/* Header — `5044:30927`.
+
+          🔴 Her title is LEFT-aligned beside the back button, not centred.
+          Ours centred it by accident: the row was `space-between` with an
+          empty 36x36 View standing in for the buttons she has on the right,
+          and that phantom third child is what pushed the title to the middle.
+
+          📏 Her geometry: back button 40x40 at x=0, title starting at x=48
+          (so an 8 gap), `Title 2` = 24. We had a 36 button, a 15 glyph and a
+          20 title. */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
-            <Path
-              d="M2.496 7.9356L7.66525 13.1049C7.81392 13.2535 7.88733 13.4275 7.8855 13.6269C7.8835 13.8262 7.805 14.0034 7.65 14.1586C7.49483 14.3034 7.31917 14.3784 7.123 14.3836C6.92683 14.3888 6.75117 14.3138 6.596 14.1586L0.25575 7.81835C0.162083 7.72468 0.0960833 7.62593 0.0577499 7.5221C0.0192499 7.41827 0 7.3061 0 7.1856C0 7.0651 0.0192499 6.95293 0.0577499 6.8491C0.0960833 6.74527 0.162083 6.64652 0.25575 6.55285L6.596 0.212602C6.7345 0.0741016 6.906 0.0032683 7.1105 0.000101633C7.315 -0.00306503 7.49483 0.0677683 7.65 0.212602C7.805 0.367768 7.8825 0.545935 7.8825 0.747102C7.8825 0.948435 7.805 1.12668 7.65 1.28185L2.496 6.4356H13.873C14.0858 6.4356 14.264 6.50743 14.4075 6.6511C14.5512 6.7946 14.623 6.97277 14.623 7.1856C14.623 7.39843 14.5512 7.5766 14.4075 7.7201C14.264 7.86377 14.0858 7.9356 13.873 7.9356H2.496Z"
-              fill={textColor}
-            />
-          </Svg>
+          {/* Her `arrow_back` is a 24 instance in a 40 slot. `ArrowBackIcon`
+              is already that glyph at that scale — the same one Recipe
+              Details uses — so this stops being a hand-rolled 15px path. */}
+          <ArrowBackIcon size={24} color={textColor} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: textColor }]}>Saved Meals</Text>
-        <View style={styles.backButton} />
       </View>
 
       {/* Filter tabs */}
@@ -788,16 +797,17 @@ const styles = StyleSheet.create({
   sortText: { fontFamily: fonts.catalogueMedium, fontSize: 14 },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     alignSelf: "stretch",
+    gap: 8,
     paddingHorizontal: spacing.lg,
     paddingBottom: 20,
   },
+  /** Her `Rounded Icon button`: 40x40, `Full` radius, no fill. */
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -805,11 +815,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: K.brown,
   },
+  /** Her `Title 2` — Catalogue Regular 24 at -1%. We were shipping 20. */
   headerTitle: {
     fontFamily: fonts.catalogue,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "400",
-    letterSpacing: -0.2,
+    letterSpacing: -0.24,
   },
   filterRow: {
     flexDirection: "row",
