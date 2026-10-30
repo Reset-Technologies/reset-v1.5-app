@@ -128,6 +128,7 @@ export function SavedMealsScreen() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const [sortOpen, setSortOpen] = useState(false);
+  const [searchBox, setSearchBox] = useState({ w: 0, h: 0 });
   /** Window-space box of the sort button, so the menu can hang off it. */
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const sortBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
@@ -378,31 +379,38 @@ export function SavedMealsScreen() {
         <Text style={[styles.headerTitle, { color: textColor }]}>Saved Meals</Text>
       </View>
 
-      {/* Filter tabs */}
-      <View style={styles.filterRow}>
-        {(["all", "breakfast", "lunch", "dinner"] as MealTypeFilter[]).map((type) => (
-          <FilterChip
-            key={type}
-            id={type}
-            label={type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1)}
-            active={filter === type}
-            evening={evening}
-            onPress={() => setFilter(type)}
-          />
-        ))}
-      </View>
-
       {/* Search. The clear button only appears with text in the field, as the
           frame shows. */}
       <View style={styles.searchRow}>
-        <View style={[styles.searchBox, { borderColor: subtleText }]}>
-          <Icon name="search" color={subtleText} size={18} />
+        <View
+          style={[
+            styles.searchBox,
+            evening ? styles.searchBoxDark : styles.searchBoxLight,
+          ]}
+          onLayout={(e) =>
+            setSearchBox({
+              w: e.nativeEvent.layout.width,
+              h: e.nativeEvent.layout.height,
+            })
+          }
+        >
+          {evening ? (
+            <GlassSheen
+              w={searchBox.w}
+              h={searchBox.h}
+              rx={searchBox.h / 2}
+              id="searchGloss"
+            />
+          ) : null}
+          {/* Her magnifier is `Text Strong`, not the subtle grey — only the
+              PLACEHOLDER is `On Ghost Subtle`. */}
+          <Icon name="search" color={textColor} size={18} />
           <TextInput
             style={[styles.searchInput, { color: textColor }]}
             value={query}
             onChangeText={setQuery}
             placeholder="Search"
-            placeholderTextColor={subtleText}
+            placeholderTextColor="#9b8a8b"
             returnKeyType="search"
             autoCorrect={false}
             accessibilityLabel="Search saved meals"
@@ -418,6 +426,20 @@ export function SavedMealsScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+      </View>
+
+      {/* Filter tabs */}
+      <View style={styles.filterRow}>
+        {(["all", "breakfast", "lunch", "dinner"] as MealTypeFilter[]).map((type) => (
+          <FilterChip
+            key={type}
+            id={type}
+            label={type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1)}
+            active={filter === type}
+            evening={evening}
+            onPress={() => setFilter(type)}
+          />
+        ))}
       </View>
 
       {/* Result count + sort. Hidden while loading so the count never flashes
@@ -612,6 +634,36 @@ export function SavedMealsScreen() {
 }
 
 /**
+ * Her Figma `GLASS` effect, approximated — shared by the chips and the search
+ * field, which both carry it with identical parameters
+ * (`lightIntensity 0.8, lightAngle -45, refraction 0.8, depth 20`).
+ *
+ * React Native has no equivalent, so this is a white linear gradient running
+ * top-left → bottom-right to match her -45° light, laid over the fill and
+ * under the content.
+ *
+ * 🔴 `id` must be unique per instance. Several of these sharing one gradient
+ * id makes react-native-svg resolve them all to the first, and only one gets
+ * a sheen.
+ * 🔴 Sized from `onLayout`, never `width="100%"` — a percentage does not fill
+ * in react-native-svg, it collapses to nothing.
+ */
+function GlassSheen({ w, h, rx, id }: { w: number; h: number; rx: number; id: string }) {
+  if (!w || !h) return null;
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#ffffff" stopOpacity={0.06} />
+          <Stop offset="0.7" stopColor="#ffffff" stopOpacity={0} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x={0} y={0} width={w} height={h} rx={rx} fill={`url(#${id})`} />
+    </Svg>
+  );
+}
+
+/**
  * One filter chip, with her `GLASS` effect approximated.
  *
  * 🔑 Her chip (`5044:35868`) carries a Figma **GLASS** effect —
@@ -759,16 +811,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchRow: { paddingHorizontal: ROW_PAD_H, paddingBottom: spacing.sm },
+  /** Her `Search + filter`: Search y=0 h=40, Meal filters y=52 — a 12 gap. */
+  searchRow: { paddingHorizontal: ROW_PAD_H, paddingBottom: 12 },
+  /**
+   * Her `Search` (`5044:35819`): 40 tall, a FULL pill, filled with the ghost
+   * surface — that is the milky look — a 0.5 edge of `#9b8a8b` at full
+   * opacity, and the same GLASS + `0 4 8` shadow the chips carry. We had no
+   * fill at all and a hairline in the palette's subtle grey, so it read as an
+   * outline rather than a surface.
+   *
+   * 🔑 Her stroke here is `rgba(155,138,139,1)` — FULL alpha, unlike the
+   * chips' 0.5. The search field has a stronger edge than the chips do; that
+   * is deliberate in her file, not a copy-paste.
+   */
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0.5,
+    borderColor: "#9b8a8b",
     borderRadius: 100,
     paddingHorizontal: 12,
     height: 40,
     gap: 8,
+    boxShadow: "0px 4px 8px 0px rgba(0, 0, 0, 0.12)",
   },
+  searchBoxDark: { backgroundColor: "rgba(250,253,254,0.24)" },
+  searchBoxLight: { backgroundColor: "rgba(54,20,22,0.12)" },
   // 🔑 No explicit height: a fixed height clips descenders on Android, which is
   // the same `includeFontPadding` family of bug the onboarding work hit.
   searchInput: { flex: 1, fontFamily: fonts.catalogue, fontSize: 16, padding: 0 },
