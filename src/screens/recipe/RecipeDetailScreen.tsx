@@ -56,12 +56,7 @@ import {
 import { getMealWhy } from "../../services/mealInsights";
 import { abbreviateMeasurement, formatAmount } from "../../utils/amount";
 import {
-  MealSlotType,
-  MyPlanResponse,
-  MyPlanSlot,
-  getMyPlan,
   setPlannedMealServings,
-  swapPlannedMeal,
 } from "../../services/myPlan";
 import { addRecipeIngredientsToGroceryList } from "../../services/grocery";
 import { dietLabel } from "../../utils/dietLabel";
@@ -187,29 +182,6 @@ const ACTION_BAR_LIFT = 26;
  * are two screens' presentation choices, and a shared constant would imply the
  * model had settled on these words.
  */
-const ADD_SLOT_LABEL: Record<MealSlotType, string> = {
-  first_meal: "Breakfast",
-  midday: "Lunch",
-  evening: "Dinner",
-  snack: "Snack",
-};
-
-/**
- * `2026-10-20` -> `Mon 20`, without constructing a Date.
- *
- * 🔴 Parsing `YYYY-MM-DD` with `new Date()` reads it as UTC midnight and then
- * renders it in local time, which moves the day backwards for anyone west of
- * Greenwich. The plan's dates are plain local calendar days and must not be
- * shifted — the same trap that produced "Mon Oct 12" from a date column.
- */
-function dayLabel(iso: string): string {
-  const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
-  if (!y || !m || !d) return iso;
-  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${names[dow]} ${d}`;
-}
-
 function parseInstructions(instructions: string | null): string[] {
   if (!instructions) return [];
 
@@ -892,13 +864,6 @@ export function RecipeDetailScreen() {
   );
   const [esterText, setEsterText] = useState<string | null>(null);
 
-  // ── Add to plan (new 2026-10-19) ───────────────────────────────────────
-  const [addSheet, setAddSheet] = useState(false);
-  const [plan, setPlan] = useState<MyPlanResponse | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [addDate, setAddDate] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addedTo, setAddedTo] = useState<string | null>(null);
   const [esterLoading, setEsterLoading] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
 
@@ -1335,26 +1300,6 @@ export function RecipeDetailScreen() {
       ? { uri: detail.imageAsset }
       : null;
 
-  /** Everything actually planned on the chosen day. */
-  const daySlots: MyPlanSlot[] =
-    plan?.days.find((d) => d.date === addDate)?.slots.filter((sl) => sl.recipe) ?? [];
-
-  /**
-   * What the member picks between — the day's meals MINUS this recipe.
-   *
-   * 🔴 Bryan, 2026-10-30: *"fix 'Add to plan' so a recipe can't replace
-   * itself."* Without this filter the sheet offered the slot this very recipe
-   * already occupies, and tapping it swapped the meal for itself: a write, a
-   * fresh plan revision, and nothing changed on screen. It also made Bryan's
-   * multiple-slots case ambiguous, since the same title appeared twice with
-   * no way to tell which was which.
-   *
-   * 📌 Matched on the MEAL id, not the version. A different version of the
-   * same recipe is still the same meal to a member, so replacing one with the
-   * other is still a no-op worth preventing.
-   */
-  const dayMeals: MyPlanSlot[] = daySlots.filter((sl) => sl.recipe!.id !== meal.id);
-
   const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
   /**
    * 🔴 Gated on `recipeVersionId`, not on the recipe existing. The route
@@ -1407,91 +1352,25 @@ export function RecipeDetailScreen() {
     });
   }, [navigation, plannedMeal]);
 
-  const openAddSheet = useCallback(() => {
-    setAddSheet(true);
-    if (plan || planLoading) return;
-    setPlanLoading(true);
-    getMyPlan()
-      .then((p) => {
-        setPlan(p);
-        /**
-         * 🔴 The day the member CAME FROM, not day one of the week.
-         *
-         * This used to default to `p.days[0]`, and the comment claimed that
-         * was "the day the member is actually shown". It was not. Opened from
-         * Tuesday's dinner, the sheet listed MONDAY's three meals — the same
-         * recipes in a different order, so it looked entirely plausible —
-         * and the swap landed on Monday's lunch. The button said "Added" and
-         * it was telling the truth: something was added, just not where the
-         * member was looking.
-         *
-         * Caught by finally doing the one check I had left open for two days:
-         * swap into a slot holding a DIFFERENT recipe and watch the plan.
-         */
-        const cameFrom = plannedMeal?.localDate ?? null;
-        const today = new Date().toISOString().slice(0, 10);
-        const fallback = p.days.some((d) => d.date === today)
-          ? today
-          : (p.days[0]?.date ?? null);
-        setAddDate((cur) => cur ?? cameFrom ?? fallback);
-      })
-      .catch(() => setPlan(null))
-      .finally(() => setPlanLoading(false));
-  }, [plan, planLoading, plannedMeal]);
-
   /**
-   * Swap this recipe INTO one of the day's existing meals.
+   * Open her Add-Meal-to-Plan SCREEN (`5055:49011`).
    *
-   * 🔴 This REPLACES; it does not append — and the correction came from
-   * Lang's own flow. Her "Add to meal plan" section (5055:48783) reads
-   * *"Choose a meal to swap this one in for"*, confirms with an
-   * **Original Meal → New Meal** sheet, and calls the result "Swap confirmed".
-   *
-   * The first cut of this screen used `POST my-plan/meals`, whose own doc says
-   * it *"Appends into the named day and slot"*. On device that gave the member
-   * a Tuesday with TWO dinners — the original plus the one they added, the same
-   * recipe twice in one day. A plan that grows every time you like something is
-   * not a plan.
-   *
-   * 🔑 MY PLAN r9: *"Replace planned meal in same slot; refresh grocery
-   * delta."* Day, slot, sort order and servings survive; only the content
-   * changes. It writes a new revision and leaves the Score plan version alone
-   * (START HERE r7), which is why an approved swap can still count as On plan.
-   *
-   * 📌 A swap is NOT a rejection — SWAPS + EDITS is explicit that *"a passive
-   * swap alone is not a rejection"* — so nothing here emits `meal_rejected` or
-   * touches Fit. The member is choosing, not complaining.
+   * 🔴 This used to open a bottom sheet right here. Her frame is a pushed
+   * full screen, and the sheet version could only show one day — with the
+   * selected day scrolled off the chip row. The screen owns its own plan
+   * fetch, so nothing is prefetched from this screen any more.
    */
-  const confirmPlanSwap = useCallback(
-    async (slot: MyPlanSlot) => {
-      const versionId = detail?.recipeVersionId;
-      const planId = plan?.mealPlanId;
-      if (!versionId || !planId || adding) return;
-      setAdding(true);
-      setAddSheet(false);
-      try {
-        await swapPlannedMeal({
-          plannedMealId: slot.id,
-          mealPlanId: planId,
-          recipeVersionId: versionId,
-        });
-        setAddedTo(slot.recipe?.title ?? null);
-        // Name the day as well as the meal. The whole defect above was the
-        // member not knowing WHICH day they had just changed.
-        setToast(
-          `Swapped in for ${slot.recipe?.title ?? "that meal"} on ${dayLabel(addDate ?? "")}`,
-        );
-      } catch {
-        // 🔴 Was silent. "Deliberately silent" is how a failed swap looks
-        // identical to a successful one — the same empty-catch shape that hid
-        // a 400 on the ingredient swap for weeks.
-        setToast("That didn't go through. Try again.");
-      } finally {
-        setAdding(false);
-      }
-    },
-    [detail, plan, adding, addDate],
-  );
+  const openAddSheet = useCallback(() => {
+    const versionId = detail?.recipeVersionId;
+    if (!versionId) return;
+    navigation.navigate("AddToPlan", {
+      recipeId: meal.id,
+      recipeVersionId: versionId,
+      title: meal.name,
+      imageUrl: meal.imageUrl ?? null,
+      fromDate: plannedMeal?.localDate,
+    });
+  }, [navigation, detail, meal, plannedMeal]);
 
   return (
     <View style={[styles.container, dyn.container, dyn.container]}>
@@ -1993,108 +1872,25 @@ export function RecipeDetailScreen() {
             dyn.ghost,
             !inPlan && !canAdd && styles.actionDisabled,
           ]}
-          disabled={inPlan ? false : !canAdd || adding}
+          disabled={inPlan ? false : !canAdd}
           onPress={inPlan ? openPlanEditor : openAddSheet}
           accessibilityRole="button"
           accessibilityLabel={inPlan ? "Change meal" : "Add to plan"}
         >
           {inPlan ? (
             <SwapActionGlyph color={ghostGlyph} size={24} />
-          ) : adding || addedTo ? null : (
+          ) : (
             <PlusGlyph color={ghostGlyph} size={24} />
           )}
           <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
-            {inPlan
-              ? "Change meal"
-              : adding
-                ? "Adding…"
-                : addedTo
-                  ? "Added"
-                  : "Add to plan"}
+            {/* 🔑 Two labels, not four. "Adding…"/"Added" belonged to the
+                bottom sheet, which swapped in place; the flow is now a pushed
+                screen that reports its own result and comes back. */}
+            {inPlan ? "Change meal" : "Add to plan"}
           </Text>
         </Pressable>
       </View>
 
-      {/* ── Add to plan: pick a day, then a slot ──────────────────────────
-          🔑 Two taps, no confirm step. The member already chose the recipe by
-          being here; day and slot are the only facts the route needs that it
-          cannot infer (`mealPlanId` and `recipeVersionId` come from state).
-
-          🔴 Slot labels are the VIEW's (MY PLAN r16: the model stays semantic
-          — first_meal · midday · evening · snack — because a member on a Window
-          may not eat three times, but *"Display can still say
-          Breakfast/Lunch/Dinner when appropriate"*). The code is what is sent. */}
-      <Modal
-        visible={addSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAddSheet(false)}
-      >
-        <Pressable style={styles.addBackdrop} onPress={() => setAddSheet(false)} />
-        <View style={styles.addSheet}>
-          <Text style={styles.addTitle}>Add to your week</Text>
-          {/* Lang's instruction, verbatim from the frame. */}
-          <Text style={styles.addSub} numberOfLines={2}>
-            Choose a meal to swap this one in for
-          </Text>
-
-          {planLoading ? (
-            <ActivityIndicator color={K.cream} style={{ marginVertical: 24 }} />
-          ) : !plan ? (
-            <Text style={styles.addSub}>Couldn't load your week. Try again.</Text>
-          ) : (
-            <>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayRow}>
-                {plan.days.map((d) => (
-                  <Pressable
-                    key={d.date}
-                    style={[styles.dayChip, d.date === addDate && styles.dayChipOn]}
-                    onPress={() => setAddDate(d.date)}
-                    accessibilityRole="button"
-                    accessibilityLabel={dayLabel(d.date)}
-                  >
-                    <Text style={[styles.dayChipText, d.date === addDate && styles.dayChipTextOn]}>
-                      {dayLabel(d.date)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              {/* 🔴 The day's EXISTING meals, not a list of empty slots. Her
-                  frame puts each day's meals under the selector and asks the
-                  member to pick one — the thing being replaced has to be
-                  visible, or "swap" is a guess. */}
-              {dayMeals.length === 0 ? (
-                <Text style={styles.addSub}>
-                  {/* Two different empty states. A day with nothing on it is
-                      not the same as a day whose only meal is the one being
-                      looked at, and saying "nothing planned" there would be
-                      a lie the member can see. */}
-                  {daySlots.length > 0
-                    ? "This meal is already planned for that day."
-                    : "Nothing planned that day yet."}
-                </Text>
-              ) : (
-                dayMeals.map((slot) => (
-                  <Pressable
-                    key={slot.id}
-                    style={styles.slotRow}
-                    disabled={adding}
-                    onPress={() => void confirmPlanSwap(slot)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Swap ${slot.recipe?.title ?? "this meal"}`}
-                  >
-                    <Text style={styles.slotRowLabel}>{ADD_SLOT_LABEL[slot.slotType]}</Text>
-                    <Text style={styles.slotRowText} numberOfLines={1}>
-                      {slot.recipe?.title ?? "Empty slot"}
-                    </Text>
-                  </Pressable>
-                ))
-              )}
-            </>
-          )}
-        </View>
-      </Modal>
 
       {/* Floating header buttons */}
       <SafeAreaView
@@ -3283,53 +3079,6 @@ const styles = StyleSheet.create({
   /** 24 to match her icon size; the mark is per metabolic type. */
   actionEsterMark: { width: 24, height: 24 },
   actionDisabled: { opacity: 0.4 },
-  addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-  addSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: K.brown,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 18,
-    paddingBottom: 34,
-    paddingHorizontal: 18,
-  },
-  addTitle: { fontFamily: fonts.catalogue, fontSize: 20, color: K.cream, letterSpacing: -0.2 },
-  addSub: {
-    fontFamily: fonts.catalogue,
-    fontSize: 14,
-    color: K.bone,
-    opacity: 0.7,
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  dayRow: { flexGrow: 0, marginBottom: 6 },
-  dayChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(243,239,227,0.25)",
-    marginRight: 8,
-  },
-  dayChipOn: { backgroundColor: K.cream, borderColor: K.cream },
-  dayChipText: { fontFamily: fonts.catalogue, fontSize: 14, color: K.cream },
-  dayChipTextOn: { color: K.brown },
-  slotRow: {
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(243,239,227,0.14)",
-  },
-  slotRowLabel: {
-    fontFamily: fonts.catalogue,
-    fontSize: 12,
-    color: K.bone,
-    opacity: 0.7,
-    marginBottom: 2,
-  },
-  slotRowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,

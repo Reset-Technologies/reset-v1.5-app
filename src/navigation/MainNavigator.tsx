@@ -33,6 +33,7 @@ import { MyPlanScreen } from "../screens/meals/MyPlanScreen";
 import { ExploreScreen } from "../screens/meals/ExploreScreen";
 import { CookModeScreen } from "../screens/meals/CookModeScreen";
 import { GroceryListScreen } from "../screens/meals/GroceryListScreen";
+import { AddToPlanScreen } from "../screens/meals/AddToPlanScreen";
 import { ScanResultsScreen } from "../screens/scan/ScanResultsScreen";
 import { ScanInsightsScreen } from "../screens/scan/ScanInsightsScreen";
 import { ScanHistoryScreen } from "../screens/scan/ScanHistoryScreen";
@@ -146,6 +147,21 @@ export type MainStackParamList = {
     mealId?: string;
   };
   SavedMeals: undefined;
+  /**
+   * ADD MEAL TO PLAN — Lang `5055:49011`. A PUSHED screen, not the bottom sheet
+   * this used to be inside RecipeDetail: her frame is full-screen, and the
+   * sheet could only show one day with the selected chip scrolled off-screen.
+   */
+  AddToPlan: {
+    /** Used to keep the recipe from being offered as its own swap target. */
+    recipeId: string;
+    /** What the swap endpoint actually plans. */
+    recipeVersionId: string;
+    title: string;
+    imageUrl: string | null;
+    /** Day the member came from, so the week opens where they were. */
+    fromDate?: string;
+  };
   GroceryList: undefined;
   WeeklyReview: undefined;
   WindowProgress: undefined;
@@ -303,6 +319,15 @@ export function MainNavigator() {
       <Stack.Screen
         name="GroceryList"
         component={GroceryListScreen}
+      />
+      <Stack.Screen
+        name="AddToPlan"
+        component={AddToPlanScreen}
+        options={{
+          // Pushed, like RecipeDetail. NOT `presentation: "modal"` — a screen
+          // pushed after a modal stays inside the modal's card.
+          animation: "slide_from_right",
+        }}
       />
       <Stack.Screen
         name="WeeklyReview"
