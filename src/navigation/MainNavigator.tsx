@@ -120,6 +120,14 @@ export type MainStackParamList = {
        */
       localDate: string;
       slotType: string;
+      /**
+       * This slot holds a different meal than the drafted week did.
+       *
+       * 🔑 Passed rather than re-read: My Plan already has it on the slot,
+       * and Recipe Details opened from there must not spend a request to
+       * learn something its caller was looking at.
+       */
+      swapped?: boolean;
     };
     /**
      * Which surface opened this screen, for `recipe_viewed`'s `source_surface`

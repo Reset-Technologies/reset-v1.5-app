@@ -21,7 +21,11 @@ import {
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import { useResetWindow } from "../../hooks/useResetWindow";
+import { fastingSlotCopy } from "../../utils/resetWindow";
 import {
+  bySlotOrder,
+  localToday,
+  SLOT_LABEL,
   getMyPlan,
   addMealToPlan,
   removePlannedMeal,
@@ -95,33 +99,7 @@ type Props = CompositeScreenProps<
  * Breakfast/Lunch/Dinner when appropriate."* So the mapping lives HERE, in the
  * view, and never leaks back into the model.
  */
-const SLOT_LABEL: Record<MealSlotType, string> = {
-  first_meal: "Breakfast",
-  midday: "Lunch",
-  evening: "Dinner",
-  snack: "Snack",
-};
 
-/**
- * The order a day READS in, which is not the order rows were written in.
- *
- * 🔴 `sortOrder` is an insertion counter: both `addMeal` and `moveMeal` set it
- * to `max(sortOrder) + 1`, so anything added to a day lands LAST. Sorting the
- * view by it alone put a restored lunch under dinner — caught walking the tab
- * 2026-10-21 after an Undo, and it is not an Undo bug: adding a breakfast from
- * "Add to plan" shows it below dinner the same way.
- *
- * 📌 `sortOrder` still breaks ties INSIDE a slot, which is the one thing it is
- * genuinely good for — two dinners on one day keep the order they were added.
- * MY PLAN r16 keeps the model semantic, so this ranking lives in the view
- * beside `SLOT_LABEL` rather than becoming a column.
- */
-const SLOT_RANK: Record<MealSlotType, number> = {
-  first_meal: 0,
-  midday: 1,
-  evening: 2,
-  snack: 3,
-};
 
 const DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -153,35 +131,10 @@ function weekdayIndex(isoDate: string): number {
 }
 
 /** `2026-08-16` -> `Aug 16`. */
-/**
- * Today as the plan means it — a LOCAL calendar date.
- *
- * 🔴 NOT `new Date().toISOString().slice(0, 10)`, which is UTC. MY PLAN r15 is
- * explicit that "every planned meal belongs to one local calendar day", and in
- * any timezone behind UTC the ISO string flips to tomorrow during the evening:
- * at 8pm in New York it already reads the next day. Anything comparing a plan
- * date against it then treats TODAY as past — which would have quietly locked
- * the current day's meals every evening for most of our members.
- */
-function localToday(): string {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
 
 function shortDate(isoDate: string): string {
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${MONTHS[Number(isoDate.slice(5, 7)) - 1]} ${dayOfMonth(isoDate)}`;
-}
-
-/** `12:00` -> `12pm`, `09:30` -> `9:30am`. */
-function friendlyTime(hhmm: string): string {
-  const [hStr, mStr] = hhmm.split(":");
-  const h = Number(hStr);
-  const suffix = h >= 12 ? "pm" : "am";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return mStr === "00" ? `${h12}${suffix}` : `${h12}:${mStr}${suffix}`;
 }
 
 export function MyPlanScreen({ navigation, route }: Props) {
@@ -774,11 +727,8 @@ export function MyPlanScreen({ navigation, route }: Props) {
    * When there is no Window we say nothing rather than inventing a time.
    */
   const emptyCopy = useCallback(
-    (slotType: MealSlotType): string | null => {
-      if (slotType !== "first_meal") return null;
-      const open = windowState?.plan?.openLocalTime;
-      return open ? `Fasting until ${friendlyTime(open)}` : null;
-    },
+    (slotType: MealSlotType): string | null =>
+      fastingSlotCopy(slotType, windowState?.plan?.openLocalTime),
     [windowState],
   );
 
@@ -818,6 +768,7 @@ export function MyPlanScreen({ navigation, route }: Props) {
               // ingredient substitutions. See the param's own note.
               localDate,
               slotType,
+              swapped: slot.swapped,
             }
           : undefined,
         meal: {
@@ -1075,11 +1026,7 @@ export function MyPlanScreen({ navigation, route }: Props) {
         <View style={styles.card}>
           {(day?.slots ?? [])
             .slice()
-            .sort(
-              (a, b) =>
-                (SLOT_RANK[a.slotType] ?? 99) - (SLOT_RANK[b.slotType] ?? 99) ||
-                a.sortOrder - b.sortOrder,
-            )
+            .sort(bySlotOrder)
             .map((slot, idx) => (
               <SlotRow
                 key={slot.id}
@@ -1107,7 +1054,26 @@ export function MyPlanScreen({ navigation, route }: Props) {
                 onAdd={
                   // Same rule as editing: a past day is history. An empty slot
                   // there is a record of what did not happen, not an invitation.
-                  !slot.recipe && day && day.date >= localToday()
+                  //
+                  /**
+                   * 🔴 AND NOTHING THE FAST BLOCKS. Lang, on `5061:55143`
+                   * and `5055:49496`: *"Users shouldn't be able to add meals
+                   * if they're blocked off by the fast."* Both her frames draw
+                   * that row with no Add and no chevron.
+                   *
+                   * 📌 This does NOT contradict Bryan's 10-22 ruling
+                   * (*"Keep the empty slot visible with 'Nothing planned' and
+                   * an Add action"*) — his is the rule for an empty slot, hers
+                   * is the one exception to it. A free midday still gets Add.
+                   *
+                   * 🔑 `emptyCopy` is the test because it is ALREADY the
+                   * "this slot is inside the fast" predicate: non-null only for
+                   * a `first_meal` when a Window exists. No second derivation.
+                   */
+                  !slot.recipe &&
+                  day &&
+                  day.date >= localToday() &&
+                  !emptyCopy(slot.slotType)
                     ? () => {
                         setActing({ slot, onDate: day.date });
                         setPicker("add");
@@ -1552,10 +1518,15 @@ function SlotRow({
        */
       accessibilityLabel={
         recipe
-          ? `${label}: ${recipe.title}`
+          ? // 🔑 "Swapped" is spoken, not drawn-only. The "Add" pill note below
+            // is the same lesson: a marker that lives in the row's own
+            // accessibility element is sighted-only unless the label says it.
+            `${label}: ${recipe.title}${slot.swapped ? ", swapped" : ""}`
           : onAdd
             ? `Add a meal to ${label.toLowerCase()}`
-            : `${label}: empty`
+            : emptyCopy
+              ? `${label}: ${emptyCopy}`
+              : `${label}: empty`
       }
       accessibilityHint={onLongPress ? "Press and hold to move this meal to another day" : undefined}
     >
@@ -1605,7 +1576,18 @@ function SlotRow({
       </View>
 
       <View style={styles.slotText}>
-        <Text style={styles.slotLabel}>{label}</Text>
+        {/* Lang `5061:55144`: the eyebrow reads "Lunch  Swapped", the
+            second word italic and set apart. */}
+        <View style={styles.slotLabelRow}>
+          <Text style={styles.slotLabel}>{label}</Text>
+          {slot.swapped ? (
+            <View style={styles.fauxItalic}>
+              <Text style={[styles.slotLabel, styles.slotSwapped]}>
+                Swapped
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {recipe ? (
           <Text style={styles.slotTitle} numberOfLines={2}>
             {recipe.title}
@@ -1649,10 +1631,14 @@ function SlotRow({
           <Text style={styles.rowMenuGlyph}>{"···"}</Text>
         </Pressable>
       ) : null}
-      {/* 🔑 INTERIM like the "···" above, and for the same reason: Lang's
-          frame has no empty-slot state, because until Remove shipped a slot
-          could not BE empty. Minimal on purpose — a word, in the corner the
-          chevron would occupy, so her row keeps its shape. */}
+      {/* 🔑 Minimal on purpose — a word, in the corner the chevron would
+          occupy, so her row keeps its shape.
+
+          📌 It was INTERIM because Lang had drawn no empty-slot state (a
+          slot could not BE empty until Remove shipped). She has since drawn
+          one, `5061:55143`: dashed thumb, "Fasting until 12pm", no Add and no
+          chevron. So this pill is now hers for a FREE slot, and `onAdd` is
+          withheld on a slot the fast blocks. */}
       {!recipe && onAdd ? (
         <View style={styles.addPill} pointerEvents="none">
           <Text style={styles.addPillText}>Add</Text>
@@ -1797,6 +1783,29 @@ const styles = StyleSheet.create({
     color: K.white,
     opacity: 0.6,
   },
+  slotLabelRow: { flexDirection: "row", alignItems: "flex-end" },
+  // Dimmer again than the slot name it follows, so "Lunch" still leads.
+  // Lang `5061:55144` sets it apart by weight of colour as well as the
+  // italic, and the gap before it is hers.
+  slotSwapped: { color: K.bone, opacity: 0.75, marginLeft: 8 },
+  /**
+   * FAUX ITALIC — Lang italicises "Swapped" and we have no italic face.
+   *
+   * 🔴 `fontStyle: "italic"` does NOTHING here. Measured on the iOS sim
+   * 2026-11-02 at 4× zoom: the custom family renders upright, because the
+   * bundle holds `QuadrantTextTrial-Regular.otf` alone and iOS synthesises no
+   * oblique for it. A skew is the only way to slant it today.
+   *
+   * ⚠️ This SLANTS THE ROMAN. A real italic has its own letterforms — a
+   * single-storey `a`, different `w` — which a transform cannot invent, so
+   * this is an approximation standing in until Lang sends
+   * `QuadrantTextTrial-Italic.otf` (asked 2026-11-02). −1¹¹° is roughly the
+   * angle of a text italic; more reads as a distortion.
+   *
+   * 📌 Needs a VIEW: RN lays a nested `<Text>` out as an inline span and
+   * ignores a transform on it, which is why both call sites are rows.
+   */
+  fauxItalic: { transform: [{ skewX: "-11deg" }] },
   slotTitle: {
     fontFamily: fonts.catalogue,
     fontSize: 17,

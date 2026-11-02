@@ -56,6 +56,10 @@ import {
 import { getMealWhy } from "../../services/mealInsights";
 import { abbreviateMeasurement, formatAmount } from "../../utils/amount";
 import {
+  localToday,
+  nextUpcomingSlotFor,
+  peekMyPlan,
+  plannedSlotEyebrow,
   setPlannedMealServings,
 } from "../../services/myPlan";
 import { addRecipeIngredientsToGroceryList } from "../../services/grocery";
@@ -1333,6 +1337,54 @@ export function RecipeDetailScreen() {
   const inPlan = Boolean(plannedMeal);
 
   /**
+   * **"Sunday’s Lunch"** — the eyebrow above the title, Lang `5059:54734`,
+   * annotated *"This view shows the meal type and day"*.
+   *
+   * 🔑 Cole's rule, 2026-11-02: it names **the next upcoming slot this meal
+   * is in**, not merely the slot the member arrived through. The question it
+   * answers — *"when am I eating this?"* — is most worth answering from
+   * Explore, where they are still deciding.
+   *
+   * 📌 `plannedMeal` STILL WINS when present. Tapping Thursday's dinner on
+   * My Plan must say Thursday's Dinner even if the same recipe also sits on
+   * Tuesday — the member asked about that row, and it costs no request.
+   *
+   * 🔴 Everywhere else this needs the week, and `getMyPlan()` GENERATES one.
+   * Hence `peekMyPlan()` (api #202), which reads without drafting. Calling the
+   * generating one here would have created a member's week because they opened
+   * a recipe from Explore — MY PLAN r6.
+   */
+  const [upcoming, setUpcoming] = useState<{
+    text: string;
+    swapped: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    // From My Plan the answer is already in hand; ask nobody.
+    if (plannedMeal) return;
+    let alive = true;
+    peekMyPlan().then((plan) => {
+      if (!alive || !plan) return;
+      const hit = nextUpcomingSlotFor(plan, meal.id, localToday());
+      const text = hit && plannedSlotEyebrow(hit.localDate, hit.slotType);
+      if (hit && text) setUpcoming({ text, swapped: hit.swapped });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [plannedMeal, meal.id]);
+
+  const planEyebrow: { text: string; swapped: boolean } | null = plannedMeal
+    ? (() => {
+        const text = plannedSlotEyebrow(
+          plannedMeal.localDate,
+          plannedMeal.slotType,
+        );
+        return text ? { text, swapped: plannedMeal.swapped === true } : null;
+      })()
+    : upcoming;
+
+  /**
    * "Change meal" → My Plan's existing edit sheet, opened on this exact slot.
    *
    * Bryan ruled this on 2026-10-30 over building a second picker here:
@@ -1448,7 +1500,37 @@ export function RecipeDetailScreen() {
               brown: our page is WHITE by day, so a white title would vanish
               into the end of its own fade. Lang's LAYOUT, our palette. */}
           <View style={styles.heroTitleBlock}>
-            <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
+            {/* 📌 Eyebrow and title are ONE group: her frame butts the
+                eyebrow straight onto the title (270→289, zero gap) while the
+                tags sit 16 below. `heroTitleBlock`'s `gap: 12` would space all
+                three evenly, so the pair is wrapped instead of re-spaced. */}
+            <View>
+              {planEyebrow ? (
+                /* \U0001f511 A ROW, not one `<Text>` with a nested span. The faux
+                   italic is a `skewX` TRANSFORM, and a transform needs a view
+                   \u2014 RN lays nested `<Text>` out as an inline span and ignores
+                   it there. `alignItems: "flex-end"` keeps the two runs
+                   sitting on the same baseline. */
+                <View style={styles.eyebrowRow}>
+                  <Text style={[styles.planEyebrow, dyn.text]}>
+                    {planEyebrow.text}
+                  </Text>
+                  {planEyebrow.swapped ? (
+                    <>
+                      <Text style={[styles.planEyebrow, dyn.text]}>
+                        {"\u00a0\u00b7\u00a0"}
+                      </Text>
+                      <View style={styles.fauxItalic}>
+                        <Text style={[styles.planEyebrow, dyn.text]}>
+                          Swapped
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
+            </View>
             <View style={styles.tagRow}>
               {prepTime ? (
                 <View style={[styles.tag, dyn.tag, dyn.tag]}>
@@ -2291,6 +2373,41 @@ const styles = StyleSheet.create({
     bottom: HERO_TITLE_BOTTOM,
     gap: 12,
   },
+  /**
+   * Her Body 1 Quadrant: the SERIF at 16 / -1% tracking, not the sans the
+   * title uses.
+   *
+   * 🔴 Her token `Text Strong` resolves to **`#fafdfe`** — the CSS fallback
+   * in the generated code says `#361416`, which is the WRONG MODE. It is moot
+   * here because the colour comes from `dyn.text` like the title and tags: our
+   * hero is WHITE by day, so her white-on-brown would vanish into the fade.
+   * Lang's layout, our palette — the same call as the title above.
+   */
+  planEyebrow: {
+    fontFamily: fonts.quadrant,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: K.brown,
+  },
+  eyebrowRow: { flexDirection: "row", alignItems: "flex-end" },
+  /**
+   * FAUX ITALIC — Lang italicises "Swapped" and we have no italic face.
+   *
+   * 🔴 `fontStyle: "italic"` does NOTHING here. Measured on the iOS sim
+   * 2026-11-02 at 4× zoom: the custom family renders upright, because the
+   * bundle holds `QuadrantTextTrial-Regular.otf` alone and iOS synthesises no
+   * oblique for it. A skew is the only way to slant it today.
+   *
+   * ⚠️ This SLANTS THE ROMAN. A real italic has its own letterforms — a
+   * single-storey `a`, different `w` — which a transform cannot invent, so
+   * this is an approximation standing in until Lang sends
+   * `QuadrantTextTrial-Italic.otf` (asked 2026-11-02). −1¹¹° is roughly the
+   * angle of a text italic; more reads as a distortion.
+   *
+   * 📌 Needs a VIEW: RN lays a nested `<Text>` out as an inline span and
+   * ignores a transform on it, which is why both call sites are rows.
+   */
+  fauxItalic: { transform: [{ skewX: "-11deg" }] },
   mealName: {
     fontFamily: fonts.catalogue,
     fontSize: 32,

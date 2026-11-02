@@ -15,7 +15,11 @@ import { ArrowBackIcon } from "../../components/PaywallIcons";
 import { K } from "../../constants/colors";
 import { fonts } from "../../constants/typography";
 import {
+  addMealToPlan,
   buildTags,
+  bySlotOrder,
+  localToday,
+  SLOT_LABEL,
   getMyPlan,
   swapPlannedMeal,
   type MealSlotType,
@@ -23,6 +27,8 @@ import {
   type MyPlanResponse,
   type MyPlanSlot,
 } from "../../services/myPlan";
+import { useResetWindow } from "../../hooks/useResetWindow";
+import { fastingSlotCopy } from "../../utils/resetWindow";
 import type { MainStackParamList } from "../../navigation/MainNavigator";
 
 /**
@@ -48,12 +54,6 @@ import type { MainStackParamList } from "../../navigation/MainNavigator";
 
 type Props = NativeStackScreenProps<MainStackParamList, "AddToPlan">;
 
-const SLOT_LABEL: Record<MealSlotType, string> = {
-  first_meal: "Breakfast",
-  midday: "Lunch",
-  evening: "Dinner",
-  snack: "Snack",
-};
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 const DOW_FULL = [
@@ -77,18 +77,6 @@ function parts(iso: string): { y: number; m: number; d: number; dow: number } | 
   return { y, m, d, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
 }
 
-/**
- * Today as a LOCAL calendar day, `YYYY-MM-DD`.
- *
- * 🔴 Not `toISOString().slice(0,10)` — that is UTC, so anyone west of
- * Greenwich gets yesterday for most of their evening. Plan days are local.
- */
-function todayLocal(): string {
-  const n = new Date();
-  const mm = String(n.getMonth() + 1).padStart(2, "0");
-  const dd = String(n.getDate()).padStart(2, "0");
-  return `${n.getFullYear()}-${mm}-${dd}`;
-}
 
 /** `2026-10-31` → `Saturday 10.31`, her heading format. */
 function dayHeading(iso: string): string {
@@ -106,6 +94,15 @@ export function AddToPlanScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  /**
+   * The Window, for the fasting copy on an empty first meal.
+   *
+   * ⚠️ This hook also keeps the lock-screen Live Activity in step on every
+   * state change. Mounting it here adds one more sync point — idempotent, and
+   * the same thing Home, My Plan and Recipe Details already do.
+   */
+  const { state: windowState } = useResetWindow();
+
   const scrollRef = useRef<ScrollView>(null);
   /** Section tops, so the selector can scroll the week to a day. */
   const offsets = useRef<Record<string, number>>({});
@@ -120,7 +117,7 @@ export function AddToPlanScreen({ route, navigation }: Props) {
         // 🔑 Open on the day the member is on, not on the first day of the
         // week. `fromDate` wins when they came from a planned meal; otherwise
         // today if the week contains it; `days[0]` only as a last resort.
-        const today = todayLocal();
+        const today = localToday();
         setSelected(
           (cur) =>
             cur ??
@@ -172,6 +169,57 @@ export function AddToPlanScreen({ route, navigation }: Props) {
       } catch {
         // 🔴 Not silent. An empty catch makes a failed swap look identical to a
         // successful one.
+        setToast("That didn't go through. Try again.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [plan, busy, recipeVersionId, navigation],
+  );
+
+  /**
+   * Is this slot blocked by the fast, and if so what does it say?
+   *
+   * 🔑 `fastingSlotCopy` is THE shared predicate — `MyPlanScreen.emptyCopy`
+   * is the same one line. It returns the copy AND the verdict together, so the
+   * words and the affordance cannot disagree, and the rule it enforces is
+   * written once, beside it (`utils/resetWindow.ts`).
+   *
+   * 🔴 Null ⇒ the slot is merely FREE ⇒ it gets a chevron and an add.
+   */
+  const fastingCopy = useCallback(
+    (slotType: MealSlotType): string | null =>
+      fastingSlotCopy(slotType, windowState?.plan?.openLocalTime),
+    [windowState],
+  );
+
+  /**
+   * Add this recipe INTO a free slot.
+   *
+   * 🔑 This is the half the screen was missing. `rows` dropped every slot
+   * holding no recipe, so a screen called "Add to plan" could only ever SWAP,
+   * and an empty day offered nothing at all. The route has been live since
+   * 2026-10-09 and takes a day + slot type with no `plannedMealId` — nothing
+   * was stopping it but that filter.
+   *
+   * 🔴 `POST my-plan/meals` APPENDS. That is correct here, where the slot
+   * is empty, and wrong for a swap — which is why `swap` above replaces.
+   */
+  const add = useCallback(
+    async (slot: MyPlanSlot, date: string) => {
+      if (!plan || busy) return;
+      setBusy(true);
+      try {
+        await addMealToPlan({
+          mealPlanId: plan.mealPlanId,
+          localDate: date,
+          slotType: slot.slotType,
+          recipeVersionId,
+          servings: 1,
+        });
+        setToast(`Added to ${SLOT_LABEL[slot.slotType]} on ${dayHeading(date)}`);
+        setTimeout(() => navigation.goBack(), 900);
+      } catch {
         setToast("That didn't go through. Try again.");
       } finally {
         setBusy(false);
@@ -269,8 +317,21 @@ export function AddToPlanScreen({ route, navigation }: Props) {
              * itself — a write, a fresh plan revision, and nothing changed on
              * screen. 📌 Matched on the MEAL id, not the version: a different
              * version of the same recipe is still the same meal to a member.
+             * 🔑 It filters ONLY that slot. Slots holding no recipe stay in
+             * the list — dropping them is what hid the fasting row and made
+             * every free slot unreachable.
              */
-            const rows = d.slots.filter((s) => s.recipe && s.recipe.id !== recipeId);
+            const rows = d.slots
+              .filter((s) => !(s.recipe && s.recipe.id === recipeId))
+              /**
+               * 🔴 SORTED, never the API's order. `sortOrder` is an insertion
+               * counter, so a meal added today sorts after dinner — this screen
+               * rendered the raw order and would have shown Breakfast, Dinner,
+               * Lunch the moment its own Add wrote one. `bySlotOrder` is the
+               * ranking My Plan has used since 2026-10-21.
+               */
+              .slice()
+              .sort(bySlotOrder);
             return (
               <View
                 key={d.date}
@@ -296,19 +357,42 @@ export function AddToPlanScreen({ route, navigation }: Props) {
                   <View>
                     {rows.map((slot, i) => {
                       const tags = slot.recipe ? buildTags(slot.recipe) : [];
+                      /**
+                       * Three row states — and 🔑 THE CHEVRON FOLLOWS THE
+                       * ACTION, NOT THE DATA (MyPlanScreen's own rule, and
+                       * exactly why Lang's fasting row `5055:49496` has none):
+                       *   recipe          → swap that meal out
+                       *   empty           → add into the free slot
+                       *   empty + fasting → shown, inert, no chevron
+                       */
+                      const fasting = slot.recipe ? null : fastingCopy(slot.slotType);
+                      const addable = !slot.recipe && !fasting;
+                      const actionable = Boolean(slot.recipe) || addable;
                       return (
                         <Pressable
                           key={slot.id}
-                          onPress={() => void swap(slot, d.date)}
-                          disabled={busy}
+                          onPress={
+                            slot.recipe
+                              ? () => void swap(slot, d.date)
+                              : addable
+                                ? () => void add(slot, d.date)
+                                : undefined
+                          }
+                          disabled={busy || !actionable}
                           style={[
                             styles.mealRow,
                             i > 0 && styles.mealRowStacked,
                             i === 0 && styles.mealRowFirst,
                             i === rows.length - 1 && styles.mealRowLast,
                           ]}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Swap ${slot.recipe?.title ?? "this meal"} on ${dayHeading(d.date)}`}
+                          accessibilityRole={actionable ? "button" : "text"}
+                          accessibilityLabel={
+                            slot.recipe
+                              ? `Swap ${slot.recipe.title} on ${dayHeading(d.date)}`
+                              : addable
+                                ? `Add to ${SLOT_LABEL[slot.slotType]} on ${dayHeading(d.date)}`
+                                : `${SLOT_LABEL[slot.slotType]} on ${dayHeading(d.date)}. ${fasting}`
+                          }
                         >
                           <View style={styles.mealContent}>
                             {slot.recipe?.imageUrl ? (
@@ -318,8 +402,14 @@ export function AddToPlanScreen({ route, navigation }: Props) {
                             )}
                             <View style={styles.mealText}>
                               <Text style={styles.mealSlot}>{SLOT_LABEL[slot.slotType]}</Text>
-                              <Text style={styles.mealTitle} numberOfLines={2}>
-                                {slot.recipe?.title}
+                              <Text
+                                style={[styles.mealTitle, !slot.recipe && styles.mealTitleEmpty]}
+                                numberOfLines={2}
+                              >
+                                {/* 🔴 `Nothing planned` only ever shows on a
+                                    free slot with no Window — that slot is
+                                    addable, so it must not read as fasting. */}
+                                {slot.recipe?.title ?? fasting ?? "Nothing planned"}
                               </Text>
                               {tags.length > 0 ? (
                                 <View style={styles.tagRow}>
@@ -332,7 +422,9 @@ export function AddToPlanScreen({ route, navigation }: Props) {
                               ) : null}
                             </View>
                           </View>
-                          <Text style={styles.chevron}>{"\u203A"}</Text>
+                          {actionable ? (
+                            <Text style={styles.chevron}>{"\u203A"}</Text>
+                          ) : null}
                         </Pressable>
                       );
                     })}
@@ -494,6 +586,8 @@ const styles = StyleSheet.create({
   mealText: { flex: 1, flexShrink: 1, gap: 2 },
   mealSlot: { fontFamily: fonts.quadrant, fontSize: 12, letterSpacing: -0.12, color: K.white, opacity: 0.6 },
   mealTitle: { fontFamily: fonts.catalogue, fontSize: 16, letterSpacing: -0.16, color: K.white },
+  // Matches MyPlanScreen's `slotEmpty`, so an empty slot reads the same on both.
+  mealTitleEmpty: { color: K.bone, opacity: 0.5 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 8 },
   tag: {
     backgroundColor: "rgba(250,253,254,0.24)",
