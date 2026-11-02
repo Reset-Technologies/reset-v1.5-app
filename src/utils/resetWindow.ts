@@ -1,3 +1,4 @@
+import type { MealSlotType } from "../services/myPlan";
 import type {
   EarnedAchievement,
   PayoffCopyId,
@@ -82,6 +83,59 @@ export function localTimeLabel(hhmm: string): string {
   const suffix = h >= 12 ? "pm" : "am";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
+}
+
+/**
+ * "12pm" from "12:00", "9:30am" from "09:30".
+ *
+ * 🔑 NOT `localTimeLabel`, which always prints the minutes ("12:00pm").
+ * Both are in use and the difference is deliberate: the Window's own controls
+ * state a precise clock time, while prose drops a bare ":00". Lang writes
+ * "Fasting until 12pm" on both My Plan and Add to Plan (`5055:49496`).
+ *
+ * 📌 Lifted here verbatim from `MyPlanScreen`, which had it privately,
+ * so Add to Plan renders the identical string rather than a second rounding.
+ */
+export function friendlyTime(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const h = Number(hStr);
+  const suffix = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return mStr === "00" ? `${h12}${suffix}` : `${h12}:${mStr}${suffix}`;
+}
+
+/**
+ * THE FASTING RULE, and the single predicate that enforces it.
+ *
+ * > An EMPTY slot gets an add affordance. A slot BLOCKED BY THE FAST does not.
+ *
+ * Returns the copy for a slot the fast blocks, or `null` when the slot is
+ * merely free. 🔴 **Non-null means: render this, and offer NO way to add.**
+ *
+ * Three sources agree:
+ * - **Lang**, commenting on `5061:55143` (My Plan) and `5055:49496` (Add to
+ *   Plan): *"Users shouldn't be able to add meals if they're blocked off by
+ *   the fast."* Both frames draw that row with no add control, no chevron.
+ * - **Bryan**, 2026-10-22: *"Keep the empty slot visible with 'Nothing
+ *   planned' and an Add action that uses the existing meal-selection flow."*
+ *   That is the rule for an empty slot; Lang's is its one exception.
+ * - **Cole**, 2026-11-02, asking for exactly this to be captured.
+ *
+ * 🔑 ONE function, used by BOTH screens, returning BOTH the copy and the
+ * verdict — so the words and the affordance can never disagree. It was written
+ * out twice, once per screen, which is how `SLOT_RANK` ended up letting Add to
+ * Plan sort a day differently from My Plan.
+ *
+ * 🔴 `openLocalTime` null (no Window) returns null — the slot is ADDABLE.
+ * With no Window there is no fast to protect, and inventing a time would be
+ * worse than saying nothing (MY PLAN r5).
+ */
+export function fastingSlotCopy(
+  slotType: MealSlotType,
+  openLocalTime: string | null | undefined,
+): string | null {
+  if (slotType !== "first_meal") return null;
+  return openLocalTime ? `Fasting until ${friendlyTime(openLocalTime)}` : null;
 }
 
 /**
