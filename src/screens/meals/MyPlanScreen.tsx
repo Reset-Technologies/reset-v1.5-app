@@ -27,6 +27,7 @@ import {
   localToday,
   SLOT_LABEL,
   getMyPlan,
+  peekMyPlan,
   addMealToPlan,
   removePlannedMeal,
   movePlannedMeal,
@@ -361,6 +362,22 @@ export function MyPlanScreen({ navigation, route }: Props) {
    * endpoint ONLY; `getMyPlan()` stays a once-on-open call, since that request
    * can generate the week (MY PLAN r6: "Never regenerate just because screen
    * opened").
+   *
+   * 🔴🔴 THE WEEK ALSO GOES STALE ON EDITS MADE FROM ANOTHER SCREEN. Every
+   * action on THIS screen ends in `reloadPlan()`, but Add to Plan commits its
+   * swap and calls `navigation.goBack()` (`AddToPlanScreen.tsx:168`), which
+   * lands on Recipe Details — not here. The Meals tab keeps this screen
+   * mounted holding the week it read on open, so the member's own swap simply
+   * does not appear. Observed in PROD 2026-11-03: swapped Kenyan Pilau into
+   * Wednesday's dinner, came back, and the row still read Low Carb Brunch
+   * Burger until the whole app was reloaded.
+   *
+   * 🔑 `peekMyPlan()` (api #202) is what makes the fix legal. It READS WITHOUT
+   * GENERATING, so unlike `getMyPlan()` it is safe to run on every focus — the
+   * r6 rule bars regenerating on open, not reading. Adopting its payload also
+   * replaces the planned-meal ids, which is the other half of why
+   * `reloadPlan` exists: `commitRevision` writes fresh rows per revision, so a
+   * stale week's ids are dead and the next edit would 400.
    */
   useEffect(() => {
     const load = () => {
@@ -379,8 +396,30 @@ export function MyPlanScreen({ navigation, route }: Props) {
         // here must never blank the plan.
         .catch(() => {});
     };
+    const onFocus = () => {
+      load();
+      /**
+       * 📌 Not while the mount fetch is still in flight. That request alone
+       * sets `selected` to today; a peek that wins the race would land the
+       * member on day 1 of the week instead. A null `plan` IS that signal, so
+       * no extra ref is needed — and it means the navigator firing `focus`
+       * immediately on mount costs nothing.
+       */
+      if (!planRef.current) return;
+      peekMyPlan()
+        .then((p) => {
+          // No week on the server: generating one is the mount effect's job.
+          if (!p) return;
+          const cur = planRef.current;
+          // Same revision means nothing changed anywhere. Don't churn rows.
+          if (cur && p.revisionId === cur.revisionId) return;
+          setPlan(p);
+        })
+        // A stale week beats a blank one — the same rule `reloadPlan` follows.
+        .catch(() => {});
+    };
     load();
-    return navigation.addListener("focus", load);
+    return navigation.addListener("focus", onFocus);
   }, [navigation]);
 
   const toggleSaved = useCallback(

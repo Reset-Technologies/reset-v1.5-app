@@ -1359,20 +1359,39 @@ export function RecipeDetailScreen() {
     swapped: boolean;
   } | null>(null);
 
+  /**
+   * 🔴 RE-READ ON FOCUS, not just on mount. "Add to plan" pushes Add to Plan
+   * from THIS screen and that screen returns here with `goBack()`
+   * (`AddToPlanScreen.tsx:168`), so the member adds a meal to Wednesday and
+   * comes straight back to a screen whose eyebrow still says nothing. Seen in
+   * PROD 2026-11-03 immediately after a swap committed.
+   *
+   * 📌 It also CLEARS. The read used to only ever set the eyebrow, which was
+   * harmless while it ran once; on a re-read it would strand "Wednesday's
+   * Dinner" above a meal the member had just removed from the plan. Clearing
+   * is safe because `peekMyPlan()` returns null on failure and that path
+   * returns early — only a plan that came back and does not contain this
+   * recipe clears it.
+   */
   useEffect(() => {
     // From My Plan the answer is already in hand; ask nobody.
     if (plannedMeal) return;
     let alive = true;
-    peekMyPlan().then((plan) => {
-      if (!alive || !plan) return;
-      const hit = nextUpcomingSlotFor(plan, meal.id, localToday());
-      const text = hit && plannedSlotEyebrow(hit.localDate, hit.slotType);
-      if (hit && text) setUpcoming({ text, swapped: hit.swapped });
-    });
+    const read = () => {
+      peekMyPlan().then((plan) => {
+        if (!alive || !plan) return;
+        const hit = nextUpcomingSlotFor(plan, meal.id, localToday());
+        const text = hit && plannedSlotEyebrow(hit.localDate, hit.slotType);
+        setUpcoming(hit && text ? { text, swapped: hit.swapped } : null);
+      });
+    };
+    read();
+    const unsubscribe = navigation.addListener("focus", read);
     return () => {
       alive = false;
+      unsubscribe();
     };
-  }, [plannedMeal, meal.id]);
+  }, [plannedMeal, meal.id, navigation]);
 
   const planEyebrow: { text: string; swapped: boolean } | null = plannedMeal
     ? (() => {
