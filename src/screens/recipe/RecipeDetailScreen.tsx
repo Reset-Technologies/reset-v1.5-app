@@ -1525,11 +1525,12 @@ export function RecipeDetailScreen() {
                 three evenly, so the pair is wrapped instead of re-spaced. */}
             <View>
               {planEyebrow ? (
-                /* \U0001f511 A ROW, not one `<Text>` with a nested span. The faux
-                   italic is a `skewX` TRANSFORM, and a transform needs a view
-                   \u2014 RN lays nested `<Text>` out as an inline span and ignores
-                   it there. `alignItems: "flex-end"` keeps the two runs
-                   sitting on the same baseline. */
+                /* A ROW of runs so the separator and "Swapped" can each carry
+                   their own face. `alignItems: "flex-end"` keeps all three
+                   sitting on the same baseline. (It began as a row because the
+                   faux italic was a TRANSFORM and RN ignores one on a nested
+                   `<Text>`; the real italic needs no view, but the row is
+                   kept \u2014 it is the layout that was verified in prod.) */
                 <View style={styles.eyebrowRow}>
                   <Text style={[styles.planEyebrow, dyn.text]}>
                     {planEyebrow.text}
@@ -1539,11 +1540,15 @@ export function RecipeDetailScreen() {
                       <Text style={[styles.planEyebrow, dyn.text]}>
                         {"\u00a0\u00b7\u00a0"}
                       </Text>
-                      <View style={styles.fauxItalic}>
-                        <Text style={[styles.planEyebrow, dyn.text]}>
-                          Swapped
-                        </Text>
-                      </View>
+                      <Text
+                        style={[
+                          styles.planEyebrow,
+                          styles.planEyebrowSwapped,
+                          dyn.text,
+                        ]}
+                      >
+                        Swapped
+                      </Text>
                     </>
                   ) : null}
                 </View>
@@ -2410,23 +2415,18 @@ const styles = StyleSheet.create({
   },
   eyebrowRow: { flexDirection: "row", alignItems: "flex-end" },
   /**
-   * FAUX ITALIC — Lang italicises "Swapped" and we have no italic face.
+   * ✅ THE REAL ITALIC, since Lang sent the file 2026-11-04. This replaced a
+   * `skewX: "-11deg"` stand-in that slanted the roman — the face now brings
+   * its own letterforms (single-storey `a`, a true italic `w`).
    *
-   * 🔴 `fontStyle: "italic"` does NOTHING here. Measured on the iOS sim
-   * 2026-11-02 at 4× zoom: the custom family renders upright, because the
-   * bundle holds `QuadrantTextTrial-Regular.otf` alone and iOS synthesises no
-   * oblique for it. A skew is the only way to slant it today.
+   * 🔴 Selected by FAMILY, not `fontStyle: "italic"`. A custom family has no
+   * style linkage, so the style prop is a silent no-op here — measured
+   * upright on the sim 2026-11-02 before the stand-in went in.
    *
-   * ⚠️ This SLANTS THE ROMAN. A real italic has its own letterforms — a
-   * single-storey `a`, different `w` — which a transform cannot invent, so
-   * this is an approximation standing in until Lang sends
-   * `QuadrantTextTrial-Italic.otf` (asked 2026-11-02). −1¹¹° is roughly the
-   * angle of a text italic; more reads as a distortion.
-   *
-   * 📌 Needs a VIEW: RN lays a nested `<Text>` out as an inline span and
-   * ignores a transform on it, which is why both call sites are rows.
+   * 📌 Only the FACE changes. The colour still comes from `dyn.text` with the
+   * rest of the eyebrow, so this must stay BEFORE `dyn.text` in the array.
    */
-  fauxItalic: { transform: [{ skewX: "-11deg" }] },
+  planEyebrowSwapped: { fontFamily: fonts.quadrantItalic },
   mealName: {
     fontFamily: fonts.catalogue,
     fontSize: 32,

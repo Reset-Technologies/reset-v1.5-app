@@ -33,6 +33,7 @@ export default function App() {
     DMSans_500Medium,
     DMSans_700Bold,
     QuadrantText_400Regular: require("./assets/fonts/QuadrantTextTrial-Regular.otf"),
+    QuadrantText_400Italic: require("./assets/fonts/QuadrantTextTrial-RegularItalic.otf"),
     Catalogue_400Regular: require("./assets/fonts/Catalogue-Regular.otf"),
     Catalogue_500Medium: require("./assets/fonts/Catalogue-Medium.otf"),
     Catalogue_700Bold: require("./assets/fonts/Catalogue-Bold.otf"),

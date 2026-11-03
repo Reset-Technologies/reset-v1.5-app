@@ -21,6 +21,16 @@ export const fonts = {
   dmSansBold: "DMSans_700Bold",
   // Caption serif (Figma "Caption Quadrant")
   quadrant: "QuadrantText_400Regular",
+  /**
+   * The REAL italic of the caption serif, sent by Lang 2026-11-04
+   * (`QuadrantTextTrial-RegularItalic.otf`).
+   *
+   * 🔴 It must be selected by FAMILY, never by `fontStyle: "italic"` — a
+   * custom family carries no style linkage, so iOS renders the roman upright
+   * and synthesises nothing. Measured on the sim 2026-11-02, which is what
+   * sent us to a `skewX` stand-in until this file arrived.
+   */
+  quadrantItalic: "QuadrantText_400Italic",
   // Display sans (Figma "Catalogue")
   catalogue: "Catalogue_400Regular",
   catalogueMedium: "Catalogue_500Medium",

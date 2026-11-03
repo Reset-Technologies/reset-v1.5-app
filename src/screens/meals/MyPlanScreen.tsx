@@ -1620,11 +1620,7 @@ function SlotRow({
         <View style={styles.slotLabelRow}>
           <Text style={styles.slotLabel}>{label}</Text>
           {slot.swapped ? (
-            <View style={styles.fauxItalic}>
-              <Text style={[styles.slotLabel, styles.slotSwapped]}>
-                Swapped
-              </Text>
-            </View>
+            <Text style={[styles.slotLabel, styles.slotSwapped]}>Swapped</Text>
           ) : null}
         </View>
         {recipe ? (
@@ -1823,28 +1819,25 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   slotLabelRow: { flexDirection: "row", alignItems: "flex-end" },
-  // Dimmer again than the slot name it follows, so "Lunch" still leads.
-  // Lang `5061:55144` sets it apart by weight of colour as well as the
-  // italic, and the gap before it is hers.
-  slotSwapped: { color: K.bone, opacity: 0.75, marginLeft: 8 },
   /**
-   * FAUX ITALIC — Lang italicises "Swapped" and we have no italic face.
+   * Dimmer again than the slot name it follows, so "Lunch" still leads. Lang
+   * `5061:55144` sets it apart by weight of colour as well as the italic, and
+   * the gap before it is hers.
    *
-   * 🔴 `fontStyle: "italic"` does NOTHING here. Measured on the iOS sim
-   * 2026-11-02 at 4× zoom: the custom family renders upright, because the
-   * bundle holds `QuadrantTextTrial-Regular.otf` alone and iOS synthesises no
-   * oblique for it. A skew is the only way to slant it today.
+   * ✅ THE REAL ITALIC, since Lang sent the file 2026-11-04. This replaced a
+   * `skewX: "-11deg"` stand-in that slanted the roman — the face now brings
+   * its own letterforms (single-storey `a`, a true italic `w`).
    *
-   * ⚠️ This SLANTS THE ROMAN. A real italic has its own letterforms — a
-   * single-storey `a`, different `w` — which a transform cannot invent, so
-   * this is an approximation standing in until Lang sends
-   * `QuadrantTextTrial-Italic.otf` (asked 2026-11-02). −1¹¹° is roughly the
-   * angle of a text italic; more reads as a distortion.
-   *
-   * 📌 Needs a VIEW: RN lays a nested `<Text>` out as an inline span and
-   * ignores a transform on it, which is why both call sites are rows.
+   * 🔴 Selected by FAMILY, not `fontStyle: "italic"`. A custom family has no
+   * style linkage, so the style prop is a silent no-op here — measured
+   * upright on the sim 2026-11-02 before the stand-in went in.
    */
-  fauxItalic: { transform: [{ skewX: "-11deg" }] },
+  slotSwapped: {
+    fontFamily: fonts.quadrantItalic,
+    color: K.bone,
+    opacity: 0.75,
+    marginLeft: 8,
+  },
   slotTitle: {
     fontFamily: fonts.catalogue,
     fontSize: 17,
