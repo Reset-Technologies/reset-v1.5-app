@@ -178,14 +178,20 @@ export function AddToPlanScreen({ route, navigation }: Props) {
   );
 
   /**
-   * Is this slot blocked by the fast, and if so what does it say?
+   * Does this slot fall outside the eating Window, and if so what do we say?
    *
    * 🔑 `fastingSlotCopy` is THE shared predicate — `MyPlanScreen.emptyCopy`
-   * is the same one line. It returns the copy AND the verdict together, so the
-   * words and the affordance cannot disagree, and the rule it enforces is
-   * written once, beside it (`utils/resetWindow.ts`).
+   * is the same one line, so the two screens cannot drift apart. The rule
+   * lives once, beside it (`utils/resetWindow.ts`).
    *
-   * 🔴 Null ⇒ the slot is merely FREE ⇒ it gets a chevron and an add.
+   * 🔴 SINCE 2026-11-04 THIS IS A FLAG, NOT A GATE (Bryan). Non-null changes
+   * what the row SAYS; it no longer changes what the row DOES. Every empty
+   * slot is addable.
+   *
+   * ⚠️ It is still blanket — non-null for any `first_meal` whenever a Window
+   * exists, without comparing the slot to the window — which was tolerable
+   * for copy and was NOT tolerable for a block. If it ever gates anything
+   * again, make it compare first.
    */
   const fastingCopy = useCallback(
     (slotType: MealSlotType): string | null =>
@@ -358,15 +364,23 @@ export function AddToPlanScreen({ route, navigation }: Props) {
                     {rows.map((slot, i) => {
                       const tags = slot.recipe ? buildTags(slot.recipe) : [];
                       /**
-                       * Three row states — and 🔑 THE CHEVRON FOLLOWS THE
-                       * ACTION, NOT THE DATA (MyPlanScreen's own rule, and
-                       * exactly why Lang's fasting row `5055:49496` has none):
-                       *   recipe          → swap that meal out
-                       *   empty           → add into the free slot
-                       *   empty + fasting → shown, inert, no chevron
+                       * Two row states — 🔑 THE CHEVRON FOLLOWS THE ACTION,
+                       * NOT THE DATA (MyPlanScreen's own rule):
+                       *   recipe → swap that meal out
+                       *   empty  → add into the free slot
+                       *
+                       * 🔴🔴 THERE USED TO BE A THIRD, `empty + fasting`,
+                       * shown inert with no chevron, per Lang on
+                       * `5055:49496`. **Bryan removed it 2026-11-04:** *"If a
+                       * meal conflicts with the Window, we can flag it, but
+                       * shouldn't block the action... remove the blanket
+                       * breakfast restriction and restore the Add action."*
+                       *
+                       * 📌 `fasting` SURVIVES as the row's COPY — the flag he
+                       * asked for — it simply no longer gates `addable`.
                        */
                       const fasting = slot.recipe ? null : fastingCopy(slot.slotType);
-                      const addable = !slot.recipe && !fasting;
+                      const addable = !slot.recipe;
                       const actionable = Boolean(slot.recipe) || addable;
                       return (
                         <Pressable
@@ -389,9 +403,14 @@ export function AddToPlanScreen({ route, navigation }: Props) {
                           accessibilityLabel={
                             slot.recipe
                               ? `Swap ${slot.recipe.title} on ${dayHeading(d.date)}`
-                              : addable
-                                ? `Add to ${SLOT_LABEL[slot.slotType]} on ${dayHeading(d.date)}`
-                                : `${SLOT_LABEL[slot.slotType]} on ${dayHeading(d.date)}. ${fasting}`
+                              : // 🔑 The flag is SPOKEN too. A sighted member
+                                // reads "Fasting until 10am" in the row; with
+                                // the block gone this is an ordinary Add, so
+                                // the warning has to ride along in the label
+                                // or it reaches nobody using VoiceOver.
+                                `Add to ${SLOT_LABEL[slot.slotType]} on ${dayHeading(d.date)}${
+                                  fasting ? `. ${fasting}` : ""
+                                }`
                           }
                         >
                           <View style={styles.mealContent}>

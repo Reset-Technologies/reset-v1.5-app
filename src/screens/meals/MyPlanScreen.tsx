@@ -1095,24 +1095,30 @@ export function MyPlanScreen({ navigation, route }: Props) {
                   // there is a record of what did not happen, not an invitation.
                   //
                   /**
-                   * 🔴 AND NOTHING THE FAST BLOCKS. Lang, on `5061:55143`
-                   * and `5055:49496`: *"Users shouldn't be able to add meals
-                   * if they're blocked off by the fast."* Both her frames draw
-                   * that row with no Add and no chevron.
+                   * 🔴🔴 THE FAST NO LONGER BLOCKS ADDING. **Bryan,
+                   * 2026-11-04**, overruling Lang's note on `5061:55143` /
+                   * `5055:49496` (*"Users shouldn't be able to add meals if
+                   * they're blocked off by the fast"*):
                    *
-                   * 📌 This does NOT contradict Bryan's 10-22 ruling
-                   * (*"Keep the empty slot visible with 'Nothing planned' and
-                   * an Add action"*) — his is the rule for an empty slot, hers
-                   * is the one exception to it. A free midday still gets Add.
+                   *   *"The Window shouldn't prevent members from editing
+                   *   their plans. Members should be able to add, remove, or
+                   *   move meals, even outside that Window. If a meal
+                   *   conflicts with the Window, we can flag it, but shouldn't
+                   *   block the action. Let's remove the blanket breakfast
+                   *   restriction and restore the Add action."*
                    *
-                   * 🔑 `emptyCopy` is the test because it is ALREADY the
-                   * "this slot is inside the fast" predicate: non-null only for
-                   * a `first_meal` when a Window exists. No second derivation.
+                   * 📌 `emptyCopy` SURVIVES — as a FLAG, not a gate. The row
+                   * still reads "Fasting until 10am" instead of "Nothing
+                   * planned"; it just takes an Add again.
+                   *
+                   * 🔑 WHY the old rule had to go, beyond the ruling: the
+                   * predicate was blanket (any empty `first_meal` whenever a
+                   * Window existed — it never compared the slot to the window)
+                   * and the Window has no off switch, so an emptied breakfast
+                   * was **unrecoverable through the UI**. Found on a real prod
+                   * account 2026-11-03.
                    */
-                  !slot.recipe &&
-                  day &&
-                  day.date >= localToday() &&
-                  !emptyCopy(slot.slotType)
+                  !slot.recipe && day && day.date >= localToday()
                     ? () => {
                         setActing({ slot, onDate: day.date });
                         setPicker("add");
