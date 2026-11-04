@@ -1,4 +1,4 @@
-import { apiClient } from "./apiClient";
+import { ApiError, apiClient } from "./apiClient";
 import { dietLabel } from "../utils/dietLabel";
 
 /**
@@ -25,6 +25,119 @@ import { dietLabel } from "../utils/dietLabel";
  * underneath must not, because Windows and real schedules vary.
  */
 export type MealSlotType = "first_meal" | "midday" | "evening" | "snack";
+
+/**
+ * Today as a LOCAL calendar day, `YYYY-MM-DD`.
+ *
+ * 🔴 NEVER `toISOString().slice(0,10)`. That is UTC, and in any timezone
+ * behind it the string flips to tomorrow during the evening — 8pm in New York
+ * already reads the next day. Anything comparing a plan date against it then
+ * treats TODAY as past, which would quietly lock the current day's meals every
+ * evening for most of our members. The DTO is explicit that *"every planned
+ * meal belongs to one local calendar day"*.
+ *
+ * 🔑 Here, not in a screen: My Plan, Add to Plan and Recipe Details each had
+ * their own copy, under two different names.
+ */
+export function localToday(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/**
+ * The order a day READS in, which is NOT the order its rows were written in.
+ *
+ * 🔴 `sortOrder` is an insertion counter — `addMeal` and `moveMeal` both set
+ * it to `max(sortOrder) + 1`, so anything added to a day lands LAST. Sorting a
+ * day by it alone puts a lunch added today underneath dinner. Caught on the
+ * tab 2026-10-21 after an Undo, and measured again 2026-11-02: adding a lunch
+ * from Add to Plan wrote `sort_order = 7` against an evening already at 6.
+ *
+ * 📌 `sortOrder` still breaks ties INSIDE a slot, which is the one thing it
+ * is good for — two dinners on a day keep the order they were added.
+ *
+ * 🔑 Lives here, not in a screen: it was private to `MyPlanScreen` and
+ * `AddToPlanScreen` rendered the API order instead, so the same day read
+ * correctly on one screen and wrong on the other.
+ */
+export const SLOT_RANK: Record<MealSlotType, number> = {
+  first_meal: 0,
+  midday: 1,
+  evening: 2,
+  snack: 3,
+};
+
+/**
+ * What a slot is CALLED. The model stays semantic (MY PLAN r16, *"Do not let
+ * backend assume exactly 3 meals/day"*); only the display says Breakfast.
+ *
+ * 🔑 Here, not in a screen: three screens render it — My Plan, Add to Plan
+ * and now Recipe Details — and it was already copied into the first two.
+ */
+export const SLOT_LABEL: Record<MealSlotType, string> = {
+  first_meal: "Breakfast",
+  midday: "Lunch",
+  evening: "Dinner",
+  snack: "Snack",
+};
+
+const DOW_FULL = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/**
+ * `"2026-11-08", "midday"` → **`"Sunday’s Lunch"`**.
+ *
+ * Lang `5059:54734`, annotated *"This view shows the meal type and day"* — the
+ * eyebrow above the recipe title on Recipe Details.
+ *
+ * 🔴 Null when the slot type is one this build does not know. `plannedMeal`
+ * carries `slotType` as a bare `string` across the navigator, so a server that
+ * grows a fifth slot must render NOTHING here rather than `undefined’s`.
+ *
+ * 🔴 Never `new Date("2026-11-08")` — that parses as UTC midnight and renders
+ * in local time, naming the WRONG DAY for anyone west of Greenwich. A plan date
+ * is a plain local calendar day, so split the string.
+ *
+ * 📌 A real apostrophe (U+2019), as her text node has it.
+ */
+export function plannedSlotEyebrow(
+  localDate: string,
+  slotType: string,
+): string | null {
+  const label = SLOT_LABEL[slotType as MealSlotType];
+  if (!label) return null;
+  const [y, m, d] = localDate.split("-").map((n) => parseInt(n, 10));
+  if (!y || !m || !d) return null;
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  /**
+   * 🔑 The BASE only. "Swapped" is appended by the screen, not here,
+   * because it has to be its own `<Text>` to carry `fontStyle: "italic"` \u2014
+   * and because Lang writes it differently on each surface: "Lunch  Swapped"
+   * on the My Plan row (`5061:55144`), "Sunday\u2019s Lunch \u00b7 Swapped" on Recipe
+   * Details (`5061:55801`).
+   */
+  return `${DOW_FULL[dow]}’s ${label}`;
+}
+
+/** Comparator for a day's slots: semantic slot first, insertion order second. */
+export function bySlotOrder(
+  a: { slotType: MealSlotType; sortOrder: number },
+  b: { slotType: MealSlotType; sortOrder: number },
+): number {
+  return (
+    (SLOT_RANK[a.slotType] ?? 99) - (SLOT_RANK[b.slotType] ?? 99) ||
+    a.sortOrder - b.sortOrder
+  );
+}
 
 /**
  * A recipe as the MEMBER sees it — mirrors `MyPlanRecipeDto`.
@@ -110,6 +223,18 @@ export interface MyPlanSlot {
   servings: number;
   /** Null when the slot exists but holds no recipe yet. */
   recipe: MyPlanRecipe | null;
+  /**
+   * The member put a different meal here than the one we drafted — Lang
+   * labels it "Swapped" on the My Plan row (`5061:55144`) and on Recipe
+   * Details (`5061:55801`).
+   *
+   * 🔴 OPTIONAL, like `diets` above and for the same reason: it shipped in
+   * api #202 and this app has no OTA, so a build can run for weeks against a
+   * server that predates it. Absent means "this server does not say", which
+   * reads as not-swapped — a missing badge is a far smaller wrong than one
+   * claiming the member changed a meal they never touched.
+   */
+  swapped?: boolean;
 }
 
 export interface MyPlanDay {
@@ -166,6 +291,76 @@ export async function getMyPlan(): Promise<MyPlanResponse> {
  * 📌 EXPLORE r5/r6 put the plan effect at *"None until explicit add/swap"*, so
  * this is the explicit half: it only ever runs from a member tapping Add.
  */
+/**
+ * The current week WITHOUT creating one — `null` when the member has none.
+ *
+ * 🔴 `getMyPlan()` GENERATES. That is right for the My Plan tab (*"My Plan
+ * is never empty"*) and wrong for a screen that only wants to know whether a
+ * recipe is planned. Recipe Details is reachable from Explore, Saved Meals,
+ * Home and Ester chat, so calling the generating one there would draft a
+ * member's whole week because they opened a recipe — MY PLAN r6, *"Never
+ * regenerate just because screen opened."*
+ *
+ * 🔴 TOLERATES AN OLDER SERVER. This route shipped in api #202; this app
+ * has no OTA channel, so a build can run for weeks against a backend that
+ * predates it — which has already happened once, when tapping a row crashed
+ * on `recipe.diets.map` because `diets` had not shipped yet. A 404 here means
+ * "that server is older", not "no plan", and both answer `null`.
+ *
+ * 📌 Any other failure also answers `null`: this feeds ONE decorative line.
+ * A plan read falling over must never take down the recipe the member asked
+ * for.
+ */
+export async function peekMyPlan(): Promise<MyPlanResponse | null> {
+  try {
+    const res = await apiClient<{ plan: MyPlanResponse | null }>(
+      "/api/meals/my-plan/peek",
+    );
+    return res?.plan ?? null;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    return null;
+  }
+}
+
+/**
+ * The next upcoming slot this recipe sits in, or `null`.
+ *
+ * 🔑 "Next upcoming" is Cole's rule, 2026-11-02 — the eyebrow answers
+ * *"when am I eating this?"*, which is worth knowing from Explore, where the
+ * member is deciding. Today counts as upcoming; a day already past does not.
+ *
+ * 📌 Matched on the MEAL id, not the version — a different version of the
+ * same recipe is still the same meal to a member, the same rule the
+ * self-swap guard uses.
+ *
+ * 📌 Ordered by day, then `bySlotOrder`, so a recipe planned twice on one
+ * day reports its earlier slot rather than whichever row came back first.
+ */
+export function nextUpcomingSlotFor(
+  plan: MyPlanResponse,
+  recipeId: string,
+  today: string,
+): { localDate: string; slotType: MealSlotType; swapped: boolean } | null {
+  const hits: Array<{ localDate: string; slot: MyPlanSlot }> = [];
+  for (const day of plan.days) {
+    if (day.date < today) continue;
+    for (const slot of day.slots) {
+      if (slot.recipe?.id === recipeId) hits.push({ localDate: day.date, slot });
+    }
+  }
+  if (!hits.length) return null;
+  hits.sort(
+    (a, b) =>
+      a.localDate.localeCompare(b.localDate) || bySlotOrder(a.slot, b.slot),
+  );
+  return {
+    localDate: hits[0].localDate,
+    slotType: hits[0].slot.slotType,
+    swapped: hits[0].slot.swapped === true,
+  };
+}
+
 export async function addMealToPlan(params: {
   mealPlanId: string;
   /** `YYYY-MM-DD`, a day of the member's current week. */

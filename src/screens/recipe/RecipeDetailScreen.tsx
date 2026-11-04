@@ -56,12 +56,11 @@ import {
 import { getMealWhy } from "../../services/mealInsights";
 import { abbreviateMeasurement, formatAmount } from "../../utils/amount";
 import {
-  MealSlotType,
-  MyPlanResponse,
-  MyPlanSlot,
-  getMyPlan,
+  localToday,
+  nextUpcomingSlotFor,
+  peekMyPlan,
+  plannedSlotEyebrow,
   setPlannedMealServings,
-  swapPlannedMeal,
 } from "../../services/myPlan";
 import { addRecipeIngredientsToGroceryList } from "../../services/grocery";
 import { dietLabel } from "../../utils/dietLabel";
@@ -187,29 +186,6 @@ const ACTION_BAR_LIFT = 26;
  * are two screens' presentation choices, and a shared constant would imply the
  * model had settled on these words.
  */
-const ADD_SLOT_LABEL: Record<MealSlotType, string> = {
-  first_meal: "Breakfast",
-  midday: "Lunch",
-  evening: "Dinner",
-  snack: "Snack",
-};
-
-/**
- * `2026-10-20` -> `Mon 20`, without constructing a Date.
- *
- * 🔴 Parsing `YYYY-MM-DD` with `new Date()` reads it as UTC midnight and then
- * renders it in local time, which moves the day backwards for anyone west of
- * Greenwich. The plan's dates are plain local calendar days and must not be
- * shifted — the same trap that produced "Mon Oct 12" from a date column.
- */
-function dayLabel(iso: string): string {
-  const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
-  if (!y || !m || !d) return iso;
-  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${names[dow]} ${d}`;
-}
-
 function parseInstructions(instructions: string | null): string[] {
   if (!instructions) return [];
 
@@ -892,13 +868,6 @@ export function RecipeDetailScreen() {
   );
   const [esterText, setEsterText] = useState<string | null>(null);
 
-  // ── Add to plan (new 2026-10-19) ───────────────────────────────────────
-  const [addSheet, setAddSheet] = useState(false);
-  const [plan, setPlan] = useState<MyPlanResponse | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [addDate, setAddDate] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addedTo, setAddedTo] = useState<string | null>(null);
   const [esterLoading, setEsterLoading] = useState(true);
   const [isFavorited, setIsFavorited] = useState(false);
 
@@ -1329,31 +1298,43 @@ export function RecipeDetailScreen() {
     .map(dietLabel)
     .slice(0, 3);
 
+  /**
+   * EVERY slot this recipe is eligible for, not one of them.
+   *
+   * 🔴🔴 The chip used to render `capitalizeSlot(meal.time)` — a SINGLE
+   * string — while the data is three independent booleans, and `meal.time` was
+   * built differently by each entry point: the FIRST TRUE FLAG from Explore
+   * (`item.slots[0]`) and Saved Meals (`isBreakfast ? … : isLunch ? … :
+   * "dinner"`), but the PLANNED SLOT from My Plan
+   * (`SLOT_TO_LEGACY_TIME[slotType]`). One recipe that is both lunch and
+   * dinner therefore showed "Lunch" when opened from Explore and "Dinner" when
+   * opened from My Plan, and that second case is what made the chip read as a
+   * contradiction under a "Tuesday's Dinner" eyebrow (Lang, #22). The chip was
+   * silently switching between two different meanings.
+   *
+   * 📌 Read from `detail`, never from `meal`. The details response is the only
+   * payload on this screen that carries all three flags, so taking them from
+   * there pins the chip to ONE meaning — what the recipe is FOR — on every
+   * entry point, and leaves the eyebrow to own when it is planned.
+   *
+   * 🔴 Falls back to `meal.time` while the fetch is in flight AND on a server
+   * that predates the fields (all three `undefined` ⇒ no flags ⇒ fall back).
+   * NO OTA channel here, so an old build must never render an empty chip row.
+   */
+  const slotTags = useMemo(() => {
+    const flags = [
+      detail?.isBreakfast ? "Breakfast" : null,
+      detail?.isLunch ? "Lunch" : null,
+      detail?.isDinner ? "Dinner" : null,
+    ].filter((s): s is string => s !== null);
+    return flags.length > 0 ? flags : [capitalizeSlot(meal.time)];
+  }, [detail?.isBreakfast, detail?.isLunch, detail?.isDinner, meal.time]);
+
   const heroSource = meal.imageUrl
     ? { uri: meal.imageUrl }
     : detail?.imageAsset
       ? { uri: detail.imageAsset }
       : null;
-
-  /** Everything actually planned on the chosen day. */
-  const daySlots: MyPlanSlot[] =
-    plan?.days.find((d) => d.date === addDate)?.slots.filter((sl) => sl.recipe) ?? [];
-
-  /**
-   * What the member picks between — the day's meals MINUS this recipe.
-   *
-   * 🔴 Bryan, 2026-10-30: *"fix 'Add to plan' so a recipe can't replace
-   * itself."* Without this filter the sheet offered the slot this very recipe
-   * already occupies, and tapping it swapped the meal for itself: a write, a
-   * fresh plan revision, and nothing changed on screen. It also made Bryan's
-   * multiple-slots case ambiguous, since the same title appeared twice with
-   * no way to tell which was which.
-   *
-   * 📌 Matched on the MEAL id, not the version. A different version of the
-   * same recipe is still the same meal to a member, so replacing one with the
-   * other is still a no-op worth preventing.
-   */
-  const dayMeals: MyPlanSlot[] = daySlots.filter((sl) => sl.recipe!.id !== meal.id);
 
   const canCook = Boolean(detail?.recipeVersionId) && (detail?.cookStepCount ?? 0) > 0;
   /**
@@ -1388,6 +1369,73 @@ export function RecipeDetailScreen() {
   const inPlan = Boolean(plannedMeal);
 
   /**
+   * **"Sunday’s Lunch"** — the eyebrow above the title, Lang `5059:54734`,
+   * annotated *"This view shows the meal type and day"*.
+   *
+   * 🔑 Cole's rule, 2026-11-02: it names **the next upcoming slot this meal
+   * is in**, not merely the slot the member arrived through. The question it
+   * answers — *"when am I eating this?"* — is most worth answering from
+   * Explore, where they are still deciding.
+   *
+   * 📌 `plannedMeal` STILL WINS when present. Tapping Thursday's dinner on
+   * My Plan must say Thursday's Dinner even if the same recipe also sits on
+   * Tuesday — the member asked about that row, and it costs no request.
+   *
+   * 🔴 Everywhere else this needs the week, and `getMyPlan()` GENERATES one.
+   * Hence `peekMyPlan()` (api #202), which reads without drafting. Calling the
+   * generating one here would have created a member's week because they opened
+   * a recipe from Explore — MY PLAN r6.
+   */
+  const [upcoming, setUpcoming] = useState<{
+    text: string;
+    swapped: boolean;
+  } | null>(null);
+
+  /**
+   * 🔴 RE-READ ON FOCUS, not just on mount. "Add to plan" pushes Add to Plan
+   * from THIS screen and that screen returns here with `goBack()`
+   * (`AddToPlanScreen.tsx:168`), so the member adds a meal to Wednesday and
+   * comes straight back to a screen whose eyebrow still says nothing. Seen in
+   * PROD 2026-11-03 immediately after a swap committed.
+   *
+   * 📌 It also CLEARS. The read used to only ever set the eyebrow, which was
+   * harmless while it ran once; on a re-read it would strand "Wednesday's
+   * Dinner" above a meal the member had just removed from the plan. Clearing
+   * is safe because `peekMyPlan()` returns null on failure and that path
+   * returns early — only a plan that came back and does not contain this
+   * recipe clears it.
+   */
+  useEffect(() => {
+    // From My Plan the answer is already in hand; ask nobody.
+    if (plannedMeal) return;
+    let alive = true;
+    const read = () => {
+      peekMyPlan().then((plan) => {
+        if (!alive || !plan) return;
+        const hit = nextUpcomingSlotFor(plan, meal.id, localToday());
+        const text = hit && plannedSlotEyebrow(hit.localDate, hit.slotType);
+        setUpcoming(hit && text ? { text, swapped: hit.swapped } : null);
+      });
+    };
+    read();
+    const unsubscribe = navigation.addListener("focus", read);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [plannedMeal, meal.id, navigation]);
+
+  const planEyebrow: { text: string; swapped: boolean } | null = plannedMeal
+    ? (() => {
+        const text = plannedSlotEyebrow(
+          plannedMeal.localDate,
+          plannedMeal.slotType,
+        );
+        return text ? { text, swapped: plannedMeal.swapped === true } : null;
+      })()
+    : upcoming;
+
+  /**
    * "Change meal" → My Plan's existing edit sheet, opened on this exact slot.
    *
    * Bryan ruled this on 2026-10-30 over building a second picker here:
@@ -1407,91 +1455,25 @@ export function RecipeDetailScreen() {
     });
   }, [navigation, plannedMeal]);
 
-  const openAddSheet = useCallback(() => {
-    setAddSheet(true);
-    if (plan || planLoading) return;
-    setPlanLoading(true);
-    getMyPlan()
-      .then((p) => {
-        setPlan(p);
-        /**
-         * 🔴 The day the member CAME FROM, not day one of the week.
-         *
-         * This used to default to `p.days[0]`, and the comment claimed that
-         * was "the day the member is actually shown". It was not. Opened from
-         * Tuesday's dinner, the sheet listed MONDAY's three meals — the same
-         * recipes in a different order, so it looked entirely plausible —
-         * and the swap landed on Monday's lunch. The button said "Added" and
-         * it was telling the truth: something was added, just not where the
-         * member was looking.
-         *
-         * Caught by finally doing the one check I had left open for two days:
-         * swap into a slot holding a DIFFERENT recipe and watch the plan.
-         */
-        const cameFrom = plannedMeal?.localDate ?? null;
-        const today = new Date().toISOString().slice(0, 10);
-        const fallback = p.days.some((d) => d.date === today)
-          ? today
-          : (p.days[0]?.date ?? null);
-        setAddDate((cur) => cur ?? cameFrom ?? fallback);
-      })
-      .catch(() => setPlan(null))
-      .finally(() => setPlanLoading(false));
-  }, [plan, planLoading, plannedMeal]);
-
   /**
-   * Swap this recipe INTO one of the day's existing meals.
+   * Open her Add-Meal-to-Plan SCREEN (`5055:49011`).
    *
-   * 🔴 This REPLACES; it does not append — and the correction came from
-   * Lang's own flow. Her "Add to meal plan" section (5055:48783) reads
-   * *"Choose a meal to swap this one in for"*, confirms with an
-   * **Original Meal → New Meal** sheet, and calls the result "Swap confirmed".
-   *
-   * The first cut of this screen used `POST my-plan/meals`, whose own doc says
-   * it *"Appends into the named day and slot"*. On device that gave the member
-   * a Tuesday with TWO dinners — the original plus the one they added, the same
-   * recipe twice in one day. A plan that grows every time you like something is
-   * not a plan.
-   *
-   * 🔑 MY PLAN r9: *"Replace planned meal in same slot; refresh grocery
-   * delta."* Day, slot, sort order and servings survive; only the content
-   * changes. It writes a new revision and leaves the Score plan version alone
-   * (START HERE r7), which is why an approved swap can still count as On plan.
-   *
-   * 📌 A swap is NOT a rejection — SWAPS + EDITS is explicit that *"a passive
-   * swap alone is not a rejection"* — so nothing here emits `meal_rejected` or
-   * touches Fit. The member is choosing, not complaining.
+   * 🔴 This used to open a bottom sheet right here. Her frame is a pushed
+   * full screen, and the sheet version could only show one day — with the
+   * selected day scrolled off the chip row. The screen owns its own plan
+   * fetch, so nothing is prefetched from this screen any more.
    */
-  const confirmPlanSwap = useCallback(
-    async (slot: MyPlanSlot) => {
-      const versionId = detail?.recipeVersionId;
-      const planId = plan?.mealPlanId;
-      if (!versionId || !planId || adding) return;
-      setAdding(true);
-      setAddSheet(false);
-      try {
-        await swapPlannedMeal({
-          plannedMealId: slot.id,
-          mealPlanId: planId,
-          recipeVersionId: versionId,
-        });
-        setAddedTo(slot.recipe?.title ?? null);
-        // Name the day as well as the meal. The whole defect above was the
-        // member not knowing WHICH day they had just changed.
-        setToast(
-          `Swapped in for ${slot.recipe?.title ?? "that meal"} on ${dayLabel(addDate ?? "")}`,
-        );
-      } catch {
-        // 🔴 Was silent. "Deliberately silent" is how a failed swap looks
-        // identical to a successful one — the same empty-catch shape that hid
-        // a 400 on the ingredient swap for weeks.
-        setToast("That didn't go through. Try again.");
-      } finally {
-        setAdding(false);
-      }
-    },
-    [detail, plan, adding, addDate],
-  );
+  const openAddSheet = useCallback(() => {
+    const versionId = detail?.recipeVersionId;
+    if (!versionId) return;
+    navigation.navigate("AddToPlan", {
+      recipeId: meal.id,
+      recipeVersionId: versionId,
+      title: meal.name,
+      imageUrl: meal.imageUrl ?? null,
+      fromDate: plannedMeal?.localDate,
+    });
+  }, [navigation, detail, meal, plannedMeal]);
 
   return (
     <View style={[styles.container, dyn.container, dyn.container]}>
@@ -1569,16 +1551,53 @@ export function RecipeDetailScreen() {
               brown: our page is WHITE by day, so a white title would vanish
               into the end of its own fade. Lang's LAYOUT, our palette. */}
           <View style={styles.heroTitleBlock}>
-            <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
+            {/* 📌 Eyebrow and title are ONE group: her frame butts the
+                eyebrow straight onto the title (270→289, zero gap) while the
+                tags sit 16 below. `heroTitleBlock`'s `gap: 12` would space all
+                three evenly, so the pair is wrapped instead of re-spaced. */}
+            <View>
+              {planEyebrow ? (
+                /* A ROW of runs so the separator and "Swapped" can each carry
+                   their own face. `alignItems: "flex-end"` keeps all three
+                   sitting on the same baseline. (It began as a row because the
+                   faux italic was a TRANSFORM and RN ignores one on a nested
+                   `<Text>`; the real italic needs no view, but the row is
+                   kept \u2014 it is the layout that was verified in prod.) */
+                <View style={styles.eyebrowRow}>
+                  <Text style={[styles.planEyebrow, dyn.text]}>
+                    {planEyebrow.text}
+                  </Text>
+                  {planEyebrow.swapped ? (
+                    <>
+                      <Text style={[styles.planEyebrow, dyn.text]}>
+                        {"\u00a0\u00b7\u00a0"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.planEyebrow,
+                          styles.planEyebrowSwapped,
+                          dyn.text,
+                        ]}
+                      >
+                        Swapped
+                      </Text>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={[styles.mealName, dyn.text, dyn.text]}>{meal.name}</Text>
+            </View>
             <View style={styles.tagRow}>
               {prepTime ? (
                 <View style={[styles.tag, dyn.tag, dyn.tag]}>
                   <Text style={[styles.tagText, dyn.text, dyn.text]}>{formatPrepTime(prepTime, "minutes")}</Text>
                 </View>
               ) : null}
-              <View style={[styles.tag, dyn.tag, dyn.tag]}>
-                <Text style={[styles.tagText, dyn.text, dyn.text]}>{capitalizeSlot(meal.time)}</Text>
-              </View>
+              {slotTags.map((s) => (
+                <View key={s} style={[styles.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text]}>{s}</Text>
+                </View>
+              ))}
               {dietTags.map((d) => (
                 <View key={d} style={[styles.tag, dyn.tag, dyn.tag]}>
                   <Text style={[styles.tagText, dyn.text, dyn.text]}>{d}</Text>
@@ -1993,108 +2012,25 @@ export function RecipeDetailScreen() {
             dyn.ghost,
             !inPlan && !canAdd && styles.actionDisabled,
           ]}
-          disabled={inPlan ? false : !canAdd || adding}
+          disabled={inPlan ? false : !canAdd}
           onPress={inPlan ? openPlanEditor : openAddSheet}
           accessibilityRole="button"
           accessibilityLabel={inPlan ? "Change meal" : "Add to plan"}
         >
           {inPlan ? (
             <SwapActionGlyph color={ghostGlyph} size={24} />
-          ) : adding || addedTo ? null : (
+          ) : (
             <PlusGlyph color={ghostGlyph} size={24} />
           )}
           <Text style={[styles.actionSecondaryText, dyn.ghostText]} numberOfLines={1}>
-            {inPlan
-              ? "Change meal"
-              : adding
-                ? "Adding…"
-                : addedTo
-                  ? "Added"
-                  : "Add to plan"}
+            {/* 🔑 Two labels, not four. "Adding…"/"Added" belonged to the
+                bottom sheet, which swapped in place; the flow is now a pushed
+                screen that reports its own result and comes back. */}
+            {inPlan ? "Change meal" : "Add to plan"}
           </Text>
         </Pressable>
       </View>
 
-      {/* ── Add to plan: pick a day, then a slot ──────────────────────────
-          🔑 Two taps, no confirm step. The member already chose the recipe by
-          being here; day and slot are the only facts the route needs that it
-          cannot infer (`mealPlanId` and `recipeVersionId` come from state).
-
-          🔴 Slot labels are the VIEW's (MY PLAN r16: the model stays semantic
-          — first_meal · midday · evening · snack — because a member on a Window
-          may not eat three times, but *"Display can still say
-          Breakfast/Lunch/Dinner when appropriate"*). The code is what is sent. */}
-      <Modal
-        visible={addSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAddSheet(false)}
-      >
-        <Pressable style={styles.addBackdrop} onPress={() => setAddSheet(false)} />
-        <View style={styles.addSheet}>
-          <Text style={styles.addTitle}>Add to your week</Text>
-          {/* Lang's instruction, verbatim from the frame. */}
-          <Text style={styles.addSub} numberOfLines={2}>
-            Choose a meal to swap this one in for
-          </Text>
-
-          {planLoading ? (
-            <ActivityIndicator color={K.cream} style={{ marginVertical: 24 }} />
-          ) : !plan ? (
-            <Text style={styles.addSub}>Couldn't load your week. Try again.</Text>
-          ) : (
-            <>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayRow}>
-                {plan.days.map((d) => (
-                  <Pressable
-                    key={d.date}
-                    style={[styles.dayChip, d.date === addDate && styles.dayChipOn]}
-                    onPress={() => setAddDate(d.date)}
-                    accessibilityRole="button"
-                    accessibilityLabel={dayLabel(d.date)}
-                  >
-                    <Text style={[styles.dayChipText, d.date === addDate && styles.dayChipTextOn]}>
-                      {dayLabel(d.date)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              {/* 🔴 The day's EXISTING meals, not a list of empty slots. Her
-                  frame puts each day's meals under the selector and asks the
-                  member to pick one — the thing being replaced has to be
-                  visible, or "swap" is a guess. */}
-              {dayMeals.length === 0 ? (
-                <Text style={styles.addSub}>
-                  {/* Two different empty states. A day with nothing on it is
-                      not the same as a day whose only meal is the one being
-                      looked at, and saying "nothing planned" there would be
-                      a lie the member can see. */}
-                  {daySlots.length > 0
-                    ? "This meal is already planned for that day."
-                    : "Nothing planned that day yet."}
-                </Text>
-              ) : (
-                dayMeals.map((slot) => (
-                  <Pressable
-                    key={slot.id}
-                    style={styles.slotRow}
-                    disabled={adding}
-                    onPress={() => void confirmPlanSwap(slot)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Swap ${slot.recipe?.title ?? "this meal"}`}
-                  >
-                    <Text style={styles.slotRowLabel}>{ADD_SLOT_LABEL[slot.slotType]}</Text>
-                    <Text style={styles.slotRowText} numberOfLines={1}>
-                      {slot.recipe?.title ?? "Empty slot"}
-                    </Text>
-                  </Pressable>
-                ))
-              )}
-            </>
-          )}
-        </View>
-      </Modal>
 
       {/* Floating header buttons */}
       <SafeAreaView
@@ -2495,6 +2431,36 @@ const styles = StyleSheet.create({
     bottom: HERO_TITLE_BOTTOM,
     gap: 12,
   },
+  /**
+   * Her Body 1 Quadrant: the SERIF at 16 / -1% tracking, not the sans the
+   * title uses.
+   *
+   * 🔴 Her token `Text Strong` resolves to **`#fafdfe`** — the CSS fallback
+   * in the generated code says `#361416`, which is the WRONG MODE. It is moot
+   * here because the colour comes from `dyn.text` like the title and tags: our
+   * hero is WHITE by day, so her white-on-brown would vanish into the fade.
+   * Lang's layout, our palette — the same call as the title above.
+   */
+  planEyebrow: {
+    fontFamily: fonts.quadrant,
+    fontSize: 16,
+    letterSpacing: -0.16,
+    color: K.brown,
+  },
+  eyebrowRow: { flexDirection: "row", alignItems: "flex-end" },
+  /**
+   * ✅ THE REAL ITALIC, since Lang sent the file 2026-11-04. This replaced a
+   * `skewX: "-11deg"` stand-in that slanted the roman — the face now brings
+   * its own letterforms (single-storey `a`, a true italic `w`).
+   *
+   * 🔴 Selected by FAMILY, not `fontStyle: "italic"`. A custom family has no
+   * style linkage, so the style prop is a silent no-op here — measured
+   * upright on the sim 2026-11-02 before the stand-in went in.
+   *
+   * 📌 Only the FACE changes. The colour still comes from `dyn.text` with the
+   * rest of the eyebrow, so this must stay BEFORE `dyn.text` in the array.
+   */
+  planEyebrowSwapped: { fontFamily: fonts.quadrantItalic },
   mealName: {
     fontFamily: fonts.catalogue,
     fontSize: 32,
@@ -3283,53 +3249,6 @@ const styles = StyleSheet.create({
   /** 24 to match her icon size; the mark is per metabolic type. */
   actionEsterMark: { width: 24, height: 24 },
   actionDisabled: { opacity: 0.4 },
-  addBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-  addSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: K.brown,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 18,
-    paddingBottom: 34,
-    paddingHorizontal: 18,
-  },
-  addTitle: { fontFamily: fonts.catalogue, fontSize: 20, color: K.cream, letterSpacing: -0.2 },
-  addSub: {
-    fontFamily: fonts.catalogue,
-    fontSize: 14,
-    color: K.bone,
-    opacity: 0.7,
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  dayRow: { flexGrow: 0, marginBottom: 6 },
-  dayChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(243,239,227,0.25)",
-    marginRight: 8,
-  },
-  dayChipOn: { backgroundColor: K.cream, borderColor: K.cream },
-  dayChipText: { fontFamily: fonts.catalogue, fontSize: 14, color: K.cream },
-  dayChipTextOn: { color: K.brown },
-  slotRow: {
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(243,239,227,0.14)",
-  },
-  slotRowLabel: {
-    fontFamily: fonts.catalogue,
-    fontSize: 12,
-    color: K.bone,
-    opacity: 0.7,
-    marginBottom: 2,
-  },
-  slotRowText: { fontFamily: fonts.catalogue, fontSize: 16, color: K.cream },
   loadingOverlay: {
     position: "absolute",
     top: HERO_HEIGHT - 50,
