@@ -1298,6 +1298,38 @@ export function RecipeDetailScreen() {
     .map(dietLabel)
     .slice(0, 3);
 
+  /**
+   * EVERY slot this recipe is eligible for, not one of them.
+   *
+   * 🔴🔴 The chip used to render `capitalizeSlot(meal.time)` — a SINGLE
+   * string — while the data is three independent booleans, and `meal.time` was
+   * built differently by each entry point: the FIRST TRUE FLAG from Explore
+   * (`item.slots[0]`) and Saved Meals (`isBreakfast ? … : isLunch ? … :
+   * "dinner"`), but the PLANNED SLOT from My Plan
+   * (`SLOT_TO_LEGACY_TIME[slotType]`). One recipe that is both lunch and
+   * dinner therefore showed "Lunch" when opened from Explore and "Dinner" when
+   * opened from My Plan, and that second case is what made the chip read as a
+   * contradiction under a "Tuesday's Dinner" eyebrow (Lang, #22). The chip was
+   * silently switching between two different meanings.
+   *
+   * 📌 Read from `detail`, never from `meal`. The details response is the only
+   * payload on this screen that carries all three flags, so taking them from
+   * there pins the chip to ONE meaning — what the recipe is FOR — on every
+   * entry point, and leaves the eyebrow to own when it is planned.
+   *
+   * 🔴 Falls back to `meal.time` while the fetch is in flight AND on a server
+   * that predates the fields (all three `undefined` ⇒ no flags ⇒ fall back).
+   * NO OTA channel here, so an old build must never render an empty chip row.
+   */
+  const slotTags = useMemo(() => {
+    const flags = [
+      detail?.isBreakfast ? "Breakfast" : null,
+      detail?.isLunch ? "Lunch" : null,
+      detail?.isDinner ? "Dinner" : null,
+    ].filter((s): s is string => s !== null);
+    return flags.length > 0 ? flags : [capitalizeSlot(meal.time)];
+  }, [detail?.isBreakfast, detail?.isLunch, detail?.isDinner, meal.time]);
+
   const heroSource = meal.imageUrl
     ? { uri: meal.imageUrl }
     : detail?.imageAsset
@@ -1561,9 +1593,11 @@ export function RecipeDetailScreen() {
                   <Text style={[styles.tagText, dyn.text, dyn.text]}>{formatPrepTime(prepTime, "minutes")}</Text>
                 </View>
               ) : null}
-              <View style={[styles.tag, dyn.tag, dyn.tag]}>
-                <Text style={[styles.tagText, dyn.text, dyn.text]}>{capitalizeSlot(meal.time)}</Text>
-              </View>
+              {slotTags.map((s) => (
+                <View key={s} style={[styles.tag, dyn.tag]}>
+                  <Text style={[styles.tagText, dyn.text]}>{s}</Text>
+                </View>
+              ))}
               {dietTags.map((d) => (
                 <View key={d} style={[styles.tag, dyn.tag, dyn.tag]}>
                   <Text style={[styles.tagText, dyn.text, dyn.text]}>{d}</Text>

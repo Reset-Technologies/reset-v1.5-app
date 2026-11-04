@@ -228,6 +228,22 @@ export interface MealDetail {
   carbsGrams: number | null;
   fiberGrams: number | null;
   nutrientsJson: MealNutrient[] | null;
+  /**
+   * The three slots a recipe is eligible for — INDEPENDENT booleans, not an
+   * enum. `meal.entity.ts` stores them as three columns and
+   * `slotFlag()`/`meal-eligibility.ts` reads exactly one per slot, so a recipe
+   * is routinely BOTH lunch and dinner: the browse tiles count 102 breakfast +
+   * 442 lunch + 442 dinner across 522 recipes (986 flags), which puts at least
+   * 362 recipes on more than one slot.
+   *
+   * 🔴 OPTIONAL, like `currentVersionId` on `MealFavorite` and for the same
+   * reason: this app has NO OTA channel, so a build can run for weeks against
+   * a backend that predates a field. Every reader must have a fallback for
+   * `undefined`.
+   */
+  isBreakfast?: boolean;
+  isLunch?: boolean;
+  isDinner?: boolean;
   diets?: { id: string; name: string }[];
 }
 
