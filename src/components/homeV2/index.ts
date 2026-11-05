@@ -1,5 +1,6 @@
 export { RecipesCarousel } from "./RecipesCarousel";
 export { MealTabsSection } from "./MealTabsSection";
+export type { MealSlotLabel } from "./MealTabsSection";
 export { MealPlanPromoCard } from "./MealPlanPromoCard";
 export { SavedMealsCard } from "./SavedMealsCard";
 export { Mascot } from "./Mascot";

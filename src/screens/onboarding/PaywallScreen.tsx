@@ -19,6 +19,7 @@ import { fonts } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
 import { logEvent } from "../../services/braze";
+import { metabolicTypeProps } from "../../utils/metabolicType";
 import { logout } from "../../services/auth";
 import {
   getCurrentOfferingDetailed,
@@ -442,7 +443,13 @@ export function PaywallScreen({ navigation }: Props) {
   const [restoring, setRestoring] = React.useState(false);
 
   React.useEffect(() => {
-    logEvent("onboarding_paywall_view");
+    // Carries the member type so Grafted can trigger a type-specific
+    // abandoned-paywall message. `state.user` is already populated by the
+    // time the paywall mounts (CreateAccountScreen writes it from the typing
+    // response), so this does not need to wait on a fetch.
+    logEvent("onboarding_paywall_view", {
+      ...metabolicTypeProps(state.user.metabolicType, state.user.startingRead),
+    });
   }, []);
 
   /**
