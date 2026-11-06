@@ -30,6 +30,7 @@ import { markWindowIntroShown } from "../../utils/windowIntroGate";
 import { markAppOpenFlowShown } from "../../utils/appOpenFlowGate";
 import { markOnboardingComplete } from "../../services/onboarding";
 import { logEvent, setCustomAttribute } from "../../services/braze";
+import { metabolicTypeProps } from "../../utils/metabolicType";
 import { getScanInsightsMessage } from "../../services/scanInsights";
 import { TypeRevealHero } from "./TypeRevealHero";
 import { InvisibleInkOverlay, REVEAL_DURATION_MS } from "./InvisibleInkOverlay";
@@ -614,8 +615,20 @@ export function TypeRevealScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
-    logEvent("onboarding_type_reveal", { metabolic_type: metabolicType });
-    setCustomAttribute("metabolic_type", metabolicType);
+    // 🔴 `metabolicType` above is the DISPLAY value: it deliberately collapses
+    // the `starting_read` sentinel into "Explorer" so the card can show soft
+    // directional copy. Reporting that same value to analytics is what made
+    // Explorer 76% of all reveals (293 of 387, measured 2026-11-04) and left
+    // Braze unable to tell a real Explorer from a member who never scanned.
+    // So the event and the attributes get the HONEST pair instead.
+    const typeProps = metabolicTypeProps(rawType, state.user.startingRead);
+    logEvent("onboarding_type_reveal", { ...typeProps });
+    if (typeProps.metabolic_type) {
+      setCustomAttribute("metabolic_type", typeProps.metabolic_type);
+    }
+    if (typeProps.starting_read !== undefined) {
+      setCustomAttribute("starting_read", typeProps.starting_read);
+    }
     // metabolicType is sourced from state directly now — backend is the
     // authoritative writer (see CreateAccountScreen / AccountGateScreen).
   }, []);

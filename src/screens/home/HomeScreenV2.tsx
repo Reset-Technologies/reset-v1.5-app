@@ -37,10 +37,13 @@ import type {
 import { useApp } from "../../context/AppContext";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent, setCustomAttribute } from "../../services/braze";
+import { metabolicTypeProps } from "../../utils/metabolicType";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { maybePrimePushOnce } from "../../services/pushNotifications";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import {
   MealTabsSection,
+  type MealSlotLabel,
   HomeHeader,
   CheckInCard,
   FollowThroughCard,
@@ -53,6 +56,13 @@ import { ResetWindowCard } from "../../components/resetWindow";
 import type { Slot } from "../../utils/nextMeal";
 import { useResetWindow } from "../../hooks/useResetWindow";
 import type { Meal } from "../../components";
+
+/**
+ * `first_meal_viewed` is a once-per-install lifecycle milestone, so it needs
+ * the same durable guard as the push soft-ask rather than a render ref —
+ * Home remounts on every tab switch.
+ */
+const FIRST_MEAL_LOGGED_KEY = "@reset_first_meal_viewed";
 
 export function HomeScreenV2() {
   const navigation =
@@ -127,6 +137,36 @@ export function HomeScreenV2() {
     // the first time.
     maybePrimePushOnce();
   }, []);
+
+  // Fired by MealTabsSection the first time a card is genuinely on screen.
+  // 🔑 The guard is read INSIDE the handler, not in a mount effect, because
+  // the plan is fetched on focus — at mount there is nothing to report yet.
+  const handleMealsShown = useCallback(
+    (slot: MealSlotLabel, meal: Meal) => {
+      (async () => {
+        try {
+          if (await AsyncStorage.getItem(FIRST_MEAL_LOGGED_KEY)) return;
+          await AsyncStorage.setItem(FIRST_MEAL_LOGGED_KEY, "1");
+          logEvent("first_meal_viewed", {
+            meal_id: meal.id,
+            // Lower-cased to match `home_window_mealCTA`, the only other
+            // event carrying a slot. One casing on the wire or Grafted's
+            // filter silently matches half the traffic.
+            slot: slot.toLowerCase(),
+            ...metabolicTypeProps(
+              state.user.metabolicType,
+              state.user.startingRead,
+            ),
+          });
+        } catch {
+          // Best-effort. A storage failure means we may log it again on a
+          // later launch, which is far better than a lifecycle milestone
+          // that silently never fires.
+        }
+      })();
+    },
+    [state.user.metabolicType, state.user.startingRead],
+  );
 
   const handleMealPress = useCallback(
     (meal: Meal) => {
@@ -380,6 +420,7 @@ export function HomeScreenV2() {
           onMealPress={handleMealPress}
           onFavoriteToggle={handleFavoriteToggle}
           onDeepRead={handleDeepRead}
+          onMealsShown={handleMealsShown}
         />
 
         {/* P0 #10 — the one Meals question per day, when one is due.
