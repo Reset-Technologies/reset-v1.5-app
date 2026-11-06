@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -120,6 +120,7 @@ export function PreScanView({
   onLogin,
   onBack,
   interactive = true,
+  onFirstLayout,
 }: {
   onScan: () => void;
   onSkip: () => void;
@@ -133,6 +134,13 @@ export function PreScanView({
   /** Omitted when there is nowhere to go back to — see PreScanScreen. */
   onBack?: () => void;
   interactive?: boolean;
+  /**
+   * Called on the first NON-ZERO layout of the content. See PreScanScreen —
+   * this is how we tell "the screen actually rendered" from "the screen
+   * mounted", which is the whole diagnostic. Optional so the peek/preview
+   * usages are unaffected.
+   */
+  onFirstLayout?: () => void;
 }) {
   // 🔑 MEASURED, not guessed at from the window height. The first version of
   // this keyed off `874 - Dimensions.get("window").height` — the iPhone 16 Pro
@@ -240,7 +248,14 @@ export function PreScanView({
           contentContainerStyle={[styles.content, { gap: 24 - gapCut }]}
           showsVerticalScrollIndicator={false}
           scrollEnabled={interactive}
-          onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            setViewportH(h);
+            // 🔑 Reuses THIS layout pass rather than adding a second
+            // listener, and ignores a zero-height pass — that is not a render.
+            // The caller guards against repeats.
+            if (h > 0) onFirstLayout?.();
+          }}
           onContentSizeChange={(_w, h) => setContentH(h)}
         >
           {/* 🔑 The frame's own artwork. This screen used to show the Type-cards
@@ -333,9 +348,51 @@ export function PreScanView({
   );
 }
 
+/**
+ * Guards `onboarding_first_paint` to once per app launch — same reason as
+ * `onboarding_started` in OnboardingNavigator: this screen remounts.
+ */
+let firstPaintLogged = false;
+
 export function PreScanScreen({ navigation }: Props) {
+  /** Captured at mount so the paint event can carry the size of the gap. */
+  const mountedAt = useRef(Date.now());
+
   useEffect(() => {
     logEvent("onboarding_pre_scan");
+  }, []);
+
+  /**
+   * 🔴 THE DIAGNOSTIC THIS EXISTS FOR. `onboarding_pre_scan` above fires from
+   * a MOUNT effect, so it proves React reached this screen — it does NOT prove
+   * the member saw anything. Measured 2026-11-05: **804 of 805 new iOS users
+   * fire the mount event, 164 advance, and 74% of iOS new-user sessions end
+   * inside 3 seconds** (Android 37%). Those two stories — "saw it and left"
+   * versus "never rendered" — are indistinguishable without this.
+   *
+   * ⚠ `onLayout` is LAYOUT, not paint: it proves the tree was built and
+   * measured with a real height. A GPU-level blank frame could still pass it.
+   * What it does separate is "JS never got that far" from "rendered fine",
+   * which is the split we need, and it costs one event and no dependency.
+   *
+   * 🔴 DO **NOT** READ THIS AS AN ORDERED FUNNEL. Verified on an S24
+   * 2026-11-05, `onboarding_first_paint` is emitted BEFORE
+   * `onboarding_pre_scan` — both land in the same frame and the layout
+   * callback wins. An ordered funnel `pre_scan → first_paint` therefore
+   * matches nothing and reports a collapse that is not real. That is the
+   * identical artifact that made `new user → onboarding_pre_scan` unreadable
+   * (project_ios_carousel_dropoff).
+   * ▶ **Compare UNIQUE USERS of the two events** (a segmentation, the way the
+   * 804-of-805 figure was measured), or use an UNORDERED funnel. If ~everyone
+   * who fires the mount event also paints, the 74% is BEHAVIOURAL and settled
+   * — no session replay, no new SDK, no masking decision.
+   */
+  const handleFirstLayout = useCallback(() => {
+    if (firstPaintLogged) return;
+    firstPaintLogged = true;
+    logEvent("onboarding_first_paint", {
+      ms_since_mount: Date.now() - mountedAt.current,
+    });
   }, []);
 
   const handleScan = () => {
@@ -388,6 +445,7 @@ export function PreScanScreen({ navigation }: Props) {
       onSkip={handleSkip}
       onLogin={handleLogin}
       onBack={canGoBack ? handleBack : undefined}
+      onFirstLayout={handleFirstLayout}
     />
   );
 }

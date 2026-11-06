@@ -21,11 +21,15 @@ import { LinkAccountScreen } from "../screens/auth/LinkAccountScreen";
 import { ForgotPasswordScreen } from "../screens/auth/ForgotPasswordScreen";
 import { ForgotPasswordCodeScreen } from "../screens/auth/ForgotPasswordCodeScreen";
 import { ForgotPasswordResetScreen } from "../screens/auth/ForgotPasswordResetScreen";
+import { logEvent } from "../services/braze";
 import { K } from "../constants/colors";
 import { ADAPTIVE_SURVEY_ENABLED } from "../constants/flags";
 
-// New onboarding sequence (RES-119): education → pre-scan → scan →
-// chat-style survey questions → account → type reveal → share.
+// New onboarding sequence (RES-119): pre-scan → scan → chat-style survey
+// questions → account → type reveal → share.
+//
+// 🔑 There is no education step any more — the opening/video carousel was
+// deleted in 3.7.0 (`13ca35b`), which is why `initialRouteName` is PreScan.
 //
 // CameraPerm / Goal / Quiz / Taste / Restrict / ScanReveal still exist as
 // screen files but are no longer in the active flow — the scan screen handles
@@ -71,7 +75,31 @@ export type OnboardingStackParamList = {
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
+/**
+ * Guards `onboarding_started` to once per app launch.
+ *
+ * Module-level on purpose, NOT a ref: this navigator remounts (a member who
+ * quits at the paywall reopens inside onboarding), and a ref resets on every
+ * remount. Once per launch keeps the totals readable; uniques are unaffected
+ * either way.
+ */
+let startedLogged = false;
+
 export function OnboardingNavigator() {
+  // 🔴 A top-of-funnel anchor must survive a restructure in POSITION, not just
+  // in name. Every other anchor we have is named after a SCREEN, and that is
+  // exactly why the carousel experiment could not be read: deleting the opening
+  // screen PROMOTED `onboarding_pre_scan` to step 1, so the pre-registered
+  // `new user → onboarding_pre_scan` funnel now reports ~8% while ~100% of new
+  // users actually fire the event. `onboarding_started` names the POSITION
+  // — "entered onboarding" — so the next restructure cannot move it.
+  // See project_ios_carousel_dropoff for the full read.
+  React.useEffect(() => {
+    if (startedLogged) return;
+    startedLogged = true;
+    logEvent("onboarding_started");
+  }, []);
+
   return (
     <Stack.Navigator
       initialRouteName="PreScan"
