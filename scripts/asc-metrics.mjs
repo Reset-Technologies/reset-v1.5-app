@@ -16,6 +16,13 @@
  *   https://appstoreconnect.apple.com/analytics/app/1478144712/crashes
  * Do not read "no crashes reported here" as "no crashes".
  *
+ * ⚠️ FIRST REAL RUN, 2026-11-05: this returned versions **1.0.0 – 2.1.11 and
+ * nothing in 3.x.** App 1478144712 is the LEGACY BetterWell record that Reset
+ * shipped 3.0.0 onto in July 2026, so every version Apple reported is
+ * PRE-RESET. These metrics only cover versions with enough opted-in users, and
+ * our iOS volume is below that bar. **Do not read BetterWell 2.1.11's 8.5 s/hr
+ * hang rate as ours.** Re-check once a 3.7.x build has more install volume.
+ *
  * 🔑 A termination is the one to watch: a memory-limit kill produces NO crash
  * report at all, and would match our signature exactly (app opens, first
  * screen mounts, event flushes at ~1s, process gone).
@@ -130,7 +137,11 @@ export function summarise(data) {
     for (const cat of product?.metricCategories ?? []) {
       lines.push(`\n=== ${cat.identifier ?? "(unnamed category)"} ===`);
       for (const metric of cat?.metrics ?? []) {
-        const unit = metric.unit ? ` ${metric.unit}` : "";
+        // `unit` is an OBJECT ({identifier, displayName}), not a string —
+        // interpolating it directly prints "[object Object]".
+        const unitLabel =
+          typeof metric.unit === "string" ? metric.unit : metric.unit?.displayName;
+        const unit = unitLabel ? ` (${unitLabel})` : "";
         lines.push(`  ${metric.identifier ?? "(metric)"}${unit}`);
         for (const ds of metric?.datasets ?? []) {
           const filter = ds?.filterCriteria
