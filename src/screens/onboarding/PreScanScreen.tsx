@@ -375,9 +375,17 @@ export function PreScanScreen({ navigation }: Props) {
    * What it does separate is "JS never got that far" from "rendered fine",
    * which is the split we need, and it costs one event and no dependency.
    *
-   * ▶ Read it as `onboarding_pre_scan` → `onboarding_first_paint`: if ~everyone
-   * converts, the 74% is BEHAVIOURAL and settled — no session replay, no new
-   * SDK, no masking decision. See project_ios_carousel_dropoff.
+   * 🔴 DO **NOT** READ THIS AS AN ORDERED FUNNEL. Verified on an S24
+   * 2026-11-05, `onboarding_first_paint` is emitted BEFORE
+   * `onboarding_pre_scan` — both land in the same frame and the layout
+   * callback wins. An ordered funnel `pre_scan → first_paint` therefore
+   * matches nothing and reports a collapse that is not real. That is the
+   * identical artifact that made `new user → onboarding_pre_scan` unreadable
+   * (project_ios_carousel_dropoff).
+   * ▶ **Compare UNIQUE USERS of the two events** (a segmentation, the way the
+   * 804-of-805 figure was measured), or use an UNORDERED funnel. If ~everyone
+   * who fires the mount event also paints, the 74% is BEHAVIOURAL and settled
+   * — no session replay, no new SDK, no masking decision.
    */
   const handleFirstLayout = useCallback(() => {
     if (firstPaintLogged) return;
