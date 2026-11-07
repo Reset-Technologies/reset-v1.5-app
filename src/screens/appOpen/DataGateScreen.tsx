@@ -21,6 +21,7 @@ import { getCheckInHistory } from "../../services/checkIn";
 import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
 import { useAppPalette } from "../../hooks/useAppPalette";
 import { useApp } from "../../context/AppContext";
+import { logEvent } from "../../services/braze";
 import type { AppOpenStackParamList } from "../../navigation/AppOpenNavigator";
 
 // Ester message body color. Figma bone-surface/on-bone-subtle in day; a lighter
@@ -124,7 +125,10 @@ export function DataGateScreen() {
     "Explorer";
   const mascotSource = TYPE_MASCOT[metabolicType];
 
-  const { isFresh } = useBiometricFreshness(lastScanAt, lastCheckInAt);
+  const { isFresh, hoursSinceUpdate } = useBiometricFreshness(
+    lastScanAt,
+    lastCheckInAt,
+  );
 
   // Show the typing dots first, then crossfade to the message + option cards.
   const reveal = useRef(new Animated.Value(0)).current;
@@ -141,6 +145,47 @@ export function DataGateScreen() {
     return () => clearTimeout(t);
   }, [ready, reveal]);
 
+  /**
+   * 🔴 THE MEASUREMENT THIS FLOW NEVER HAD.
+   *
+   * Before 3.7.9 neither this screen nor AppOpenGreetingScreen logged
+   * anything, so the first observable point in the whole app-open flow was
+   * `home_checkin` → two navigations deep, and PAST the branch below. That
+   * made the check-in look like it reached ~1.8% of actives (57 unique users
+   * in the 90 days to 2026-11-06) with no way to separate three very different
+   * causes: this freshness skip, the scan-vs-survey choice, and real
+   * disengagement.
+   *
+   * `outcome` splits exactly that:
+   *   skipped_fresh → a scan OR a check-in inside 24h, so the check-in is
+   *                 never offered at all (the `replace` below).
+   *   choice_shown  → the member is stale and sees both options.
+   *
+   * ⚠ `hours_since_update` is null when the member has NO scan and NO
+   * check-in on record. `useBiometricFreshness` reports that as NOT fresh, so
+   * those members take `choice_shown`. Null here means "nothing on record",
+   * never "fresh".
+   *
+   * A ref guard, not module-level: both branches `replace` this screen away,
+   * so one resolve per mount is exactly one per visit.
+   */
+  const resolveLogged = useRef(false);
+  useEffect(() => {
+    if (!ready || resolveLogged.current) return;
+    resolveLogged.current = true;
+    const skipped = isFresh && !debugForceShow;
+    logEvent("app_open_gate_resolved", {
+      outcome: skipped ? "skipped_fresh" : "choice_shown",
+      debug_forced: debugForceShow,
+      // Omitted rather than sent as a sentinel when there is nothing on
+      // record: `logEvent` takes no nulls, and a -1 would quietly enter any
+      // average taken over this property. Absent means absent.
+      ...(hoursSinceUpdate === null
+        ? {}
+        : { hours_since_update: Math.round(hoursSinceUpdate) }),
+    });
+  }, [ready, isFresh, hoursSinceUpdate, debugForceShow]);
+
   useEffect(() => {
     if (ready && isFresh && !debugForceShow) {
       navigation.replace("ScoreReveal");
@@ -148,6 +193,9 @@ export function DataGateScreen() {
   }, [ready, isFresh, debugForceShow, navigation]);
 
   const handleScan = () => {
+    // The branch nobody has been able to see: when a stale member IS offered
+    // both, which one wins. Scan is the deliberate primary CTA.
+    logEvent("app_open_gate_choice", { choice: "scan" });
     const parent = navigation.getParent();
     parent?.navigate("Scan", {
       mode: "rescan",
@@ -157,6 +205,7 @@ export function DataGateScreen() {
   };
 
   const handleSurvey = () => {
+    logEvent("app_open_gate_choice", { choice: "survey" });
     navigation.replace(
       appState.settings.useNewSurveyFlow ? "SurveyV2" : "Survey",
     );
