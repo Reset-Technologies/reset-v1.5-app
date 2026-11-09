@@ -1447,7 +1447,19 @@ const styles = StyleSheet.create({
   },
   planBilled: {
     fontFamily: fonts.catalogue,
-    fontSize: 12,
+    // 🔑 13, not 12, and NOT because bigger is better. Measured on an S24
+    // (360dp, 3x) the baseline of this line wobbles 2 device pixels at 12sp:
+    // flat-bottomed letters land a pixel above the round ones, and `n` lands a
+    // pixel above both. At 13sp that halves to 1px, which is just the round
+    // letters' optical overshoot and is correct typography.
+    //
+    // 🔴 The lever is the pixel grid, not the size. 14sp measures 2px again, and
+    // letterSpacing, includeFontPadding, colour and weight all measured 2px --
+    // none of them touch the geometry. 13sp at 3x is a 39px em, where the stems
+    // happen to land on a clean boundary. So this is tuned to THIS rasterizer at
+    // THIS density: do not assume it holds at 2x or on iOS, and re-measure
+    // rather than re-reasoning if it looks off somewhere else.
+    fontSize: 13,
     color: TEXT_ALT,
     letterSpacing: -0.12,
   },
