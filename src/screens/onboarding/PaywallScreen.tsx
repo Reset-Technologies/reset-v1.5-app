@@ -173,25 +173,59 @@ function formatLikePrice(amount: number, refPriceString: string): string {
   return `${prefix}${amount.toFixed(2)}${suffix}`;
 }
 
+/**
+ * "First 3 months" for an intro offer, from whichever shape Apple gave us.
+ *
+ * 🔑 `cycles * periodNumberOfUnits` is deliberate: it reads correctly for BOTH
+ * App Store intro shapes. "Pay as you go" at $1/month for 3 months arrives as
+ * cycles 3 x 1 MONTH; "pay up front" for one 3-month term arrives as cycles 1 x
+ * 3 MONTH. Using `cycles` alone would render the second one as "First 1 month".
+ */
+function introLeadIn(intro: Extract<IntroOfferState, { kind: "eligible" }>): string {
+  const total = intro.cycles * intro.periodNumberOfUnits;
+  const unit = intro.periodUnit.toLowerCase();
+  return `First ${total} ${total === 1 ? unit : `${unit}s`}`;
+}
+
 // Display fields derived from a live monthly + annual package pair.
 interface PlanDisplay {
-  monthly: { price: string; billed: string };
+  monthly: { price: string; unit?: string; billed: string };
   yearly: { price: string; unit?: string; billed: string; saleTag?: string };
 }
 
 function buildPlanDisplay(
   monthly: PurchasesPackage | null,
   annual: PurchasesPackage | null,
+  monthlyIntro: IntroOfferState = { kind: "unknown" },
 ): PlanDisplay {
   const display: PlanDisplay = {
     monthly: FALLBACK_MONTHLY,
     yearly: FALLBACK_YEARLY,
   };
   if (monthly) {
-    display.monthly = {
-      price: monthly.product.priceString,
-      billed: "Billed monthly",
-    };
+    /**
+     * 🔴 The whole point of 3.7.9: the ad, this card and the App Store sheet must
+     * say the same number. Bryan's wording, 2026-11-09 -- "$1/month for the
+     * first 3 months, then $19.99/month" -- mapped onto the card's existing
+     * three text slots so no new visual element is invented here:
+     *   unit   "First 3 months"
+     *   price  "$1.00"      <- the number the ad promises
+     *   billed "then $19.99/mo"
+     *
+     * 🔑 Only ever reached when the member is EXPLICITLY eligible. See
+     * IntroOfferState: unknown and ineligible both fall through to the list
+     * price, so this card cannot promise a discount Apple will not honour.
+     */
+    display.monthly = isIntroEligible(monthlyIntro)
+      ? {
+          unit: introLeadIn(monthlyIntro),
+          price: monthlyIntro.priceString,
+          billed: `then ${monthly.product.priceString}/mo`,
+        }
+      : {
+          price: monthly.product.priceString,
+          billed: "Billed monthly",
+        };
   }
   if (annual) {
     const perMonth = formatLikePrice(
@@ -200,6 +234,11 @@ function buildPlanDisplay(
     );
     let saleTag: string | undefined;
     if (monthly) {
+      // 🔴 LIST price on both sides, never the intro price. Comparing the annual
+      // term against $1/mo would compute a huge NEGATIVE saving and render
+      // nonsense on the yearly card -- the annual plan's value against the
+      // ongoing monthly rate is the honest comparison, and it does not change
+      // because a first-period discount exists.
       const pct = Math.round(
         (1 - annual.product.price / (monthly.product.price * 12)) * 100,
       );
@@ -450,6 +489,15 @@ export function PaywallScreen({ navigation }: Props) {
     Record<string, IntroOfferState>
   >({});
 
+  /**
+   * 🔑 Declared HERE, not beside the other prop helpers lower down. `buildPlanDisplay`
+   * is called during render well above those, and a `const` arrow is not
+   * hoisted -- reading it from there threw a TDZ ReferenceError on a screen
+   * that otherwise type-checked clean.
+   */
+  const introFor = (pkg: PurchasesPackage): IntroOfferState =>
+    introOffers[pkg.product.identifier] ?? { kind: "unknown" };
+
   const [annualPkg, setAnnualPkg] = React.useState<PurchasesPackage | null>(
     null,
   );
@@ -553,7 +601,11 @@ export function PaywallScreen({ navigation }: Props) {
   // Deep Read claim rules land (Open Check #7).
   const esterLine: string | null = "Your energy levels are telling me something.";
 
-  const plans = buildPlanDisplay(monthlyPkg, annualPkg);
+  const plans = buildPlanDisplay(
+    monthlyPkg,
+    annualPkg,
+    monthlyPkg ? introFor(monthlyPkg) : { kind: "unknown" },
+  );
 
   // Shared exit path: flip to the new home, finish onboarding, then deep-link
   // into the post-onboarding meal flow once the Main stack has mounted.
@@ -692,9 +744,6 @@ export function PaywallScreen({ navigation }: Props) {
    * event (`revenuecat_event.payload`). Ours is the claim the member saw, which
    * is the right thing to judge the ad against; theirs is the money.
    */
-  const introFor = (pkg: PurchasesPackage): IntroOfferState =>
-    introOffers[pkg.product.identifier] ?? { kind: "unknown" };
-
   /**
    * What this member is actually charged for the FIRST billing period.
    *
@@ -1057,6 +1106,7 @@ export function PaywallScreen({ navigation }: Props) {
         <View style={styles.plansRow}>
           <PlanCard
             label="Monthly"
+            unit={plans.monthly.unit}
             price={plans.monthly.price}
             billed={plans.monthly.billed}
             variant="monthly"
