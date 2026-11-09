@@ -23,7 +23,10 @@ import { metabolicTypeProps } from "../../utils/metabolicType";
 import { logout } from "../../services/auth";
 import {
   getCurrentOfferingDetailed,
+  getIntroOffer,
+  isIntroEligible,
   purchasePackage,
+  type IntroOfferState,
   restorePurchases,
 } from "../../services/revenuecat";
 import { setSubscriptionTierDev, getProfile } from "../../services/profile";
@@ -64,7 +67,7 @@ const TOP_PAD = Math.round(
 // gap below one.
 //
 // That is what makes the shrink above dangerous. The card stack is 64x83 and
-// sits CENTRED in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
+// sits CENT🔴 in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
 // the three cards' rotations are counted. Dropping TOP_PAD to 36 on a short
 // screen therefore put the top of the stack 9pt from the screen top, and on a
 // Galaxy S24 (status bar ~34) it ran up UNDER THE FRONT CAMERA CUTOUT and was
@@ -436,6 +439,17 @@ export function PaywallScreen({ navigation }: Props) {
   const [monthlyPkg, setMonthlyPkg] = React.useState<PurchasesPackage | null>(
     null,
   );
+  /**
+   * Intro-offer eligibility per product id, resolved from RevenueCat.
+   *
+   * 🔑 Absent means `unknown`, which `getIntroOffer` and `isIntroEligible` treat
+   * as NOT eligible. So before this resolves - and if it never resolves - we
+   * show and bill the list price. Fail closed; see IntroOfferState.
+   */
+  const [introOffers, setIntroOffers] = React.useState<
+    Record<string, IntroOfferState>
+  >({});
+
   const [annualPkg, setAnnualPkg] = React.useState<PurchasesPackage | null>(
     null,
   );
@@ -494,6 +508,15 @@ export function PaywallScreen({ navigation }: Props) {
       setOfferingsState("unavailable");
       return;
     }
+    // Resolved alongside, not awaited: this is a revenue screen and an extra
+    // round trip before first paint is not worth it. Until it lands `introFor`
+    // reports `unknown`, which bills and displays the list price.
+    void Promise.all(
+      [monthly, annual]
+        .filter((p): p is PurchasesPackage => !!p)
+        .map(async (p) => [p.product.identifier, await getIntroOffer(p)] as const),
+    ).then((entries) => setIntroOffers(Object.fromEntries(entries)));
+
     setOfferingsState("ready");
   }, []);
 
@@ -543,7 +566,7 @@ export function PaywallScreen({ navigation }: Props) {
     // The handoff STATE_MACHINE is explicit that the full-screen intro is for
     // EXISTING members: "New users reach [UNASSIGNED] after paid unlock.
     // Existing users see the full-screen Window intro once."
-    // Keyed on having actually ANSWERED the onboarding Window question, not
+    // Keyed on having actually ANSWE🔴 the onboarding Window question, not
     // merely on !isGate: a returning legacy member reaches here with
     // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
     // education carousel and the survey entirely. They never met the feature,
@@ -643,19 +666,67 @@ export function PaywallScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Revenue-bearing properties for the paywall outcome events. Read off the
-  // live RevenueCat package so the numbers are the localized store prices the
-  // user actually saw, not the hardcoded copy on this screen.
-  const packageProps = (pkg: PurchasesPackage | null) => ({
-    plan: selectedPlan,
-    ...(pkg
-      ? {
-          product_id: pkg.product.identifier,
-          price: pkg.product.price,
-          currency: pkg.product.currencyCode,
-        }
-      : {}),
-  });
+  /**
+   * Revenue-bearing properties for the paywall outcome events. Read off the
+   * live RevenueCat package so the numbers are the localized store prices the
+   * user actually saw, not the hardcoded copy on this screen.
+   *
+   * 🔴 `price` IS THE AMOUNT CHARGED FOR THE FIRST BILLING PERIOD, NOT THE LIST
+   * PRICE. With an introductory offer live those differ: a "$1/mo for 3 months"
+   * buyer is charged 1, while `product.price` stays 19.99.
+   *
+   * 🔑 Redefining `price` this way is SAFE and deliberate rather than a breaking
+   * change. Until an offer exists the two are identical for every purchase ever
+   * recorded, so no historical row shifts and no dashboard reading `price`
+   * breaks — it simply starts being correct once offers go live. The list price
+   * is still available as `list_price`. Renaming `price` was the alternative and
+   * would have silently broken Braze and Amplitude, which both read it.
+   *
+   * 🔴 Without this, every offer purchase would report 19.99. That is 20x the real
+   * amount, it flows to AppsFlyer as `af_revenue` below, and it is what the ad
+   * platform optimises on — so the offer cohort would look 20x more valuable
+   * than it is and outbid everything else on a number we invented.
+   *
+   * ⚠ `intro_offer` records WHAT WE DISPLAYED, resolved at paywall load. The
+   * authoritative record of what Apple actually charged is the server-side
+   * event (`revenuecat_event.payload`). Ours is the claim the member saw, which
+   * is the right thing to judge the ad against; theirs is the money.
+   */
+  const introFor = (pkg: PurchasesPackage): IntroOfferState =>
+    introOffers[pkg.product.identifier] ?? { kind: "unknown" };
+
+  /**
+   * What this member is actually charged for the FIRST billing period.
+   *
+   * 🔴 One function, used by both `price` and `af_revenue`, on purpose. Those two
+   * numbers disagreeing is precisely the bug this change exists to prevent, and
+   * two call sites computing it separately is how they would drift apart again.
+   */
+  const chargedPrice = (pkg: PurchasesPackage): number => {
+    const intro = introFor(pkg);
+    return isIntroEligible(intro) ? intro.price : pkg.product.price;
+  };
+
+  const packageProps = (pkg: PurchasesPackage | null) => {
+    if (!pkg) return { plan: selectedPlan };
+    const intro = introFor(pkg);
+    const eligible = isIntroEligible(intro);
+    return {
+      plan: selectedPlan,
+      product_id: pkg.product.identifier,
+      price: chargedPrice(pkg),
+      list_price: pkg.product.price,
+      currency: pkg.product.currencyCode,
+      intro_offer: eligible,
+      ...(eligible
+        ? {
+            intro_cycles: intro.cycles,
+            intro_period_unit: intro.periodUnit,
+            intro_period_units: intro.periodNumberOfUnits,
+          }
+        : {}),
+    };
+  };
 
   /**
    * packageProps PLUS the revenue AppsFlyer can actually read.
@@ -676,15 +747,17 @@ export function PaywallScreen({ navigation }: Props) {
    * values are computed ON-DEVICE by the SDK, so RevenueCat's server-side
    * purchase event cannot drive them — only what the app itself reports can.
    */
-  const purchaseProps = (pkg: PurchasesPackage | null) => ({
-    ...packageProps(pkg),
-    ...(pkg
-      ? {
-          af_revenue: pkg.product.price,
-          af_currency: pkg.product.currencyCode,
-        }
-      : {}),
-  });
+  const purchaseProps = (pkg: PurchasesPackage | null) => {
+    const base = packageProps(pkg);
+    if (!pkg) return base;
+    return {
+      ...base,
+      // The amount actually charged - never `product.price`, which would book
+      // the list price for an offer buyer and inflate ROAS.
+      af_revenue: chargedPrice(pkg),
+      af_currency: pkg.product.currencyCode,
+    };
+  };
 
   const handleSubscribe = async () => {
     if (purchasing || restoring) return;
