@@ -472,8 +472,28 @@ export function PaywallScreen({ navigation }: Props) {
     ]);
   };
   // Yearly is the default per Figma (the highlighted card on first render).
+  /**
+   * 🔴 Monthly, not Yearly. Bryan's call, Slack 2026-11-09, after the "$1/month"
+   * intro offer exposed what the default costs us:
+   *
+   *   ad promises $1/month -> the Monthly card correctly shows $1.00 -> but
+   *   YEARLY was preselected at $149.99 -> "Unlock my Type" -> the App Store
+   *   sheet says $149.99.
+   *
+   * So the ad, the paywall and the sheet disagreed for anyone who did not
+   * notice to switch cards, which is the exact mismatch 3.7.9 exists to close.
+   * His words: "That would explain some of the sticker shock. Let's make
+   * monthly the preselection."
+   *
+   * 🔑 Deliberately UNCONDITIONAL, not "monthly while an offer is live". He tied
+   * it to sticker shock generally, not to the offer -- and 46 of 54 members who
+   * tapped Subscribe backed out at the store price sheet
+   * (project_android_paywall_silent_tap_failure), which is not an offer-only
+   * problem. The cost is real and is his to carry: every member who would have
+   * taken the annual term now starts on the cheaper one.
+   */
   const [selectedPlan, setSelectedPlan] = React.useState<"monthly" | "yearly">(
-    "yearly"
+    "monthly"
   );
   const [monthlyPkg, setMonthlyPkg] = React.useState<PurchasesPackage | null>(
     null,
