@@ -284,3 +284,90 @@ export async function restorePurchases(): Promise<RestoreOutcome> {
     return { isPro: false, customerInfo: null, error: e };
   }
 }
+
+/**
+ * What we are allowed to TELL the member about an introductory offer.
+ *
+ * 🔴 FAIL CLOSED, AND THAT IS THE WHOLE POINT OF THIS TYPE. `product.introPrice`
+ * is a property of the PRODUCT; eligibility is a property of the USER. An
+ * introductory offer is once per Apple ID per subscription group, so a
+ * returning member can see a product that advertises "$1 for 3 months" and
+ * still be charged full price by Apple at the sheet.
+ *
+ * The two mistakes are not symmetric:
+ *   - promise $1, charge $19.99  -> we lied, at the worst possible moment, and
+ *     it is exactly the ad/paywall/sheet mismatch this work exists to prevent
+ *   - show $19.99, charge $1     -> a pleasant surprise
+ * So `eligible` is returned ONLY on an explicit ELIGIBLE from the SDK. UNKNOWN
+ * is treated as not eligible.
+ *
+ * 🔑 This also makes Android correct for free: `checkTrialOrIntroductoryPriceEligibility`
+ * is iOS-only and **Android ALWAYS returns INTRO_ELIGIBILITY_STATUS_UNKNOWN**
+ * (verified in the installed SDK's own docstring, react-native-purchases
+ * 10.11.0), so Android never renders an offer it cannot honour.
+ */
+export type IntroOfferState =
+  | {
+      kind: "eligible";
+      /** First-period price actually charged, e.g. 1 for "$1/mo for 3 months". */
+      price: number;
+      priceString: string;
+      /** How many billing periods the discount lasts, e.g. 3. */
+      cycles: number;
+      /** DAY | WEEK | MONTH | YEAR */
+      periodUnit: string;
+      periodNumberOfUnits: number;
+    }
+  | { kind: "ineligible" }
+  | { kind: "none" }
+  | { kind: "unknown" };
+
+/** Only this state may be shown or charged against as an offer. */
+export function isIntroEligible(
+  s: IntroOfferState,
+): s is Extract<IntroOfferState, { kind: "eligible" }> {
+  return s.kind === "eligible";
+}
+
+/**
+ * Resolve whether THIS member may actually have the intro offer on `pkg`.
+ *
+ * ⚠ Resolved at paywall load, while the purchase happens later. The authoritative
+ * record of what Apple charged is the server-side RevenueCat event payload
+ * (`revenuecat_event.payload`), not this. Anything the client reports is
+ * "what we displayed", which is the honest claim and the one worth measuring
+ * the ad against.
+ */
+export async function getIntroOffer(
+  pkg: PurchasesPackage | null,
+): Promise<IntroOfferState> {
+  if (!configured || !Purchases || !pkg) return { kind: "unknown" };
+
+  const intro = pkg.product.introPrice;
+  if (!intro) return { kind: "none" };
+
+  try {
+    const map = await Purchases.checkTrialOrIntroductoryPriceEligibility([
+      pkg.product.identifier,
+    ]);
+    const status = map?.[pkg.product.identifier]?.status;
+    // 2 === INTRO_ELIGIBILITY_STATUS_ELIGIBLE. Compared numerically so this
+    // does not depend on importing the enum through the defensive require above.
+    if (status === 2) {
+      return {
+        kind: "eligible",
+        price: intro.price,
+        priceString: intro.priceString,
+        cycles: intro.cycles,
+        periodUnit: intro.periodUnit,
+        periodNumberOfUnits: intro.periodNumberOfUnits,
+      };
+    }
+    if (status === 1) return { kind: "ineligible" };
+    if (status === 3) return { kind: "none" };
+    return { kind: "unknown" };
+  } catch {
+    // An eligibility call that throws must not become an offer claim.
+    return { kind: "unknown" };
+  }
+}
