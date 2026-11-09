@@ -64,7 +64,7 @@ const TOP_PAD = Math.round(
 // gap below one.
 //
 // That is what makes the shrink above dangerous. The card stack is 64x83 and
-// sits CENTRED in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
+// sits CENT🔴 in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
 // the three cards' rotations are counted. Dropping TOP_PAD to 36 on a short
 // screen therefore put the top of the stack 9pt from the screen top, and on a
 // Galaxy S24 (status bar ~34) it ran up UNDER THE FRONT CAMERA CUTOUT and was
@@ -430,8 +430,28 @@ export function PaywallScreen({ navigation }: Props) {
     ]);
   };
   // Yearly is the default per Figma (the highlighted card on first render).
+  /**
+   * 🔴 Monthly, not Yearly. Bryan's call, Slack 2026-11-09, after the "$1/month"
+   * intro offer exposed what the default costs us:
+   *
+   *   ad promises $1/month -> the Monthly card correctly shows $1.00 -> but
+   *   YEARLY was preselected at $149.99 -> "Unlock my Type" -> the App Store
+   *   sheet says $149.99.
+   *
+   * So the ad, the paywall and the sheet disagreed for anyone who did not
+   * notice to switch cards, which is the exact mismatch 3.7.9 exists to close.
+   * His words: "That would explain some of the sticker shock. Let's make
+   * monthly the preselection."
+   *
+   * 🔑 Deliberately UNCONDITIONAL, not "monthly while an offer is live". He tied
+   * it to sticker shock generally, not to the offer -- and 46 of 54 members who
+   * tapped Subscribe backed out at the store price sheet
+   * (project_android_paywall_silent_tap_failure), which is not an offer-only
+   * problem. The cost is real and is his to carry: every member who would have
+   * taken the annual term now starts on the cheaper one.
+   */
   const [selectedPlan, setSelectedPlan] = React.useState<"monthly" | "yearly">(
-    "yearly"
+    "monthly"
   );
   const [monthlyPkg, setMonthlyPkg] = React.useState<PurchasesPackage | null>(
     null,
@@ -543,7 +563,7 @@ export function PaywallScreen({ navigation }: Props) {
     // The handoff STATE_MACHINE is explicit that the full-screen intro is for
     // EXISTING members: "New users reach [UNASSIGNED] after paid unlock.
     // Existing users see the full-screen Window intro once."
-    // Keyed on having actually ANSWERED the onboarding Window question, not
+    // Keyed on having actually ANSWE🔴 the onboarding Window question, not
     // merely on !isGate: a returning legacy member reaches here with
     // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
     // education carousel and the survey entirely. They never met the feature,
