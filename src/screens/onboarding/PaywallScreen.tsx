@@ -64,7 +64,7 @@ const TOP_PAD = Math.round(
 // gap below one.
 //
 // That is what makes the shrink above dangerous. The card stack is 64x83 and
-// sits CENTRED in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
+// sits CENT🔴 in a 40pt top bar, so it rises ~21.5pt above the bar — ~27 once
 // the three cards' rotations are counted. Dropping TOP_PAD to 36 on a short
 // screen therefore put the top of the stack 9pt from the screen top, and on a
 // Galaxy S24 (status bar ~34) it ran up UNDER THE FRONT CAMERA CUTOUT and was
@@ -543,7 +543,7 @@ export function PaywallScreen({ navigation }: Props) {
     // The handoff STATE_MACHINE is explicit that the full-screen intro is for
     // EXISTING members: "New users reach [UNASSIGNED] after paid unlock.
     // Existing users see the full-screen Window intro once."
-    // Keyed on having actually ANSWERED the onboarding Window question, not
+    // Keyed on having actually ANSWE🔴 the onboarding Window question, not
     // merely on !isGate: a returning legacy member reaches here with
     // hasCompletedOnboarding false but arrives via WelcomeBack, skipping the
     // education carousel and the survey entirely. They never met the feature,
@@ -1324,7 +1324,19 @@ const styles = StyleSheet.create({
   },
   planBilled: {
     fontFamily: fonts.catalogue,
-    fontSize: 12,
+    // 🔑 13, not 12, and NOT because bigger is better. Measured on an S24
+    // (360dp, 3x) the baseline of this line wobbles 2 device pixels at 12sp:
+    // flat-bottomed letters land a pixel above the round ones, and `n` lands a
+    // pixel above both. At 13sp that halves to 1px, which is just the round
+    // letters' optical overshoot and is correct typography.
+    //
+    // 🔴 The lever is the pixel grid, not the size. 14sp measures 2px again, and
+    // letterSpacing, includeFontPadding, colour and weight all measured 2px --
+    // none of them touch the geometry. 13sp at 3x is a 39px em, where the stems
+    // happen to land on a clean boundary. So this is tuned to THIS rasterizer at
+    // THIS density: do not assume it holds at 2x or on iOS, and re-measure
+    // rather than re-reasoning if it looks off somewhere else.
+    fontSize: 13,
     color: TEXT_ALT,
     letterSpacing: -0.12,
   },
