@@ -346,6 +346,49 @@ export async function getIntroOffer(
   const intro = pkg.product.introPrice;
   if (!intro) return { kind: "none" };
 
+  // 🔴 A zero-price phase is a FREE TRIAL, not an introductory price. Both
+  // platforms report the free phase in PREFERENCE to a discounted one, so a
+  // trial configured later would arrive here looking like an intro offer and
+  // the card ("First 3 months" above a price) would render it as "$0.00".
+  // We have no trial and no approved copy for one, so make no claim rather
+  // than a wrong one: the card falls back to list price, exactly as it
+  // behaved before offers existed.
+  if (intro.price <= 0) return { kind: "unknown" };
+
+  const eligible: IntroOfferState = {
+    kind: "eligible",
+    price: intro.price,
+    priceString: intro.priceString,
+    cycles: intro.cycles,
+    periodUnit: intro.periodUnit,
+    periodNumberOfUnits: intro.periodNumberOfUnits,
+  };
+
+  // 🔑 ANDROID: PRESENCE IS ELIGIBILITY, and there is no API to ask.
+  // `checkTrialOrIntroductoryPriceEligibility` is iOS-only and always returns
+  // UNKNOWN on Android, which previously collapsed to `{ kind: "unknown" }` —
+  // so an Android member saw the list price while Google charged the offer.
+  // Instead we lean on Google: for the store-determined criteria ("New
+  // customer acquisition", "Upgrade") Play strips offers a customer cannot
+  // have out of the product's `subscriptionOptions` entirely, and
+  // `introPrice` is mapped from `defaultOption` — so an intro phase reaching
+  // us means Google already judged this customer eligible.
+  //
+  // ⚠️ THIS IS ONLY TRUE FOR STORE-DETERMINED CRITERIA. An offer configured
+  // as "Developer determined" is returned to EVERY customer, and trusting
+  // presence would then promise a price Google will not honour. The Play
+  // offer must stay on "New customer acquisition".
+  //
+  // 📌 Verified against the PINNED sources, not the docs (which only say
+  // "price value of defaultOption" and are misleading): hybrid-common 19.5.0
+  // `StoreProductMapper.mapIntroPrice()` reads `defaultOption.freePhase` then
+  // `defaultOption.introPhase`; purchases-android 10.24.0
+  // `storeProductConversions.kt` sets `price = createOneTimeProductPrice() ??
+  // basePlan.fullPricePhase.price`, i.e. `product.price` stays the BASE PLAN's
+  // recurring price and an offer never moves it. That is what keeps the
+  // "then $19.99/mo" line and the yearly `Save X%` correct here.
+  if (Platform.OS === "android") return eligible;
+
   try {
     const map = await Purchases.checkTrialOrIntroductoryPriceEligibility([
       pkg.product.identifier,
@@ -353,16 +396,7 @@ export async function getIntroOffer(
     const status = map?.[pkg.product.identifier]?.status;
     // 2 === INTRO_ELIGIBILITY_STATUS_ELIGIBLE. Compared numerically so this
     // does not depend on importing the enum through the defensive require above.
-    if (status === 2) {
-      return {
-        kind: "eligible",
-        price: intro.price,
-        priceString: intro.priceString,
-        cycles: intro.cycles,
-        periodUnit: intro.periodUnit,
-        periodNumberOfUnits: intro.periodNumberOfUnits,
-      };
-    }
+    if (status === 2) return eligible;
     if (status === 1) return { kind: "ineligible" };
     if (status === 3) return { kind: "none" };
     return { kind: "unknown" };
