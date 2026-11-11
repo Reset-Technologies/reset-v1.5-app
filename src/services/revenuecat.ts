@@ -368,31 +368,6 @@ export function isIntroEligible(
 function androidIntroOffer(pkg: PurchasesPackage): IntroOfferState | null {
   const options = pkg.product.subscriptionOptions;
 
-  // ⚠️⚠️ TEMPORARY DIAGNOSTIC — REMOVE BEFORE PROMOTING TO PRODUCTION.
-  // Present so that ONE internal build can distinguish "the offer is in
-  // subscriptionOptions and we were reading the wrong field" from "Play is
-  // not returning the offer to the SDK at all", instead of costing another
-  // build cycle. Reads in `adb logcat | grep ReactNativeJS`. No PII — product
-  // ids, tags and prices only.
-  try {
-    console.log(
-      "[introOffer]",
-      pkg.product.identifier,
-      JSON.stringify({
-        introPrice: pkg.product.introPrice,
-        defaultOption: pkg.product.defaultOption?.id ?? null,
-        options: options?.map((o) => ({
-          id: o.id,
-          isBasePlan: o.isBasePlan,
-          tags: o.tags,
-          phases: o.pricingPhases.map((p) => p.price.formatted),
-        })),
-      }),
-    );
-  } catch {
-    // Diagnostics must never break the paywall.
-  }
-
   if (!options?.length) return null;
 
   let best: PricingPhase | null = null;
@@ -435,14 +410,24 @@ export async function getIntroOffer(
 ): Promise<IntroOfferState> {
   if (!configured || !Purchases || !pkg) return { kind: "unknown" };
 
-  // 🔴🔴 ANDROID IS RESOLVED FIRST, AND NOT FROM `introPrice`.
-  // Measured on an S24 (2026-11-11) against a live Play offer that Google was
-  // demonstrably serving — its own purchase sheet showed $0.99 then $19.99 —
-  // `product.introPrice` came back NULL and the card rendered the base plan
-  // price. `introPrice` is mapped from `defaultOption` alone, so it reports
-  // nothing whenever `defaultOption` resolves to the base plan, while the
-  // offer still sits in `subscriptionOptions` and is still what Google
-  // charges. Reading the options directly removes that dependency.
+  // ANDROID IS RESOLVED FIRST, AND NOT FROM `introPrice`.
+  //
+  // 📌 NOT because `introPrice` was observed failing. Measured on an S24
+  // (2026-11-11) against the live Play offer, it is populated correctly:
+  //   introPrice {price: 0.99, cycles: 3, periodUnit: "MONTH"}
+  //   defaultOption "monthly:intro-099-3mo"
+  // An earlier session concluded it came back null; that test had silently
+  // installed 3.7.7 from the production track, a build with no Android offer
+  // code at all. The conclusion was wrong and is recorded here so nobody
+  // re-derives it.
+  //
+  // 🔑 The reason to read the options anyway is narrower and still holds:
+  // `introPrice` is derived from `defaultOption` ALONE, so it reports nothing
+  // the moment `defaultOption` falls back to the base plan — which
+  // `SubscriptionOptions.defaultOffer` does whenever every offer is filtered
+  // out, including by a tag INHERITED from the base plan. The offer would
+  // still be in `subscriptionOptions`, and still be what Google charges.
+  // Reading the options removes that single point of failure.
   if (Platform.OS === "android") {
     return androidIntroOffer(pkg) ?? { kind: "none" };
   }
