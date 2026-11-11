@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import type {
   CustomerInfo,
+  PricingPhase,
   PurchasesOffering,
   PurchasesPackage,
 } from "react-native-purchases";
@@ -338,10 +339,113 @@ export function isIntroEligible(
  * "what we displayed", which is the honest claim and the one worth measuring
  * the ad against.
  */
+/**
+ * Resolve a Google Play introductory offer from the product's
+ * `subscriptionOptions`, which is the raw list `introPrice` is derived from.
+ *
+ * 🔑 ELIGIBILITY IS GOOGLE'S ANSWER, NOT OURS. Android has no equivalent of
+ * iOS's `checkTrialOrIntroductoryPriceEligibility` — it always returns
+ * UNKNOWN. We do not need one: for the store-determined criteria ("New
+ * customer acquisition", "Upgrade") Play removes offers the customer cannot
+ * have from `subscriptionOptions` before the SDK ever sees them, so an offer
+ * being present IS the eligibility signal.
+ * ⚠️ That holds ONLY for store-determined criteria. An offer set to
+ * "Developer determined" is returned to EVERY customer, and this function
+ * would then promise a price Google will not honour. The Play offer must stay
+ * on "New customer acquisition".
+ *
+ * 🔑 Mirrors RevenueCat's own `defaultOffer` selection so the price we DISPLAY
+ * is the price its automatic offer application will CHARGE: skip the base
+ * plan, skip the two reserved tags, and take the cheapest non-free intro
+ * phase. Divergence between those two is the whole bug class this screen
+ * exists to avoid.
+ *
+ * 📌 The LAST pricing phase is the recurring full price; offer phases precede
+ * it, which is why the tail is dropped. A zero-price phase is a free trial,
+ * not an introductory price, and is deliberately ignored — we have no trial
+ * and no approved copy for one.
+ */
+function androidIntroOffer(pkg: PurchasesPackage): IntroOfferState | null {
+  const options = pkg.product.subscriptionOptions;
+
+  // ⚠️⚠️ TEMPORARY DIAGNOSTIC — REMOVE BEFORE PROMOTING TO PRODUCTION.
+  // Present so that ONE internal build can distinguish "the offer is in
+  // subscriptionOptions and we were reading the wrong field" from "Play is
+  // not returning the offer to the SDK at all", instead of costing another
+  // build cycle. Reads in `adb logcat | grep ReactNativeJS`. No PII — product
+  // ids, tags and prices only.
+  try {
+    console.log(
+      "[introOffer]",
+      pkg.product.identifier,
+      JSON.stringify({
+        introPrice: pkg.product.introPrice,
+        defaultOption: pkg.product.defaultOption?.id ?? null,
+        options: options?.map((o) => ({
+          id: o.id,
+          isBasePlan: o.isBasePlan,
+          tags: o.tags,
+          phases: o.pricingPhases.map((p) => p.price.formatted),
+        })),
+      }),
+    );
+  } catch {
+    // Diagnostics must never break the paywall.
+  }
+
+  if (!options?.length) return null;
+
+  let best: PricingPhase | null = null;
+  for (const option of options) {
+    if (option.isBasePlan) continue;
+    if (
+      option.tags?.some(
+        (t) => t === "rc-ignore-offer" || t === "rc-customer-center",
+      )
+    ) {
+      continue;
+    }
+    for (const phase of option.pricingPhases.slice(0, -1)) {
+      if (phase.price.amountMicros <= 0) continue;
+      if (!best || phase.price.amountMicros < best.price.amountMicros) {
+        best = phase;
+      }
+      break;
+    }
+  }
+  if (!best) return null;
+
+  return {
+    kind: "eligible",
+    // Micros, unlike iOS's `introPrice.price`, which is already in currency
+    // units. `af_revenue` and the purchase events read this, so the conversion
+    // is not cosmetic.
+    price: best.price.amountMicros / 1_000_000,
+    priceString: best.price.formatted,
+    // `billingCycleCount` is null for infinite/finite-recurring phases; an
+    // offer phase without a count runs for one period.
+    cycles: best.billingCycleCount ?? 1,
+    periodUnit: best.billingPeriod.unit,
+    periodNumberOfUnits: best.billingPeriod.value,
+  };
+}
+
 export async function getIntroOffer(
   pkg: PurchasesPackage | null,
 ): Promise<IntroOfferState> {
   if (!configured || !Purchases || !pkg) return { kind: "unknown" };
+
+  // 🔴🔴 ANDROID IS RESOLVED FIRST, AND NOT FROM `introPrice`.
+  // Measured on an S24 (2026-11-11) against a live Play offer that Google was
+  // demonstrably serving — its own purchase sheet showed $0.99 then $19.99 —
+  // `product.introPrice` came back NULL and the card rendered the base plan
+  // price. `introPrice` is mapped from `defaultOption` alone, so it reports
+  // nothing whenever `defaultOption` resolves to the base plan, while the
+  // offer still sits in `subscriptionOptions` and is still what Google
+  // charges. Reading the options directly removes that dependency.
+  if (Platform.OS === "android") {
+    return androidIntroOffer(pkg) ?? { kind: "none" };
+  }
 
   const intro = pkg.product.introPrice;
   if (!intro) return { kind: "none" };
@@ -363,31 +467,6 @@ export async function getIntroOffer(
     periodUnit: intro.periodUnit,
     periodNumberOfUnits: intro.periodNumberOfUnits,
   };
-
-  // 🔑 ANDROID: PRESENCE IS ELIGIBILITY, and there is no API to ask.
-  // `checkTrialOrIntroductoryPriceEligibility` is iOS-only and always returns
-  // UNKNOWN on Android, which previously collapsed to `{ kind: "unknown" }` —
-  // so an Android member saw the list price while Google charged the offer.
-  // Instead we lean on Google: for the store-determined criteria ("New
-  // customer acquisition", "Upgrade") Play strips offers a customer cannot
-  // have out of the product's `subscriptionOptions` entirely, and
-  // `introPrice` is mapped from `defaultOption` — so an intro phase reaching
-  // us means Google already judged this customer eligible.
-  //
-  // ⚠️ THIS IS ONLY TRUE FOR STORE-DETERMINED CRITERIA. An offer configured
-  // as "Developer determined" is returned to EVERY customer, and trusting
-  // presence would then promise a price Google will not honour. The Play
-  // offer must stay on "New customer acquisition".
-  //
-  // 📌 Verified against the PINNED sources, not the docs (which only say
-  // "price value of defaultOption" and are misleading): hybrid-common 19.5.0
-  // `StoreProductMapper.mapIntroPrice()` reads `defaultOption.freePhase` then
-  // `defaultOption.introPhase`; purchases-android 10.24.0
-  // `storeProductConversions.kt` sets `price = createOneTimeProductPrice() ??
-  // basePlan.fullPricePhase.price`, i.e. `product.price` stays the BASE PLAN's
-  // recurring price and an offer never moves it. That is what keeps the
-  // "then $19.99/mo" line and the yearly `Save X%` correct here.
-  if (Platform.OS === "android") return eligible;
 
   try {
     const map = await Purchases.checkTrialOrIntroductoryPriceEligibility([
