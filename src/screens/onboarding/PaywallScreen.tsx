@@ -549,17 +549,33 @@ export function PaywallScreen({ navigation }: Props) {
     "loading" | "ready" | "unavailable"
   >("loading");
 
-  const loadOfferings = React.useCallback(async () => {
-    setOfferingsState("loading");
-    const { offering, reason } = await getCurrentOfferingDetailed();
+  /**
+   * @param attempt 0 for the first try; >0 for an automatic retry below.
+   * @param silent  A retry must NOT flip state to "loading" — that disables
+   *   Subscribe and swaps in a spinner, so it would flicker the button under
+   *   the member's finger while they are reading the price.
+   * @returns whether an offering is now loaded.
+   */
+  const loadOfferings = React.useCallback(async (opts?: {
+    attempt?: number;
+    silent?: boolean;
+  }): Promise<boolean> => {
+    const attempt = opts?.attempt ?? 0;
+    if (!opts?.silent) setOfferingsState("loading");
+    const { offering, reason, error } = await getCurrentOfferingDetailed();
     if (!offering) {
       // 🔑 Named reason, not a bare null — "never configured", "RevenueCat
       // errored" and "nobody published an offering" need different fixes.
+      // 🔴 `error` is only set on `fetch_failed`, and it is the point of this
+      // event now: `fetch_failed` alone told us Android was failing 249 times
+      // a month and nothing about why. Group by `error_readable` first.
       logEvent("onboarding_paywall_offerings_unavailable", {
         reason: reason ?? "unknown",
+        attempt,
+        ...error,
       });
       setOfferingsState("unavailable");
-      return;
+      return false;
     }
     const pkgs = offering.availablePackages;
     const monthly =
@@ -572,9 +588,10 @@ export function PaywallScreen({ navigation }: Props) {
       // An offering with no purchasable package is the same outcome as none.
       logEvent("onboarding_paywall_offerings_unavailable", {
         reason: "no_packages",
+        attempt,
       });
       setOfferingsState("unavailable");
-      return;
+      return false;
     }
     // Resolved alongside, not awaited: this is a revenue screen and an extra
     // round trip before first paint is not worth it. Until it lands `introFor`
@@ -586,15 +603,51 @@ export function PaywallScreen({ navigation }: Props) {
     ).then((entries) => setIntroOffers(Object.fromEntries(entries)));
 
     setOfferingsState("ready");
+    if (attempt > 0) {
+      // The measurement of whether the retry earns its place. If this never
+      // appears, the failure is not transient: delete the backoff and chase
+      // the error code instead.
+      logEvent("onboarding_paywall_offerings_recovered", { attempt });
+    }
+    return true;
   }, []);
 
+  /**
+   * 🔴 Bounded auto-retry, added 2026-11-16, as a MITIGATION not a fix.
+   *
+   * `fetch_failed` hit ~31 Android members in 30 days — ~13.5% of Android
+   * paywall viewers — across every release from 3.4.0 to 3.7.13, with 229 of
+   * 249 in the US. So it is neither a regression nor a market without Play
+   * Billing. ⚠️ The cause is still unknown: the error code only starts being
+   * logged in this same change. If the failure is transient this recovers the
+   * sale without a diagnosis; if it is not, `offerings_recovered` stays empty
+   * and says so. **Shipping this is not the same as having fixed it.**
+   */
   React.useEffect(() => {
+    const delays = [1500, 4000, 9000];
     let cancelled = false;
-    void loadOfferings().catch(() => {
-      if (!cancelled) setOfferingsState("unavailable");
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const run = async (attempt: number): Promise<void> => {
+      let ok = false;
+      try {
+        ok = await loadOfferings({ attempt, silent: attempt > 0 });
+      } catch {
+        if (!cancelled) setOfferingsState("unavailable");
+      }
+      if (cancelled || ok) return;
+      const delay = delays[attempt];
+      // Out of attempts. The member is not stranded: Subscribe runs its own
+      // retry, and Restore Purchase and the back control both still work.
+      if (delay === undefined) return;
+      timer = setTimeout(() => void run(attempt + 1), delay);
+    };
+
+    void run(0);
+
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [loadOfferings]);
 
