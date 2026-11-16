@@ -189,9 +189,48 @@ export type OfferingUnavailableReason =
   | "no_current_offering"
   | "no_packages";
 
+/**
+ * What the SDK threw, for diagnosis only.
+ *
+ * 🔴 Added 2026-11-16 because `fetch_failed` alone could not be acted on. Over
+ * the 30 days to 11-16 it fired **249 times on Android against 2 on iOS**, and
+ * ~29% of Android Subscribe taps landed on "nothing to sell" as a result. The
+ * catch here discarded the error, so the question that decides the fix — a
+ * device that can NEVER transact, a transient failure, or a misconfiguration —
+ * had no answer in the data. Naming the branch was not enough; it needed a
+ * cause. See `feedback_empty_catch_hides_failures`.
+ *
+ * ⚠️ These come from the store/SDK, never from the member. Do not add anything
+ * here that could carry member data — this is an analytics payload.
+ */
+export interface OfferingFetchError {
+  /** RevenueCat `PURCHASES_ERROR_CODE`. */
+  error_code?: string;
+  /** e.g. "BILLING_UNAVAILABLE_ERROR" — the field to group by first. */
+  error_readable?: string;
+  /** Play/StoreKit's own message. Truncated: free text from the store. */
+  error_underlying?: string;
+}
+
+/** Defensive: the SDK rejects with a plain object, not necessarily an Error. */
+function describeOfferingError(e: unknown): OfferingFetchError {
+  const err = (e ?? {}) as Record<string, unknown>;
+  const info = (err.userInfo ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    v === undefined || v === null ? undefined : String(v).slice(0, 200);
+  return {
+    error_code: str(err.code),
+    // Top-level `readableErrorCode` is deprecated in favour of
+    // `userInfo.readableErrorCode`; read both so this survives either.
+    error_readable: str(info.readableErrorCode ?? err.readableErrorCode),
+    error_underlying: str(err.underlyingErrorMessage ?? err.message),
+  };
+}
+
 export async function getCurrentOfferingDetailed(): Promise<{
   offering: PurchasesOffering | null;
   reason: OfferingUnavailableReason | null;
+  error?: OfferingFetchError;
 }> {
   if (!configured) return { offering: null, reason: "not_configured" };
   try {
@@ -199,8 +238,12 @@ export async function getCurrentOfferingDetailed(): Promise<{
     const current = offerings.current ?? null;
     if (!current) return { offering: null, reason: "no_current_offering" };
     return { offering: current, reason: null };
-  } catch {
-    return { offering: null, reason: "fetch_failed" };
+  } catch (e) {
+    return {
+      offering: null,
+      reason: "fetch_failed",
+      error: describeOfferingError(e),
+    };
   }
 }
 
