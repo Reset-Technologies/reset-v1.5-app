@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
-import { fonts, lineBox } from "../../constants/typography";
+import { fonts, lineBox, androidDisplayTracking } from "../../constants/typography";
 import { K } from "../../constants/colors";
 import { logEvent } from "../../services/braze";
 
@@ -105,6 +105,9 @@ const styles = StyleSheet.create({
     // "Your Type is ready." — y, p, y
     lineHeight: lineBox(40, 44),
     letterSpacing: -0.4,
+    // 🔴 The SAME string as PaywallScreen's headline, and it wraps on Android
+    // for the same reason. Keep the two in step — see typography.ts.
+    ...androidDisplayTracking,
     color: K.white,
     textAlign: "center",
   },
