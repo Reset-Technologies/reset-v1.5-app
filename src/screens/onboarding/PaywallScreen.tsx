@@ -15,7 +15,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { OnboardingStackParamList } from "../../navigation/OnboardingNavigator";
 import type { PurchasesPackage } from "react-native-purchases";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
-import { fonts } from "../../constants/typography";
+import { fonts, androidDisplayTracking, androidValueTracking } from "../../constants/typography";
 import { useApp } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
 import { logEvent } from "../../services/braze";
@@ -1337,6 +1337,9 @@ const styles = StyleSheet.create({
     // give the line box room.
     lineHeight: 48,
     letterSpacing: -0.4,
+    // 🔴 MUST STAY BELOW `letterSpacing` — it overrides it on Android, and a
+    // spread placed above is silently ignored. See typography.ts.
+    ...androidDisplayTracking,
     color: WHITE,
     textAlign: "center",
   },
@@ -1399,6 +1402,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 25,
     letterSpacing: -0.2,
+    // Android needs tighter tracking or this wraps — see typography.ts.
+    ...androidValueTracking,
     color: WHITE,
   },
 

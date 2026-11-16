@@ -1,5 +1,9 @@
-import { StyleSheet, TextStyle } from "react-native";
+import { Platform, StyleSheet, TextStyle } from "react-native";
 import { K } from "./colors";
+
+/** Android renders the sans differently — see `catalogue` below. */
+const sans = (android: string, ios: string): string =>
+  Platform.OS === "android" ? android : ios;
 
 export const fonts = {
   /**
@@ -10,9 +14,10 @@ export const fonts = {
    * still resolves. **Do not reach for them in new code** — use `catalogue*`
    * for sans and `quadrant` for a caption or a secondary line.
    *
-   * ▶ Follow-up: once this has shipped and settled, drop them from `App.tsx`'s
-   * `useFonts` and from package.json. That is a startup-cost change, so it is
-   * deliberately not bundled with the typeface sweep.
+   * 🔴 2026-11-12 — DO **NOT** DROP DM SANS. `catalogue*` below now resolves to
+   * the `DMSans_*` families ON ANDROID, so `@expo-google-fonts/dm-sans` and its
+   * three entries in `App.tsx`'s `useFonts` are load-bearing again. Playfair is
+   * still droppable (only `EsterBubble` and `ScoreRing` hardcode it).
    */
   playfair: "PlayfairDisplay_400Regular",
   playfairBold: "PlayfairDisplay_700Bold",
@@ -31,11 +36,59 @@ export const fonts = {
    * sent us to a `skewX` stand-in until this file arrived.
    */
   quadrantItalic: "QuadrantText_400Italic",
-  // Display sans (Figma "Catalogue")
-  catalogue: "Catalogue_400Regular",
-  catalogueMedium: "Catalogue_500Medium",
-  catalogueBold: "Catalogue_700Bold",
+  /**
+   * Display sans (Figma "Catalogue") — 🔴 **ANDROID GETS DM SANS, iOS GETS CATALOGUE.**
+   *
+   * Android's rasterizer rounds every glyph's baseline to a whole pixel. At 14sp
+   * and 16sp Catalogue lands on THREE baseline rows (2px spread) and the line
+   * reads as wavy; DM Sans lands on two (1px — the irreducible overshoot floor
+   * that every font has, Roboto included). Measured in-app on PreScanScreen and
+   * stable across ink thresholds 0.3-0.6. iOS is unaffected and keeps Catalogue.
+   *
+   * Bryan's call 2026-11-12: DM Sans on Android for this release, revisit later.
+   * ⚠️ Lang has not weighed in and this is her type system — treat as PROVISIONAL.
+   * ⚠️ The SERIF (`quadrant`) is deliberately NOT split: `bodySmall` 14 and
+   *    `caption` 12 are in the same danger zone, but nobody has measured Quadrant.
+   * ▶ To revert: make both sides of `sans()` the Catalogue family.
+   */
+  catalogue: sans("DMSans_400Regular", "Catalogue_400Regular"),
+  catalogueMedium: sans("DMSans_500Medium", "Catalogue_500Medium"),
+  catalogueBold: sans("DMSans_700Bold", "Catalogue_700Bold"),
 };
+
+/**
+ * 🔴 ANDROID TRACKING COMPENSATION — read before touching either value.
+ *
+ * Android renders the sans as **DM Sans**, which sets WIDER than Catalogue.
+ * 🔴 **The width ratio is SIZE-DEPENDENT — do not extrapolate it.** Measured
+ * on-device 2026-11-15 at 480dpi: ~3.8% wider at 20sp (754px vs 783px), but
+ * **~10% wider at 40sp**. Using the 20sp ratio on the 40sp headline
+ * under-predicted the overflow by 3x and cost a wasted fix attempt.
+ *
+ * Two display lines were already sitting at 98-99% of their container in
+ * Catalogue and tipped into a second line when Android moved to DM Sans:
+ *   - "Your Type is ready."       40sp   926 of 936px  ->  1022px  (over by 86)
+ *   - "Meals picked for your..."  20sp   778 of 792px  ->  ~808px  (over by ~16)
+ *
+ * The 40sp value was solved, not guessed: width is linear in tracking, so
+ * `W(T) = W(-6.0) + (T + 6) * nchars * 3px` at 480dpi. For the headline
+ * W(-6.0) = 703px over n = 19 chars, which puts -2.5 at 902px predicted vs
+ * **897px measured** in a 936px container.
+ *
+ * Bryan asked to keep the compact single-line layout (2026-11-15), so these
+ * tighten TRACKING on Android only rather than dropping the type size. iOS is
+ * untouched.
+ * ⚠️ The slack on these lines is ~10px. **Re-measure if the copy changes** —
+ * they will wrap again on either platform with one more word.
+ */
+export const androidDisplayTracking = Platform.select({
+  android: { letterSpacing: -2.5 },
+  default: {},
+});
+export const androidValueTracking = Platform.select({
+  android: { letterSpacing: -0.7 },
+  default: {},
+});
 
 // Spacing tokens
 export const spacing = {
