@@ -204,9 +204,15 @@ export type OfferingUnavailableReason =
  * here that could carry member data — this is an analytics payload.
  */
 export interface OfferingFetchError {
-  /** RevenueCat `PURCHASES_ERROR_CODE`. */
+  /**
+   * RevenueCat `PURCHASES_ERROR_CODE`. **Group by this one.** Observed on a
+   * real rejection 2026-11-16: `"PurchaseNotAllowedError"`.
+   */
   error_code?: string;
-  /** e.g. "BILLING_UNAVAILABLE_ERROR" — the field to group by first. */
+  /**
+   * e.g. "BILLING_UNAVAILABLE_ERROR". ⚠️ Best-effort: not present on every
+   * rejection, so it may be absent. Prefer `error_code`.
+   */
   error_readable?: string;
   /** Play/StoreKit's own message. Truncated: free text from the store. */
   error_underlying?: string;

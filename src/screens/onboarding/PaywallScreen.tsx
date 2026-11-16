@@ -568,7 +568,8 @@ export function PaywallScreen({ navigation }: Props) {
       // errored" and "nobody published an offering" need different fixes.
       // 🔴 `error` is only set on `fetch_failed`, and it is the point of this
       // event now: `fetch_failed` alone told us Android was failing 249 times
-      // a month and nothing about why. Group by `error_readable` first.
+      // a month and nothing about why. Group by `error_code` — verified on a
+      // real rejection; `error_readable` is best-effort and may be absent.
       logEvent("onboarding_paywall_offerings_unavailable", {
         reason: reason ?? "unknown",
         attempt,
