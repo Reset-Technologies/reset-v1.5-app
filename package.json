@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@amplitude/analytics-react-native": "^1.7.0",
+    "@amplitude/session-replay-react-native": "^1.1.2",
     "@bacons/apple-targets": "^5.0.0",
     "@braze/expo-plugin": "^4.0.0",
     "@braze/react-native-sdk": "^19.1.0",

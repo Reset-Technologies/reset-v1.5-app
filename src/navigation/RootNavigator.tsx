@@ -8,6 +8,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import { AppState, AppStateStatus } from "react-native";
 import { OnboardingNavigator } from "./OnboardingNavigator";
+import { syncSessionReplay } from "../services/sessionReplay";
 import { MainNavigator } from "./MainNavigator";
 import { GateNavigator } from "./GateNavigator";
 import { AuthNavigator } from "./AuthNavigator";
@@ -191,6 +192,20 @@ export function RootNavigator() {
     <NavigationContainer
       ref={navigationRef}
       linking={linking}
+      /**
+       * 🔴 The ONLY thing that turns session replay on, and it drives off the
+       * current route against an allowlist in `sessionReplay.ts`. Anything not
+       * on that list — including a screen added later — stops recording.
+       * `onReady` matters as much as `onStateChange`: the question replay
+       * exists to answer is the FIRST few seconds, so the first screen has to
+       * be covered, not just subsequent navigations.
+       */
+      onReady={() =>
+        syncSessionReplay(navigationRef.current?.getCurrentRoute()?.name)
+      }
+      onStateChange={() =>
+        syncSessionReplay(navigationRef.current?.getCurrentRoute()?.name)
+      }
       theme={{
         ...DefaultTheme,
         colors: { ...DefaultTheme.colors, background: "transparent" },

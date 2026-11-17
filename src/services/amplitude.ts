@@ -80,6 +80,40 @@ function ready(): boolean {
   }
 }
 
+/**
+ * Whether Amplitude is live at all. Session replay must follow exactly the same
+ * rule — a dev run that records a replay into the production project is the
+ * same hazard as a dev run that logs events into it.
+ */
+export function isAmplitudeEnabled(): boolean {
+  return AMPLITUDE_ENABLED && !!Amplitude && !!API_KEY;
+}
+
+/**
+ * The device and session ids session replay must be initialised with.
+ *
+ * 🔑 These MUST match what the analytics SDK sends as event properties, or a
+ * replay cannot be tied to the events it belongs to — which is the only reason
+ * to record one. Both return undefined before init, and the caller retries.
+ */
+export function getDeviceId(): string | undefined {
+  if (!ready()) return undefined;
+  try {
+    return Amplitude.getDeviceId() ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getSessionId(): number | undefined {
+  if (!ready()) return undefined;
+  try {
+    return Amplitude.getSessionId() ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function setUserId(userId: string): void {
   pendingUserId = userId;
   if (!ready()) return;
