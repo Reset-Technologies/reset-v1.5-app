@@ -15,10 +15,16 @@ import {
   DMSans_500Medium,
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
+import { initCrashReporting } from "./src/services/crashReporting";
 import { AppProvider } from "./src/context/AppContext";
 import { ToastProvider } from "./src/context/ToastContext";
 import { RootNavigator } from "./src/navigation";
 import { PaletteProvider } from "./src/hooks/useAppPalette";
+
+// 🔴 Before anything else renders. A crash during startup is precisely the
+// case we could not see before this existed, so initialising later would miss
+// the reports that matter most. Inert without a DSN — see the service.
+initCrashReporting();
 
 SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 300, fade: true });
