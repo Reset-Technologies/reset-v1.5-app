@@ -357,8 +357,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Strips unused `audio`/`voip` UIBackgroundModes from the final plist
     // (Apple Guideline 2.5.4). Runs last as a safety net. See the plugin file.
     "./plugins/withCleanBackgroundModes",
+    // Crash reporting. Added 2026-11-16: the app had NO error reporting of any
+    // kind, which is why "74% of iOS first sessions end inside three seconds"
+    // has gone unexplained — nothing could tell us whether the app died.
+    // ⚠️ The plugin only wires the native SDKs and the source-map upload; it
+    // sends nothing on its own. `src/services/crashReporting.ts` decides that,
+    // and stays inert without a DSN.
+    "@sentry/react-native",
   ],
   extra: {
+    /**
+     * Sentry DSN. Not a secret — it ships in the bundle and only grants the
+     * right to SEND events, same as the Amplitude key below.
+     *
+     * 🔴 No default on purpose. Empty means crash reporting stays OFF rather
+     * than half-configured: see `initCrashReporting()`. Set `SENTRY_DSN` as an
+     * EAS environment variable on the production profiles once the Sentry
+     * project exists.
+     */
+    sentryDsn: process.env.SENTRY_DSN ?? "",
     shenAiApiKey: process.env.SHEN_AI_API_KEY ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "",
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID ?? "",
