@@ -150,7 +150,8 @@ type AppAction =
          */
         metabolicType: MetabolicType | null;
         startingRead: boolean;
-        glp1Flag: boolean;
+        /** Omit when unknown — the reducer keeps whatever is already there. */
+        glp1Flag?: boolean;
       };
     }
   | { type: "SET_GOAL"; payload: string }
@@ -251,7 +252,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
           ...state.user,
           metabolicType: action.payload.metabolicType ?? undefined,
           startingRead: action.payload.startingRead,
-          glp1Flag: action.payload.glp1Flag,
+          glp1Flag: action.payload.glp1Flag ?? state.user.glp1Flag,
         },
       };
 
@@ -373,7 +374,7 @@ interface AppContextValue {
   setTypingResult: (payload: {
     metabolicType: MetabolicType | null;
     startingRead: boolean;
-    glp1Flag: boolean;
+    glp1Flag?: boolean;
   }) => void;
   setGoal: (goal: string) => void;
   setCalibration: (data: CalibrationData) => void;
@@ -551,9 +552,22 @@ export function AppProvider({ children }: AppProviderProps) {
               // returning or migrating member is not marched through
               // onboarding a second time.
               if (profile.layer1.onboardingCompletedAt) {
+                // 🔑 `primaryBucket` is legitimately null for a member typed
+                // without a scan, and the old `as MetabolicType` cast lied
+                // about that while dropping `startingRead` — so a reinstalling
+                // untyped member came back indistinguishable from an unknown
+                // one. Same fix as the two re-sync paths below.
                 dispatch({
-                  type: "SET_METABOLIC_TYPE",
-                  payload: profile.layer1.primaryBucket as MetabolicType,
+                  type: "SET_TYPING_RESULT",
+                  payload: {
+                    metabolicType:
+                      (profile.layer1.primaryBucket as MetabolicType | null) ??
+                      null,
+                    startingRead: profile.layer1.primaryBucket
+                      ? false
+                      : profile.layer1.startingRead === true,
+                    glp1Flag: profile.layer1.glp1Flag,
+                  },
                 });
                 if (profile.layer1.tasteCluster) {
                   dispatch({
@@ -600,10 +614,24 @@ export function AppProvider({ children }: AppProviderProps) {
       // type-derived UI (check-in surfaces, etc.) and Ester's gating match the
       // source of truth on every session restore.
       const profile = await getProfile();
-      if (profile.layer1.primaryBucket) {
+      // 🔑 `SET_TYPING_RESULT`, not `SET_METABOLIC_TYPE`, and no
+      // `if (primaryBucket)` gate: a member typed without a scan has
+      // `primaryBucket: null` and `startingRead: true`, and the old gate left
+      // them indistinguishable from someone we know nothing about.
+      // ⚠️ Only dispatch when the server actually told us something. If both
+      // are absent, leave state alone rather than writing `false` — see the
+      // note on `Layer1.startingRead`.
+      const l1 = profile.layer1;
+      if (l1.primaryBucket || typeof l1.startingRead === "boolean") {
         dispatch({
-          type: "SET_METABOLIC_TYPE",
-          payload: profile.layer1.primaryBucket as MetabolicType,
+          type: "SET_TYPING_RESULT",
+          payload: {
+            metabolicType: (l1.primaryBucket as MetabolicType | null) ?? null,
+            // A real archetype means not a starting read, by definition.
+            startingRead: l1.primaryBucket ? false : l1.startingRead === true,
+            // Omitted when unknown; the reducer keeps the existing value.
+            glp1Flag: l1.glp1Flag,
+          },
         });
       }
       if (profile.subscriptionTier) {
@@ -650,7 +678,7 @@ export function AppProvider({ children }: AppProviderProps) {
   const setTypingResult = (payload: {
     metabolicType: MetabolicType | null;
     startingRead: boolean;
-    glp1Flag: boolean;
+    glp1Flag?: boolean;
   }) => {
     dispatch({ type: "SET_TYPING_RESULT", payload });
   };
@@ -721,10 +749,24 @@ export function AppProvider({ children }: AppProviderProps) {
     // as (rather than the previous user's local state).
     getProfile()
       .then((profile) => {
-        if (profile.layer1.primaryBucket) {
+        // 🔑 `SET_TYPING_RESULT`, not `SET_METABOLIC_TYPE`, and no
+        // `if (primaryBucket)` gate: a member typed without a scan has
+        // `primaryBucket: null` and `startingRead: true`, and the old gate left
+        // them indistinguishable from someone we know nothing about.
+        // ⚠️ Only dispatch when the server actually told us something. If both
+        // are absent, leave state alone rather than writing `false` — see the
+        // note on `Layer1.startingRead`.
+        const l1 = profile.layer1;
+        if (l1.primaryBucket || typeof l1.startingRead === "boolean") {
           dispatch({
-            type: "SET_METABOLIC_TYPE",
-            payload: profile.layer1.primaryBucket as MetabolicType,
+            type: "SET_TYPING_RESULT",
+            payload: {
+              metabolicType: (l1.primaryBucket as MetabolicType | null) ?? null,
+              // A real archetype means not a starting read, by definition.
+              startingRead: l1.primaryBucket ? false : l1.startingRead === true,
+              // Omitted when unknown; the reducer keeps the existing value.
+              glp1Flag: l1.glp1Flag,
+            },
           });
         }
         if (profile.subscriptionTier) {

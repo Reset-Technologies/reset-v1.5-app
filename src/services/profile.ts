@@ -19,6 +19,20 @@ export interface Layer1 {
    * is written at account creation, long before onboarding ends.
    */
   onboardingCompletedAt?: string | null;
+  /**
+   * 🔑 RES-121 typing flags. The backend has ALWAYS sent these on layer1
+   * (`profile.service.ts` → `layer1: { … startingRead, glp1Flag }`); they were
+   * simply missing from this interface, so nothing on the client ever read
+   * them. 🔴 That absence is why session restore could not tell an untyped
+   * member from an unknown one.
+   *
+   * ⚠️ Optional, and `undefined` means **UNKNOWN, NOT false**. Coercing a
+   * missing value to `false` would assert the member HAS an archetype when we
+   * do not know, which is worse than saying nothing — it would quietly
+   * poison the segment Grafted builds on.
+   */
+  startingRead?: boolean;
+  glp1Flag?: boolean;
 }
 
 export interface Layer2 {
