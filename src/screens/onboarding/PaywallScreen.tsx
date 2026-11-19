@@ -368,6 +368,40 @@ function PlanCard({
   );
 }
 
+/**
+ * What kind of "we cannot sell you this" we are looking at.
+ *
+ * 🔑 Measured 2026-11-19 over 14 days, and the point of the split is that
+ * NEITHER observed class is transient:
+ *   • `blocked`      29 events — RevenueCat `PurchaseNotAllowedError`, whose
+ *     underlying Play message is "Billing is not available in this device …
+ *     ErrorCode: BILLING_UNAVAILABLE". A property of the member's device or
+ *     Play account: no Play Store, signed out, restricted/child account.
+ *   • `misconfigured` 3 events — RevenueCat `ConfigurationError`, "None of the
+ *     products registered in the RevenueCat dashboard could be fetched from
+ *     the Play Store". Ours, not theirs. (All 3 were on 3.7.14, which barely
+ *     left internal, so they read as a test-install artifact — but if this
+ *     ever appears on a production version it is a real outage.)
+ *
+ * ⚠️ Matched on `error_readable`, which is best-effort and may be absent, with
+ * the numeric code as the fallback. The code is **RevenueCat's
+ * `PurchasesErrorCode`**, NOT Play's response code — the same integer means
+ * different things in the two schemes, which is exactly how we recorded the
+ * wrong cause for this bug once already.
+ */
+type OfferingsFailure = "blocked" | "misconfigured" | "unknown";
+
+function classifyOfferingsFailure(
+  error: { error_code?: string; error_readable?: string } | undefined,
+): OfferingsFailure {
+  const readable = error?.error_readable;
+  if (readable === "PurchaseNotAllowedError") return "blocked";
+  if (readable === "ConfigurationError") return "misconfigured";
+  if (error?.error_code === "3") return "blocked";
+  if (error?.error_code === "23") return "misconfigured";
+  return "unknown";
+}
+
 export function PaywallScreen({ navigation }: Props) {
   // 🔑 READ from the system, not assumed — the inset varies per device and the
   // S24's cutout is centred, exactly where the stack is.
@@ -548,20 +582,21 @@ export function PaywallScreen({ navigation }: Props) {
   const [offeringsState, setOfferingsState] = React.useState<
     "loading" | "ready" | "unavailable"
   >("loading");
+  // Why it is unavailable, so the member is told something true rather than
+  // "please try again" — which was a lie for both observed causes.
+  const [offeringsFailure, setOfferingsFailure] =
+    React.useState<OfferingsFailure>("unknown");
 
   /**
-   * @param attempt 0 for the first try; >0 for an automatic retry below.
-   * @param silent  A retry must NOT flip state to "loading" — that disables
-   *   Subscribe and swaps in a spinner, so it would flicker the button under
-   *   the member's finger while they are reading the price.
    * @returns whether an offering is now loaded.
+   *
+   * 📌 The `attempt` / `silent` options went with the auto-retry on 2026-11-19,
+   * and `attempt` was dropped from the events below with them — it could only
+   * ever have reported 0, and a property pinned to one value reads like a bug
+   * in the instrumentation rather than the absence of a retry.
    */
-  const loadOfferings = React.useCallback(async (opts?: {
-    attempt?: number;
-    silent?: boolean;
-  }): Promise<boolean> => {
-    const attempt = opts?.attempt ?? 0;
-    if (!opts?.silent) setOfferingsState("loading");
+  const loadOfferings = React.useCallback(async (): Promise<boolean> => {
+    setOfferingsState("loading");
     const { offering, reason, error } = await getCurrentOfferingDetailed();
     if (!offering) {
       // 🔑 Named reason, not a bare null — "never configured", "RevenueCat
@@ -572,9 +607,9 @@ export function PaywallScreen({ navigation }: Props) {
       // real rejection; `error_readable` is best-effort and may be absent.
       logEvent("onboarding_paywall_offerings_unavailable", {
         reason: reason ?? "unknown",
-        attempt,
         ...error,
       });
+      setOfferingsFailure(classifyOfferingsFailure(error));
       setOfferingsState("unavailable");
       return false;
     }
@@ -589,7 +624,6 @@ export function PaywallScreen({ navigation }: Props) {
       // An offering with no purchasable package is the same outcome as none.
       logEvent("onboarding_paywall_offerings_unavailable", {
         reason: "no_packages",
-        attempt,
       });
       setOfferingsState("unavailable");
       return false;
@@ -604,52 +638,37 @@ export function PaywallScreen({ navigation }: Props) {
     ).then((entries) => setIntroOffers(Object.fromEntries(entries)));
 
     setOfferingsState("ready");
-    if (attempt > 0) {
-      // The measurement of whether the retry earns its place. If this never
-      // appears, the failure is not transient: delete the backoff and chase
-      // the error code instead.
-      logEvent("onboarding_paywall_offerings_recovered", { attempt });
-    }
     return true;
   }, []);
 
   /**
-   * 🔴 Bounded auto-retry, added 2026-11-16, as a MITIGATION not a fix.
+   * 🔴 THE BOUNDED AUTO-RETRY WAS DELETED HERE ON 2026-11-19. Do not add it back
+   * without new evidence — it was measured and it never worked once.
    *
-   * `fetch_failed` hit ~31 Android members in 30 days — ~13.5% of Android
-   * paywall viewers — across every release from 3.4.0 to 3.7.13, with 229 of
-   * 249 in the US. So it is neither a regression nor a market without Play
-   * Billing. ⚠️ The cause is still unknown: the error code only starts being
-   * logged in this same change. If the failure is transient this recovers the
-   * sale without a diagnosis; if it is not, `offerings_recovered` stays empty
-   * and says so. **Shipping this is not the same as having fixed it.**
+   * It shipped 2026-11-16 as an explicit experiment: delays `[1500, 4000, 9000]`,
+   * with `offerings_recovered` as its own pass/fail test — *"if this never
+   * appears, the failure is not transient: delete the backoff and chase the
+   * error code instead."*
+   *
+   * ❌ The verdict, 14 days of production data:
+   *   • `onboarding_paywall_offerings_recovered` was **never ingested by
+   *     Amplitude at all** — not once, by anyone.
+   *   • It genuinely ran, so this is not "the code never executed":
+   *     `attempt` 0 → 10 events · 1 → 8 · 2 → 8 · 3 → 6.
+   *     **22 retries across 10 failing sessions, 0 recoveries.**
+   *
+   * 🔑 And the reason it could never work is categorical, not statistical:
+   * both observed causes are STABLE STATES, not blips. `BILLING_UNAVAILABLE`
+   * is a property of the member's device; `ConfigurationError` is a property
+   * of our dashboard. Waiting 14.5 seconds cannot change either — which is why
+   * 32 events were enough to decide this, where a volume argument would not
+   * have been.
+   *
+   * ⏱️ What it cost meanwhile: 1.5s + 4s + 9s of a member watching a dead
+   * Subscribe button before anything told them what was wrong.
    */
   React.useEffect(() => {
-    const delays = [1500, 4000, 9000];
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const run = async (attempt: number): Promise<void> => {
-      let ok = false;
-      try {
-        ok = await loadOfferings({ attempt, silent: attempt > 0 });
-      } catch {
-        if (!cancelled) setOfferingsState("unavailable");
-      }
-      if (cancelled || ok) return;
-      const delay = delays[attempt];
-      // Out of attempts. The member is not stranded: Subscribe runs its own
-      // retry, and Restore Purchase and the back control both still work.
-      if (delay === undefined) return;
-      timer = setTimeout(() => void run(attempt + 1), delay);
-    };
-
-    void run(0);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    void loadOfferings();
   }, [loadOfferings]);
 
   // Ester's line. Bryan signed off on the design WITH this card (2026-09-30),
@@ -936,9 +955,34 @@ export function PaywallScreen({ navigation }: Props) {
         plan: selectedPlan,
         offerings_state: offeringsState,
         is_gate: isGate,
+        failure: offeringsFailure,
       });
-      toast.show({ message: "Couldn't load subscription. Please try again." });
-      void loadOfferings();
+      // 🔴 "Please try again" was a LIE for both causes we actually measured,
+      // and it was the only thing the member ever saw. Tell them which wall
+      // they hit, and only re-fetch when a re-fetch could plausibly help.
+      //
+      // ⚠️ COPY IS BRYAN'S, NOT OURS. These strings are an honest placeholder
+      // for the mechanism; get them signed off before this ships to members.
+      if (offeringsFailure === "blocked") {
+        // Play's own words are "Billing is not available in this device".
+        // Nothing in the app can change that, so do not invite a retry here.
+        toast.show({
+          message:
+            "Purchases aren't available on this device. Check you're signed in to your app store, then reopen Reset.",
+        });
+      } else if (offeringsFailure === "misconfigured") {
+        // Our dashboard, not their device. Saying "try again" would send them
+        // to hammer a button that cannot work.
+        toast.show({
+          message:
+            "Subscriptions are temporarily unavailable. This one is on us — nothing to fix on your end.",
+        });
+      } else {
+        // Genuinely unknown: a retry is still worth offering, because unlike
+        // the two classes above we have no evidence it is a stable state.
+        toast.show({ message: "Couldn't load subscription. Please try again." });
+        void loadOfferings();
+      }
       return;
     }
     setPurchasing(true);
