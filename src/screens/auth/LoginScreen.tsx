@@ -54,7 +54,23 @@ export function LoginScreen() {
   // mark onboarding complete so the root navigator can route to Main even
   // when this screen is reached mid-onboarding ("I already have an
   // account"). Harmless in the session-expired entry point (already done).
-  const finishLogin = (user: Parameters<typeof setAuth>[0]) => {
+  const finishLogin = (
+    user: Parameters<typeof setAuth>[0],
+    method: "email" | "apple" | "google",
+  ) => {
+    // 🔑 Fired from the two `finish*` helpers rather than from each button,
+    // because a tap is not a login: `auth_login_appleSignInCTA` fires when the
+    // Apple sheet is REQUESTED, and the sheet can be cancelled or fail without
+    // emitting anything. On 2026-11-18 that gap cost an evening — three Apple
+    // taps and three password resets with no success event meant we could not
+    // tell a broken login from somebody poking buttons, and it took a manual
+    // check on a device to settle it. Every successful authentication must now
+    // land here or on `signup_completed`.
+    logEvent("auth_login_success", {
+      method,
+      surface: "login",
+      legacy: false,
+    });
     completeOnboarding();
     setAuth(user);
   };
@@ -67,7 +83,14 @@ export function LoginScreen() {
    * it. Per Bryan: welcome them back, then run ordinary onboarding — only
    * account creation and the payment step come out.
    */
-  const finishLegacyLogin = async (user: Parameters<typeof setAuth>[0]) => {
+  const finishLegacyLogin = async (
+    user: Parameters<typeof setAuth>[0],
+    method: "email" | "apple" | "google",
+  ) => {
+    // `legacy: true` is the whole reason this property exists — a returning
+    // BetterWell member getting in is the migration's success measure, and it
+    // is invisible in `signup_completed` because no account was created.
+    logEvent("auth_login_success", { method, surface: "login", legacy: true });
     setAuth(user);
 
     // Pull the entitlement now. subscriptionTier is otherwise only fetched at
@@ -117,9 +140,9 @@ export function LoginScreen() {
         await loginWithEmail(email, password);
       setLegacyFlags({ isReturningLegacyMember, hasUnclaimedLegacyAccount });
       if (isReturningLegacyMember) {
-        await finishLegacyLogin(user);
+        await finishLegacyLogin(user, "email");
       } else {
-        finishLogin(user);
+        finishLogin(user, "email");
       }
     } catch (err: any) {
       setError(err.message || "Invalid email or password");
@@ -148,7 +171,7 @@ export function LoginScreen() {
       appleIdToken = credential.identityToken;
 
       const user = await loginWithApple(credential.identityToken);
-      finishLogin(user);
+      finishLogin(user, "apple");
     } catch (err: any) {
       if (err.code === "ERR_REQUEST_CANCELED") return;
       if (routeIfLinkRequired(err, "apple", appleIdToken)) return;
@@ -199,7 +222,7 @@ export function LoginScreen() {
       googleIdToken = idToken;
 
       const user = await loginWithGoogle(idToken);
-      finishLogin(user);
+      finishLogin(user, "google");
     } catch (err: any) {
       if (err.code === "SIGN_IN_CANCELLED") return;
       if (routeIfLinkRequired(err, "google", googleIdToken)) return;

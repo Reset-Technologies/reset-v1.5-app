@@ -48,6 +48,12 @@ export function initCrashReporting(): void {
       // identifiers to every event. We send a stack trace and the app's own
       // state, never who it happened to. For a health app that is the whole
       // difference between diagnostics and surveillance.
+      //
+      // 🔴🔴 BUT `false` IS NOT SUFFICIENT ON ITS OWN, which we believed until
+      // 2026-11-18 and were wrong about. Sentry Android still attaches a stable
+      // per-install UUID as `user.id`, and Sentry's ingest still geolocates the
+      // connection. Both were present on a verified production crash. See
+      // `beforeSend` below and the project's server-side scrubbing rules.
       sendDefaultPii: false,
 
       // Debug builds would otherwise flood the same project that production
@@ -65,6 +71,35 @@ export function initCrashReporting(): void {
       // quota we would rather spend on crashes; revisit once we know the
       // volume. 0 is the deliberate value, not an oversight.
       tracesSampleRate: 0,
+
+      // 🔴 `sendDefaultPii: false` DOES NOT COVER THE INSTALL ID OR THE GEO.
+      // Verified on a real crash on 2026-11-18: the event carried
+      // `user.id === contexts.device.id` — a stable per-install UUID — plus a
+      // Geography derived from the connection IP. Our store privacy labels
+      // declare crash data as NOT linked to the member (Apple: Diagnostics →
+      // Crash Data, Linked to You: No), so neither may ride along.
+      //
+      // ⚠️⚠️ THIS ONLY SCRUBS JS-ORIGINATED EVENTS, WHICH IS NOT WHERE REAL
+      // CRASHES COME FROM. An unhandled native crash is captured by Android's
+      // UncaughtExceptionHandler and never enters the JS pipeline, so this hook
+      // never sees it. The proof is in the SDK: the JS `EventOrigin`
+      // integration stamps everything it processes with
+      // `event.origin: javascript`, and the verified crash arrived tagged
+      // `event.origin: android`. Native events are scrubbed by the Sentry
+      // project's server-side rules instead — see project_crash_reporting.
+      // Do not delete those rules on the assumption this covers them.
+      beforeSend: (event) => {
+        delete event.user;
+        delete event.server_name;
+        const device = event.contexts?.device as
+          | Record<string, unknown>
+          | undefined;
+        if (device) {
+          delete device.id;
+          delete device.device_unique_identifier;
+        }
+        return event;
+      },
     });
     started = true;
   } catch {

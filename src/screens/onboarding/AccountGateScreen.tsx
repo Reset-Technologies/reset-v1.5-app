@@ -228,7 +228,20 @@ export function AccountGateScreen({ navigation }: Props) {
       // Google use one endpoint for sign-up and sign-in, so firing
       // unconditionally would report every returning member as a new
       // registration and inflate every cost-per-signup we report.
-      if (user.isNewUser) logEvent("signup_completed", { method: "apple" });
+      //
+      // 🔴 The `else` used to be absent, firing NOTHING. This is the sign-UP
+      // gate, but the shared endpoint means a RETURNING member signing in here
+      // was completely untracked — the population we most need to count. No
+      // `legacy` property: unlike the login screen this path never learns
+      // whether they are a legacy member, and asserting `false` would be a guess.
+      if (user.isNewUser) {
+        logEvent("signup_completed", { method: "apple" });
+      } else {
+        logEvent("auth_login_success", {
+          method: "apple",
+          surface: "account_gate",
+        });
+      }
 
       await syncOnboardingData();
 
@@ -262,7 +275,20 @@ export function AccountGateScreen({ navigation }: Props) {
       // Google use one endpoint for sign-up and sign-in, so firing
       // unconditionally would report every returning member as a new
       // registration and inflate every cost-per-signup we report.
-      if (user.isNewUser) logEvent("signup_completed", { method: "google" });
+      //
+      // 🔴 The `else` used to be absent, firing NOTHING. This is the sign-UP
+      // gate, but the shared endpoint means a RETURNING member signing in here
+      // was completely untracked — the population we most need to count. No
+      // `legacy` property: unlike the login screen this path never learns
+      // whether they are a legacy member, and asserting `false` would be a guess.
+      if (user.isNewUser) {
+        logEvent("signup_completed", { method: "google" });
+      } else {
+        logEvent("auth_login_success", {
+          method: "google",
+          surface: "account_gate",
+        });
+      }
 
       await syncOnboardingData();
 
