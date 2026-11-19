@@ -154,13 +154,18 @@ export function CreateAccountScreen({ navigation }: Props) {
             tastePreferences: state.user.tastePreferences,
             dietaryRestrictions: state.user.dietaryRestrictions,
           });
-        if (primaryBucket) {
-          setTypingResult({
-            metabolicType: primaryBucket,
-            startingRead,
-            glp1Flag,
-          });
-        }
+        // 🔴 NO `if (primaryBucket)` GUARD. It used to wrap this call, and it
+        // silently discarded `startingRead` for the one population that flag
+        // exists to describe: a member typed WITHOUT a scan gets
+        // `primaryBucket: null` and `startingRead: true`, so the guard threw away
+        // their only signal. Measured 2026-11-19 over 30 days of
+        // `onboarding_paywall_view`: 44 of 475 events carried a type and
+        // **ZERO** carried `starting_read: true` — not "mostly Explorer",
+        // nothing at all. Grafted cannot build the abandoned-paywall split on an
+        // event that says nothing about 91% of the people who see it.
+        // 🔑 `primaryBucket` is not a proxy for "we know this member's typing
+        // state" — the same mistake as using it for "has finished onboarding".
+        setTypingResult({ metabolicType: primaryBucket, startingRead, glp1Flag });
       } catch {}
 
       finishAccount();

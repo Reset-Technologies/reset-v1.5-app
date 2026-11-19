@@ -141,7 +141,14 @@ type AppAction =
   | {
       type: "SET_TYPING_RESULT";
       payload: {
-        metabolicType: MetabolicType;
+        /**
+         * 🔴 NULLABLE ON PURPOSE. The backend returns `primaryBucket: null`
+         * for a member typed without a scan — that is not a failure, it is the
+         * `startingRead` population, and it is the MAJORITY. Requiring a
+         * non-null type here is what made every call site guard on
+         * `if (primaryBucket)` and throw `startingRead` away with it.
+         */
+        metabolicType: MetabolicType | null;
         startingRead: boolean;
         glp1Flag: boolean;
       };
@@ -242,7 +249,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         user: {
           ...state.user,
-          metabolicType: action.payload.metabolicType,
+          metabolicType: action.payload.metabolicType ?? undefined,
           startingRead: action.payload.startingRead,
           glp1Flag: action.payload.glp1Flag,
         },
@@ -364,7 +371,7 @@ interface AppContextValue {
   setSubscriptionTier: (tier: SubscriptionTier) => void;
   setAiConsent: (granted: boolean, needsPrompt: boolean) => void;
   setTypingResult: (payload: {
-    metabolicType: MetabolicType;
+    metabolicType: MetabolicType | null;
     startingRead: boolean;
     glp1Flag: boolean;
   }) => void;
@@ -641,7 +648,7 @@ export function AppProvider({ children }: AppProviderProps) {
   };
 
   const setTypingResult = (payload: {
-    metabolicType: MetabolicType;
+    metabolicType: MetabolicType | null;
     startingRead: boolean;
     glp1Flag: boolean;
   }) => {
