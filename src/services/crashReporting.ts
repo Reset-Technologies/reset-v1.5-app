@@ -143,3 +143,82 @@ export function leaveBreadcrumb(message: string, category = "app"): void {
     // Ignore.
   }
 }
+
+/* ------------------------------------------------------------------------ *
+ * PROBES — internal builds only. Both of these deliberately break the app.
+ *
+ * 🔴 WHY THEY EXIST. As of 2026-11-19 Sentry has captured exactly ONE real
+ * event in its life: an Android native crash forced with `adb shell am crash`.
+ * That proved delivery and Java symbolication. It left two gaps that cannot be
+ * closed without deliberately breaking something:
+ *
+ *   1. **JS source maps are unproven.** No JavaScript error has ever reached
+ *      Sentry (`release:3.7.15 event.origin:javascript` returns nothing). If
+ *      the 74%-in-3s iOS sessions are dying on a JS error — the likeliest
+ *      shape in a React Native app — we would be reading minified frames at
+ *      exactly the moment we need names.
+ *   2. **iOS has produced NO real event at all.** `am crash` has no iOS
+ *      equivalent, so the only way to prove iOS reporting works end to end is
+ *      to crash it on purpose.
+ *
+ * 🔑 THE GATE IS NOT `__DEV__`, AND THAT IS THE WHOLE POINT. `Sentry.init` runs
+ * with `enabled: !__DEV__`, so Sentry is OFF in a dev build — a `__DEV__`-gated
+ * probe could never reach it. These are called from the EXPERIMENTAL section of
+ * Settings, behind `shouldShowExperiments()`, which is true on internal and
+ * TestFlight builds (`SHOW_EXPERIMENTS=true` in the `production` EAS profile)
+ * and false on the store build (`production-store`). So Sentry is live AND the
+ * affordance is unreachable for members.
+ *
+ * ⚠️ BUT NOTE WHAT THAT GATE ACTUALLY IS, PER PLATFORM:
+ *   • Android — a BUILD-TIME flag. The store AAB genuinely does not have it on.
+ *   • iOS — a RUNTIME receipt check, because TestFlight and the App Store ship
+ *     the SAME binary. So this code IS in the shipped app and only a runtime
+ *     check hides it. It fails closed (`native?.isTestFlight === true`, false
+ *     when the native module is missing), and every other row in that section
+ *     already works this way — but a crash button has a worse consequence than
+ *     a preview screen, so it gets the confirm dialog as a second gate.
+ *
+ * ⚠️ AND IN A LOCAL DEV BUILD THESE REPORT NOTHING. `shouldShowExperiments()`
+ * returns true when `__DEV__`, so the rows are visible — but `Sentry.init` ran
+ * with `enabled: !__DEV__`, so the app will crash and no event will be sent.
+ * **Use these on an internal/TestFlight build, never in Metro.**
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Throw an UNHANDLED JavaScript error, to prove source maps resolve.
+ *
+ * 🔑 Thrown from inside a `setTimeout` on purpose: a throw in an event handler
+ * can be swallowed by a React error boundary, while this escapes to React
+ * Native's global handler — the same path a real crash takes, and the one
+ * Sentry's `ReactNativeErrorHandlers` integration wraps.
+ *
+ * 🔑 Two nested named frames, also on purpose. One frame proves almost
+ * nothing; two adjacent ones make a failure obvious — if source maps work you
+ * see `jsProbeInner` and `jsProbeOuter` with file and line, and if they do not
+ * you get minified names against a bundle offset.
+ */
+function jsProbeInner(): never {
+  throw new Error("Sentry probe: unhandled JS error (internal build)");
+}
+
+function jsProbeOuter(): never {
+  return jsProbeInner();
+}
+
+export function triggerJsErrorProbe(): void {
+  setTimeout(() => {
+    jsProbeOuter();
+  }, 0);
+}
+
+/**
+ * Crash the native layer, to prove native symbolication — and on iOS, to prove
+ * crash reporting works at all for the first time.
+ *
+ * ⚠️ The process dies immediately, so the event is written to Sentry's outbox
+ * and only SENT on the next launch via `SendCachedEnvelopeIntegration`.
+ * **Reopen the app before concluding nothing arrived.**
+ */
+export function triggerNativeCrashProbe(): void {
+  Sentry.nativeCrash();
+}

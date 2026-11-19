@@ -38,6 +38,10 @@ import { logout, deleteAccount } from "../../services/auth";
 import * as BrazeService from "../../services/braze";
 import { resetAppOpenFlowGate } from "../../utils/appOpenFlowGate";
 import { shouldShowExperiments } from "../../../modules/build-env";
+import {
+  triggerJsErrorProbe,
+  triggerNativeCrashProbe,
+} from "../../services/crashReporting";
 
 const NOTIFICATION_PREFS_KEY = "notification_preferences";
 
@@ -614,6 +618,57 @@ export function SettingsScreen() {
             >
               <Text style={styles.toggleLabel}>Preview Score reveal</Text>
               <Text style={{ color: K.ochre, fontWeight: "600" }}>Open</Text>
+            </TouchableOpacity>
+
+            {/* 🔴 These two BREAK THE APP on purpose. They are the only way to
+                prove Sentry can produce a READABLE stack trace: as of
+                2026-11-19 it has captured exactly one real event ever, an
+                Android native crash forced over adb. JS source maps are
+                untested, and iOS has produced no event at all.
+                🔑 Gated by `shouldShowExperiments()`, NOT `__DEV__` — Sentry is
+                off in dev (`enabled: !__DEV__`), so a dev-gated probe could
+                never reach it. See services/crashReporting.ts. */}
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() =>
+                Alert.alert(
+                  "Crash the app?",
+                  "Throws an unhandled JS error so we can check whether Sentry resolves source maps. The app will close.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Throw",
+                      style: "destructive",
+                      onPress: () => triggerJsErrorProbe(),
+                    },
+                  ],
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={styles.toggleLabel}>Sentry: throw JS error</Text>
+              <Text style={{ color: K.ochre, fontWeight: "600" }}>Throw</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() =>
+                Alert.alert(
+                  "Crash the app?",
+                  "Crashes the native layer. Reopen the app afterwards — the event only uploads on the NEXT launch.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Crash",
+                      style: "destructive",
+                      onPress: () => triggerNativeCrashProbe(),
+                    },
+                  ],
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={styles.toggleLabel}>Sentry: native crash</Text>
+              <Text style={{ color: K.ochre, fontWeight: "600" }}>Crash</Text>
             </TouchableOpacity>
           </View>
         </View>
