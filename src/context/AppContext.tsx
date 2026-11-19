@@ -15,7 +15,6 @@ import {
   loginRevenueCat,
   logoutRevenueCat,
 } from "../services/revenuecat";
-import { requestPushPermission } from "../services/pushNotifications";
 import { notifyAppOpened } from "../services/notifications";
 import { clearWindowLiveActivity } from "../utils/liveActivity";
 
@@ -515,10 +514,14 @@ export function AppProvider({ children }: AppProviderProps) {
             payload: { isAuthenticated: true, authUser },
           });
 
-          // Re-identify with Braze on session restore + register push token
+          // Re-identify with Braze on session restore.
+          // 📌 `requestPushPermission()` used to run here too, on EVERY session
+          // restore. Removed 2026-11-19 — the ask is Grafted's Braze push
+          // primer now. Token registration does not depend on it: AppDelegate
+          // registers for remote notifications at launch via
+          // `plugins/withRegisterPush.js`. See services/pushNotifications.ts.
           BrazeService.changeUser(authUser.id);
           loginRevenueCat(authUser.id);
-          requestPushPermission();
 
           // If local state is missing onboarding data but the backend has it
           // (e.g. reinstall), restore it BEFORE revealing so we route straight

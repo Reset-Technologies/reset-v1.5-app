@@ -39,7 +39,6 @@ import { useAppPalette } from "../../hooks/useAppPalette";
 import { logEvent, setCustomAttribute } from "../../services/braze";
 import { metabolicTypeProps } from "../../utils/metabolicType";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { maybePrimePushOnce } from "../../services/pushNotifications";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import {
   MealTabsSection,
@@ -132,10 +131,8 @@ export function HomeScreenV2() {
 
   React.useEffect(() => {
     logEvent("home_main");
-    // RES-188 — prime the push soft-ask here (after the first meal card),
-    // not at signup where it stacked with the AI-consent screen. No-op after
-    // the first time.
-    maybePrimePushOnce();
+    // 📌 The push soft-ask used to fire here (RES-188). Removed 2026-11-19 —
+    // Grafted's Braze push primer owns it. See services/pushNotifications.ts.
   }, []);
 
   // Fired by MealTabsSection the first time a card is genuinely on screen.

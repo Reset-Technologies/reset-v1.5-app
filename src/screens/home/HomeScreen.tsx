@@ -17,7 +17,6 @@ import type { Meal } from "../../components";
 import { useApp } from "../../context/AppContext";
 import { useFeedbackPrompt } from "../../hooks/useFeedbackPrompt";
 import * as BrazeService from "../../services/braze";
-import { maybePrimePushOnce } from "../../services/pushNotifications";
 import { useScanNudge } from "../../hooks/useScanNudge";
 import { useAiConsentGate } from "../../hooks/useAiConsentGate";
 import { useBiometricFreshness } from "../../hooks/useBiometricFreshness";
@@ -92,10 +91,8 @@ export function HomeScreen() {
   useEffect(() => {
     BrazeService.logEvent("home_main");
     loadProfile();
-    // RES-188 — prime the push soft-ask here (after the first meal card),
-    // not at signup where it stacked with the AI-consent screen. No-op after
-    // the first time.
-    maybePrimePushOnce();
+    // 📌 The push soft-ask used to fire here (RES-188). Removed 2026-11-19 —
+    // Grafted's Braze push primer owns it. See services/pushNotifications.ts.
   }, [loadProfile]);
 
   // Re-fetch profile when screen regains focus (e.g. after scan)
